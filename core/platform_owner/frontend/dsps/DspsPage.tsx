@@ -27,11 +27,21 @@ import { dspState, dspStates, stateLabels, type DspState } from './status.js';
 import { field } from '../../../shell/frontend/lib/form.js';
 
 const none: DspSummary[] = [];
-const requests: Record<Exclude<DspAction, 'view' | 'code' | 'delete'>, [string, string]> = {
+const requests: Record<
+  Exclude<DspAction, 'view' | 'code' | 'custom' | 'delete'>,
+  [string, string]
+> = {
   enable: ['enable', 'DSP enabled'],
   retry: ['retry', 'DSP available'],
   disable: ['disable', 'DSP disabled'],
 };
+
+/** A new custom ID, 8 random lowercase letters and digits, that names no DSP. */
+function randomCustomId() {
+  const letters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const random = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(random, (byte) => letters[byte % letters.length]).join('');
+}
 
 export function DspsPage() {
   const { data, error, refresh } = usePlatformDsps(10000);
@@ -42,6 +52,7 @@ export function DspsPage() {
     [confirming, setConfirming] = useState<DspSummary>(),
     [deleting, setDeleting] = useState<DspSummary>(),
     [coding, setCoding] = useState<DspSummary>(),
+    [customizing, setCustomizing] = useState<DspSummary>(),
     // The chosen DSP rides in the address, so a reload, a link and Back keep it.
     [chosen, setChosen] = useState(() => hashQuery().get('dsp') ?? '');
   useEffect(() => {
@@ -79,6 +90,14 @@ export function DspsPage() {
     },
     { inline: true, success: (_, code) => `Short code set to ${code.toUpperCase()}` },
   );
+  const setCustomId = useAction(
+    async (dsp: DspSummary, customId: string) => {
+      await api(`/api/platform/dsps/${dsp.id}/custom-id`, { customId });
+      setCustomizing(undefined);
+      refresh();
+    },
+    { inline: true, success: (_, customId) => `Custom ID set to ${customId.toLowerCase()}` },
+  );
   const remove = useAction(
     async (dsp: DspSummary, name: string) => {
       await api(`/api/platform/dsps/${dsp.id}/delete`, { name });
@@ -89,7 +108,7 @@ export function DspsPage() {
     { success: () => 'DSP deleted' },
   );
   const change = useAction(
-    async (dsp: DspSummary, action: Exclude<DspAction, 'view' | 'code' | 'delete'>) => {
+    async (dsp: DspSummary, action: Exclude<DspAction, 'view' | 'code' | 'custom' | 'delete'>) => {
       await api(`/api/platform/dsps/${dsp.id}/${requests[action][0]}`, {});
       setConfirming(undefined);
       refresh();
@@ -99,6 +118,7 @@ export function DspsPage() {
   const act = (dsp: DspSummary, action: DspAction) => {
     if (action === 'view') open(dsp);
     else if (action === 'code') setCoding(dsp);
+    else if (action === 'custom') setCustomizing(dsp);
     else if (action === 'disable') setConfirming(dsp);
     else if (action === 'delete') setDeleting(dsp);
     else void change.run(dsp, action);
@@ -235,6 +255,45 @@ export function DspsPage() {
               </button>
               <button className="primary" disabled={setCode.busy}>
                 {setCode.busy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {customizing && (
+        <Modal
+          title={customizing.customId ? 'Change custom ID' : 'Set custom ID'}
+          variant="sheet"
+          onClose={() => setCustomizing(undefined)}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const customId = field(new FormData(event.currentTarget), 'customId').trim();
+              void setCustomId.run(customizing, customId);
+            }}
+          >
+            <label>
+              Custom ID
+              <input
+                name="customId"
+                autoComplete="off"
+                required
+                minLength={2}
+                maxLength={16}
+                pattern="[A-Za-z0-9]{2,16}"
+                title="2 to 16 letters and numbers"
+                defaultValue={customizing.customId ?? randomCustomId()}
+                disabled={setCustomId.busy}
+              />
+            </label>
+            <ErrorBox message={setCustomId.error} />
+            <div className="form-actions">
+              <button type="button" onClick={() => setCustomizing(undefined)}>
+                Cancel
+              </button>
+              <button className="primary" disabled={setCustomId.busy}>
+                {setCustomId.busy ? 'Saving…' : 'Save'}
               </button>
             </div>
           </form>

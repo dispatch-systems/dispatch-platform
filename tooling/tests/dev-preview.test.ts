@@ -18,7 +18,7 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
       path.join(cwd, 'vite.config.ts'),
       `export default { server: { fs: { allow: [${JSON.stringify(cwd)}] } } };`,
     );
-    for (const owner of ['nll', 'sum']) {
+    for (const owner of ['n1', 's2']) {
       const dir = path.join(cwd, `features/custom/${owner}/probe/frontend`);
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(
@@ -200,13 +200,13 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
   assert.equal(member.value.user.platformOwner, false);
   const cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
   for (const [code, status] of [
-    ['nll', 200],
-    ['sum', 404],
+    ['n1', 200],
+    ['s2', 404],
   ] as const) {
     const source = `/@fs${fs.realpathSync(worktrees[1]!)}/features/custom/${code}/probe/frontend/feature.ts`;
     const answer = await fetch(memberOrigin + source, { headers: { cookie } });
     assert.equal(answer.status, status);
-    if (status === 200) assert.match(await answer.text(), /nll private feature/);
+    if (status === 200) assert.match(await answer.text(), /n1 private feature/);
   }
   assert.equal((await request(first.origin, '/api/session')).value.user.platformOwner, true);
   assert.notEqual(owner.value.user.id, member.value.user.id);

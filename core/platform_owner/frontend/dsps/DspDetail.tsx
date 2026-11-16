@@ -14,7 +14,7 @@ import { DspBetaTab } from './DspBetaTab.js';
 import { DspFeaturesTab } from './DspFeaturesTab.js';
 import { dspState, stateLabels } from './status.js';
 
-export type DspAction = 'view' | 'code' | 'enable' | 'retry' | 'disable' | 'delete';
+export type DspAction = 'view' | 'code' | 'custom' | 'enable' | 'retry' | 'disable' | 'delete';
 
 // The chosen DSP across the page, a way back to them all and to another beside its name: who owns it
 // and its address, its features, its beta testers, its backups and what the platform may do to it.
@@ -62,6 +62,11 @@ export function DspDetail({
       dsp.code ? 'Change short code' : 'Set short code',
       ['active', 'suspended'].includes(dsp.status),
     ],
+    [
+      'custom',
+      dsp.customId ? 'Change custom ID' : 'Set custom ID',
+      ['active', 'suspended'].includes(dsp.status),
+    ],
     ['retry', 'Retry', dsp.status === 'failed'],
     ['enable', 'Enable DSP', dsp.status === 'suspended' && !dsp.permanent],
     ['disable', 'Disable DSP', dsp.status === 'active' && !dsp.permanent],
@@ -88,6 +93,7 @@ export function DspDetail({
           <small className="dsp-detail-meta">
             {dsp.profile.abbreviation && <span>{dsp.profile.abbreviation}</span>}
             {dsp.ownerEmail && <span className="dsp-detail-owner">{dsp.ownerEmail}</span>}
+            {dsp.customId && <span>Custom ID {dsp.customId}</span>}
             {dsp.code && (
               <span>
                 <a href={dspAddress(dsp.code)} target="_blank" rel="noopener noreferrer">

@@ -12,7 +12,7 @@ test('{{label}} opens from the sidebar of a DSP that has it', async ({ page{{#ow
 {{#owner}}
   const owner = await dispatch.client();
   const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
-  await owner.post(`/api/platform/dsps/${dsp.id}/code`, { code: '{{owner}}' });
+  await owner.post(`/api/platform/dsps/${dsp.id}/custom-id`, { customId: '{{owner}}' });
   await owner.post(`/api/platform/dsps/${dsp.id}/features`, { feature: '{{name}}', enabled: true });
 {{/owner}}
   await login(page);
@@ -27,7 +27,7 @@ test('{{label}} opens the sidebar of its pages, and each of them from it', async
 {{#owner}}
   const owner = await dispatch.client();
   const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
-  await owner.post(`/api/platform/dsps/${dsp.id}/code`, { code: '{{owner}}' });
+  await owner.post(`/api/platform/dsps/${dsp.id}/custom-id`, { customId: '{{owner}}' });
   await owner.post(`/api/platform/dsps/${dsp.id}/features`, { feature: '{{name}}', enabled: true });
 {{/owner}}
   await login(page);
@@ -46,7 +46,7 @@ test('{{label}} opens as a tab of {{hostLabel}}', async ({ page{{#owner}}, dispa
 {{#owner}}
   const owner = await dispatch.client();
   const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
-  await owner.post(`/api/platform/dsps/${dsp.id}/code`, { code: '{{owner}}' });
+  await owner.post(`/api/platform/dsps/${dsp.id}/custom-id`, { customId: '{{owner}}' });
   await owner.post(`/api/platform/dsps/${dsp.id}/features`, { feature: '{{name}}', enabled: true });
 {{/owner}}
   await login(page);
@@ -62,7 +62,7 @@ test('{{label}} has its card on the Connections page', async ({ page{{#owner}}, 
 {{#owner}}
   const owner = await dispatch.client();
   const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
-  await owner.post(`/api/platform/dsps/${dsp.id}/code`, { code: '{{owner}}' });
+  await owner.post(`/api/platform/dsps/${dsp.id}/custom-id`, { customId: '{{owner}}' });
   await owner.post(`/api/platform/dsps/${dsp.id}/features`, { feature: '{{name}}', enabled: true });
 {{/owner}}
   await login(page);

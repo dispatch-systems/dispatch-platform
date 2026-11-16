@@ -31,7 +31,8 @@
       [25, "dsp_deletions", "3206680874336991"],
       [26, "dsp_backups", "9f2912085a4f823e"],
       [27, "feature_defaults", "code"],
-      [28, "deleted_dsp_code", "code"]
+      [28, "deleted_dsp_code", "code"],
+      [29, "dsp_custom_ids", "code"]
     ],
     "owned": [
       ["slack", 1, "slack_teams", "35ab8bb0ffb56fd6"]

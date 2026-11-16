@@ -8,7 +8,7 @@ fn publishes_what_the_collectors_fixture_brings() {
     testing::install(&[{{testCollectors}}], &[&crate::FEATURE]);
     let (_root, store, dsp) = testing::bootstrapped();
 {{#owner}}
-    store.set_code(&dsp, "{{owner}}").unwrap();
+    store.set_custom_id(&dsp, "{{owner}}").unwrap();
     store.set_feature(&dsp, "{{name}}", true, &testing::a_user(&store)).unwrap();
 {{/owner}}
     let collected = {{siteIdent}}::COLLECTOR

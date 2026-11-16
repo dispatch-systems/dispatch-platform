@@ -19,24 +19,22 @@ import type {
   Visibility,
 } from '../../../core/platform_owner/api/index.js';
 
-const OWNER_CODE = 'fscl';
-
 // The server's owner metadata and private-asset access have HTTP coverage; the build has a
 // real two-owner bundle test. This stand-in exercises their browser admission and slots
 // without adding a custom feature to the product build.
 async function custom(page: Page, dispatch: Dispatch, hold = false) {
   const platform = await dispatch.client();
   const own = platform.session.dsps.find((dsp: { code: string }) => dsp.code === demo.memberDsp);
-  const coded = await platform.post(`/api/platform/dsps/${own.id}/code`, { code: OWNER_CODE });
-  expect(coded.status).toBe(200);
-  own.code = OWNER_CODE;
-  const id = `${own.code}_fuel_log`;
-  const routeId = `${own.code}-fuel-log`;
-  const entry = `/assets/custom-${own.code}-fuel-log-12345678.js`;
+  // Its custom ID, apart from its code, owns the stand-in.
+  const owner: string = own.customId;
+  expect(owner).not.toBe(own.code);
+  const id = `${owner}_fuel_log`;
+  const routeId = `${owner}-fuel-log`;
+  const entry = `/assets/custom-${owner}-fuel-log-12345678.js`;
   const platformEntry = '/assets/owner-browser-catalog-12345678.js';
-  const platformStyle = `/assets/custom-${own.code}-platform-12345678.css`;
-  const style = `/assets/custom-${own.code}-fuel-log-12345678.css`;
-  const lazy = `/assets/custom-${own.code}-fuel-page-12345678.js`;
+  const platformStyle = `/assets/custom-${owner}-platform-12345678.css`;
+  const style = `/assets/custom-${owner}-fuel-log-12345678.css`;
+  const lazy = `/assets/custom-${owner}-fuel-page-12345678.js`;
   const catalog = [
     {
       id,
@@ -87,7 +85,7 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
       export const permissionLabels = ${JSON.stringify({ [`${id}.view`]: 'View Fuel Log' })};
       export const features = [{ name: ${JSON.stringify(id)}, platformSlots: async () => {
         const style = document.createElement('style');
-        style.dataset.viteDevId = '/features/custom/${own.code}/fuel_log/frontend/platform.css';
+        style.dataset.viteDevId = '/features/custom/${owner}/fuel_log/frontend/platform.css';
         style.textContent = ':root { --owner-platform-source: 1; }';
         document.head.append(style);
         await new Promise((resolve) => {
@@ -144,7 +142,7 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
     }),
   );
   const module = `const sourceStyle = document.createElement('style');
-    sourceStyle.dataset.viteDevId = '/features/custom/${own.code}/fuel_log/frontend/feature.css';
+    sourceStyle.dataset.viteDevId = '/features/custom/${owner}/fuel_log/frontend/feature.css';
     sourceStyle.textContent = ':root { --owner-vite-style: 1; }';
     document.head.append(sourceStyle);
     export const feature = { name: '${id}', routes: [{

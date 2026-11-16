@@ -11,7 +11,7 @@ export const providerMode = z.enum(['fixture', 'native']);
 
 export type Method = 'GET' | 'POST';
 /** The immutable tenant scope captured when the request was admitted. */
-export type ReplyContext = { dsp?: Readonly<{ id: string; code: string | null }> };
+export type ReplyContext = { dsp?: Readonly<{ id: string; customId: string | null }> };
 /** An owner's reply validators: the one for a route's reply to a method, if it checks that. */
 export type Replies = (
   route: string,

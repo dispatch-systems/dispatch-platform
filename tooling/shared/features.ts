@@ -1,19 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-/** A feature's build-wide identity and the folder that determines its DSP owner. */
+/** A feature's build-wide identity and the folder that determines its DSP owner: the custom ID
+ * of the DSP it belongs to, which names no DSP. */
 export type FeatureLocation = { name: string; dir: string; owner?: string };
 
-export const validDspCode = (code: string) => /^[a-z0-9]{2,16}$/.test(code);
+export const validCustomId = (code: string) => /^[a-z0-9]{2,16}$/.test(code);
 
 /** The feature containing a repository-relative path, including files not yet on disk. */
 export function featureAt(file: string): FeatureLocation | undefined {
   const parts = file.split('/');
   if (parts[0] !== 'features') return undefined;
-  const [, first, code, folder] = parts;
+  const [, first, owner, folder] = parts;
   if (first === 'custom')
-    return code && folder && validDspCode(code) && /^[a-z][a-z0-9_]*$/.test(folder)
-      ? { name: `${code}_${folder}`, dir: parts.slice(0, 4).join('/'), owner: code }
+    return owner && folder && validCustomId(owner) && /^[a-z][a-z0-9_]*$/.test(folder)
+      ? { name: `${owner}_${folder}`, dir: parts.slice(0, 4).join('/'), owner }
       : undefined;
   return first ? { name: first, dir: `features/${first}` } : undefined;
 }

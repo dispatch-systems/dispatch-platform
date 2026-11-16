@@ -10,7 +10,7 @@ async fn custom_oauth_scopes_and_workspace_updates_belong_only_to_the_owner_dsp(
         .run(|db| {
             let actor = testing::platform_owner(db);
             let dsp = db.new_dsp("Custom owner", "UTC", &actor, false)?;
-            db.set_code(&dsp.id, "dsp42")?;
+            db.set_custom_id(&dsp.id, "dsp42")?;
             Ok(dsp.id)
         })
         .await

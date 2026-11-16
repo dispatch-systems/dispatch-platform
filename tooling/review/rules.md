@@ -99,9 +99,11 @@ that keeps the collection writes it.
 
 ## `features/**`
 
-A custom feature belongs only to the DSP code in `features/custom/<code>/<name>/`; its ids
-start with `<code>_`, its switch is custom and optional, and it exposes no contracts or MCP
-tools. Nothing it runs or shows reaches another DSP.
+A custom feature belongs only to the DSP whose custom ID is in `features/custom/<id>/<name>/`;
+its ids start with `<id>_`, its switch is custom and optional, and it exposes no contracts or
+MCP tools. Nothing it runs or shows reaches another DSP. The repository is public: nothing in a
+custom feature, its commits or its PR names the DSP it belongs to, by name, short code or
+abbreviation.
 
 A feature uses only its own tables, core, and the collectors and features its manifest
 declares. Flag SQL against another owner's tables and imports beyond those dependencies.

@@ -702,18 +702,18 @@ test('--custom separates the owner folder from prefixed identities and fixes imp
     /path = "\.\.\/\.\.\/features\/custom\/dsp42\/fuel_log"/,
   );
   assert.match(file(plan, 'Cargo.toml'), /"features\/custom\/dsp42\/fuel_log"/);
-  assert.match(file(plan, `${dir}/tests/backend/storage.rs`), /set_code\(&dsp, "dsp42"\)/);
-  // Only a DSP with its code has it: before the screenshot, its note gives one the code and
+  assert.match(file(plan, `${dir}/tests/backend/storage.rs`), /set_custom_id\(&dsp, "dsp42"\)/);
+  // Only the DSP with its custom ID has it: before the screenshot, its note gives one the ID and
   // switches the feature on, by the name its switch has, and the screenshot is of that DSP.
   const notes = plan.notes.join('\n');
-  assert.match(notes, /dsps\/<id>\/code --data '\{"code":"dsp42"\}'/);
+  assert.match(notes, /dsps\/<id>\/custom-id --data '\{"customId":"dsp42"\}'/);
   assert.match(
     notes,
     /dsps\/<id>\/features --data '\{"feature":"dsp42_fuel_log","enabled":true\}'/,
   );
   assert.match(notes, /shot --dsp <id> --page dsp42-fuel-log/);
   for (const code of ['x', 'DSP42', '../dsp42', 'fs_cl', 'abcdefghijklmnopq'])
-    await refused(/DSP code/, 'fuel_log', '--custom', code);
+    await refused(/custom ID/, 'fuel_log', '--custom', code);
   await refused(/optional/, 'fuel_log', '--custom', 'dsp42', '--mandatory');
   await refused(/contracts/, 'fuel_log', '--custom', 'dsp42', '--contract', 'fuel');
   const numeric = await feature('fuel_log', '--custom', '12', '--api', '--tables', 'dsp');

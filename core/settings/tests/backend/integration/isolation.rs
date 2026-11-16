@@ -62,26 +62,26 @@ static PROBE: Feature = Feature {
 // A test-only custom feature exercises the same generated registration and HTTP dispatch as
 // an app feature, without adding a product feature to any build.
 static CUSTOM: Feature = Feature {
-    switch: dispatch_core::manifest::custom("nll_probe", "Owner probe", &[]),
+    switch: dispatch_core::manifest::custom("n1_probe", "Owner probe", &[]),
     page_sources: &[
-        dispatch_core::manifest::page_source("nll_probe.images", dispatch_core::manifest::Loads::Images, "https://owner-media.example.test"),
-        dispatch_core::manifest::page_source("nll_probe.calls", dispatch_core::manifest::Loads::Calls, "https://owner-calls.example.test"),
+        dispatch_core::manifest::page_source("n1_probe.images", dispatch_core::manifest::Loads::Images, "https://owner-media.example.test"),
+        dispatch_core::manifest::page_source("n1_probe.calls", dispatch_core::manifest::Loads::Calls, "https://owner-calls.example.test"),
     ],
-    permissions: &[dispatch_core::manifest::perm("nll_probe.view", "View probe", 1).group("Probe").implies(&["sum_probe.view"]).under("sum_probe.view")],
-    settings: &[section("nll_probe.limits", "Limits", "nll_probe.view", &[number("days", "Keep", 30, 3650, Some(90))])
-        .aliases(&["nll_next_probe.limits"]).on("data")],
-    settings_keys: &[dispatch_core::manifest::StoredKey::new("nll_probe.kept", &["nll_next_probe.kept"])],
+    permissions: &[dispatch_core::manifest::perm("n1_probe.view", "View probe", 1).group("Probe").implies(&["s2_probe.view"]).under("s2_probe.view")],
+    settings: &[section("n1_probe.limits", "Limits", "n1_probe.view", &[number("days", "Keep", 30, 3650, Some(90))])
+        .aliases(&["n1_next_probe.limits"]).on("data")],
+    settings_keys: &[dispatch_core::manifest::StoredKey::new("n1_probe.kept", &["n1_next_probe.kept"])],
     own_migrations: &[dispatch_core::db::OwnMigrations {
         kind: dispatch_core::db::Kind::DSP,
         list: &[dispatch_core::db::Migration {
             id: 1,
             name: "probe",
-            apply: dispatch_core::db::migrations::Apply::Sql("CREATE TABLE nll_probe (value INTEGER NOT NULL)"),
+            apply: dispatch_core::db::migrations::Apply::Sql("CREATE TABLE n1_probe (value INTEGER NOT NULL)"),
         }],
     }],
-    tables: &[("dsp", &["nll_probe"])],
+    tables: &[("dsp", &["n1_probe"])],
     audit: dispatch_core::manifest::Audit {
-        areas: &[("nll_probe.item2.", dispatch_core::tenancy::api::audit::AuditArea::Collections)],
+        areas: &[("n1_probe.item2.", dispatch_core::tenancy::api::audit::AuditArea::Collections)],
         ..dispatch_core::manifest::Audit::NONE
     },
     routes: || vec![
@@ -90,31 +90,31 @@ static CUSTOM: Feature = Feature {
       dispatch_core::server::http::route::write("/custom-public-post", dispatch_core::server::http::route::Public, |_, _, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"ran":true})))),
       dispatch_core::server::http::route::protocol(axum::http::Method::POST, "/custom-protocol", raw_callback),
       dispatch_core::server::http::route::read(
-        "/api/dsp/nll-probe", dispatch_core::server::http::route::Dsp("nll_probe.view"),
-        |db, c, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"count": db.dsp(c.dsp_id())?.count("SELECT count(*) FROM nll_probe", [])?})))
+        "/api/dsp/n1-probe", dispatch_core::server::http::route::Dsp("n1_probe.view"),
+        |db, c, _| Ok(dispatch_core::server::http::input::Reply::json(json!({"count": db.dsp(c.dsp_id())?.count("SELECT count(*) FROM n1_probe", [])?})))
     )],
     on: &[dispatch_core::on!(dispatch_core::manifest::events::PeopleChanged, custom_event)],
     dsp_maintenance: &[dispatch_core::manifest::DspMaintenance {
         every: Duration::from_secs(60),
         run: custom_upkeep,
     }],
-    ..feature("nll_probe")
-}.registered(Some("nll"), "nll_probe");
+    ..feature("n1_probe")
+}.registered(Some("n1"), "n1_probe");
 static FOREIGN: Feature = Feature {
-    switch: dispatch_core::manifest::custom("sum_probe", "Foreign probe", &[]),
+    switch: dispatch_core::manifest::custom("s2_probe", "Foreign probe", &[]),
     page_sources: &[dispatch_core::manifest::page_source(
-        "sum_probe.images",
+        "s2_probe.images",
         dispatch_core::manifest::Loads::Images,
         "https://foreign-media.example.test",
     )],
     permissions: &[dispatch_core::manifest::perm(
-        "sum_probe.view",
+        "s2_probe.view",
         "Foreign permission",
         2,
     )],
-    ..feature("sum_probe")
+    ..feature("s2_probe")
 }
-.registered(Some("sum"), "sum_probe");
+.registered(Some("s2"), "s2_probe");
 fn raw_callback(
     state: Arc<State>,
     request: axum::extract::Request,
@@ -146,7 +146,7 @@ fn custom_upkeep(state: Arc<State>, dsp: String, due: bool) -> dispatch_core::ma
             .run_serving(
                 dsp.clone(),
                 dispatch_core::server::cache::DataDomain::TENANT,
-                move |db| db.dsp(&at)?.exec("INSERT INTO nll_probe VALUES (2)", []),
+                move |db| db.dsp(&at)?.exec("INSERT INTO n1_probe VALUES (2)", []),
             )
             .await;
         MAINTAINED
@@ -166,7 +166,7 @@ fn custom_event(
     Box::pin(async move {
         state
             .run(move |db| {
-                db.dsp(&dsp)?.exec("INSERT INTO nll_probe VALUES (1)", [])?;
+                db.dsp(&dsp)?.exec("INSERT INTO n1_probe VALUES (1)", [])?;
                 Ok(())
             })
             .await
@@ -203,16 +203,16 @@ impl Server {
         std::fs::create_dir(dashboard.join("assets")).unwrap();
         let mut private = serde_json::Map::new();
         for (name, body) in [
-            ("custom-nll-entry.js", "export const label = 'Owner probe';"),
-            ("custom-nll-lazy.js", "export const page = 'owner page';"),
-            ("custom-nll-style.css", ".owner-probe { color: red; }"),
-            ("custom-nll-image.svg", "<svg>owner image</svg>"),
+            ("custom-n1-entry.js", "export const label = 'Owner probe';"),
+            ("custom-n1-lazy.js", "export const page = 'owner page';"),
+            ("custom-n1-style.css", ".owner-probe { color: red; }"),
+            ("custom-n1-image.svg", "<svg>owner image</svg>"),
         ] {
             std::fs::write(dashboard.join("assets").join(name), body).unwrap();
-            let mut entry = json!({"owner":"nll"});
-            if name == "custom-nll-entry.js" {
-                entry["feature"] = json!("nll_probe");
-                entry["styles"] = json!(["/assets/custom-nll-style.css"]);
+            let mut entry = json!({"owner":"n1"});
+            if name == "custom-n1-entry.js" {
+                entry["feature"] = json!("n1_probe");
+                entry["styles"] = json!(["/assets/custom-n1-style.css"]);
             }
             private.insert(format!("/assets/{name}"), entry);
         }
@@ -295,16 +295,16 @@ impl Server {
                 .unwrap();
             let data = store.dsp(&id).unwrap();
             data.set(
-                "section:nll_next_probe.limits",
+                "section:n1_next_probe.limits",
                 &json!({"revision":7,"values":{"days":120},"at":"original","by":"original"}),
             )
             .unwrap();
-            data.set("nll_next_probe.kept", &json!({"marker":code,"revision":4}))
+            data.set("n1_next_probe.kept", &json!({"marker":code,"revision":4}))
                 .unwrap();
             if code == "sum" {
-                data.set("section:nll_probe.limits", &json!({"foreign":true}))
+                data.set("section:n1_probe.limits", &json!({"foreign":true}))
                     .unwrap();
-                data.set("nll_probe.kept", &json!({"foreign":true}))
+                data.set("n1_probe.kept", &json!({"foreign":true}))
                     .unwrap();
             }
         }
@@ -451,7 +451,7 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
     // even through a declared permission implication or parent.
     let off_view = server.open(&owner, &north).await;
     assert_eq!(off_view.body["custom"]["frontends"], json!([]));
-    assert!(!off_view.body.to_string().contains("sum_probe"));
+    assert!(!off_view.body.to_string().contains("s2_probe"));
     assert_eq!(
         off_view.body["custom"]["permissions"][0]["implied"],
         json!([])
@@ -462,7 +462,7 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
         .state
         .run(move |db| {
             let actor = testing::platform_owner(db);
-            db.set_feature(&own, "nll_probe", true, &actor)?;
+            db.set_feature(&own, "n1_probe", true, &actor)?;
             Ok(())
         })
         .await
@@ -470,11 +470,11 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
     let own_view = server.open(&owner, &north).await;
     assert_eq!(
         own_view.body["custom"]["frontends"][0]["url"],
-        "/assets/custom-nll-entry.js"
+        "/assets/custom-n1-entry.js"
     );
     let other_view = server.open(&foreign, &summit).await;
     assert_eq!(other_view.status, 200);
-    assert!(!other_view.body.to_string().contains("nll_probe"));
+    assert!(!other_view.body.to_string().contains("n1_probe"));
     assert!(!other_view.body.to_string().contains("Owner probe"));
     let origin = format!("http://127.0.0.1:{}", server.port);
     let request = |method, path: &str, who: &Who| {
@@ -518,10 +518,10 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
         );
     }
     for path in [
-        "/assets/custom-nll-entry.js",
-        "/assets/custom-nll-lazy.js",
-        "/assets/custom-nll-style.css",
-        "/assets/custom-nll-image.svg",
+        "/assets/custom-n1-entry.js",
+        "/assets/custom-n1-lazy.js",
+        "/assets/custom-n1-style.css",
+        "/assets/custom-n1-image.svg",
     ] {
         let allowed = request(reqwest::Method::GET, path, &owner)
             .send()
@@ -672,7 +672,7 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
         .await
         .unwrap();
     assert_eq!(
-        request(reqwest::Method::GET, "/assets/custom-nll-entry.js", &owner)
+        request(reqwest::Method::GET, "/assets/custom-n1-entry.js", &owner)
             .send()
             .await
             .unwrap()
@@ -813,41 +813,43 @@ async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code
     server.state.run(move |db| {
         let actor = testing::platform_owner(db);
         // Assigning the code after provisioning applies the custom migration immediately.
-        assert!(db.dsp(&own)?.has_table("nll_probe")?);
-        assert!(!db.dsp(&other)?.has_table("nll_probe")?);
-        assert!(!db.feature_enabled(&own, "nll_probe")?);
-        assert_eq!(db.dsp(&own)?.setting("section:nll_probe.limits", Value::Null)?["at"], "original");
+        assert!(db.dsp(&own)?.has_table("n1_probe")?);
+        assert!(!db.dsp(&other)?.has_table("n1_probe")?);
+        assert!(!db.feature_enabled(&own, "n1_probe")?);
+        assert_eq!(db.dsp(&own)?.setting("section:n1_probe.limits", Value::Null)?["at"], "original");
         assert_eq!(dispatch_core::settings::read_key(db, &own, &CUSTOM.settings_keys[0], Value::Null)?["marker"], "nll");
-        assert_eq!(db.dsp(&other)?.setting("section:nll_probe.limits", Value::Null)?, json!({"foreign":true}));
-        assert_eq!(db.dsp(&other)?.setting("section:nll_next_probe.limits", Value::Null)?["revision"], 7);
-        assert_eq!(db.dsp(&other)?.setting("nll_next_probe.kept", Value::Null)?["marker"], "sum");
+        assert_eq!(db.dsp(&other)?.setting("section:n1_probe.limits", Value::Null)?, json!({"foreign":true}));
+        assert_eq!(db.dsp(&other)?.setting("section:n1_next_probe.limits", Value::Null)?["revision"], 7);
+        assert_eq!(db.dsp(&other)?.setting("n1_next_probe.kept", Value::Null)?["marker"], "sum");
         let report = db.feature_report(&own)?;
-        assert!(report.features.iter().any(|feature| feature.feature == "nll_probe" && !feature.enabled));
-        assert!(!report.features.iter().any(|feature| feature.feature == "sum_probe"));
+        assert!(report.features.iter().any(|feature| feature.feature == "n1_probe" && !feature.enabled));
+        assert!(!report.features.iter().any(|feature| feature.feature == "s2_probe"));
         let custom = report.custom.unwrap();
         assert_eq!(custom.len(), 1);
-        assert_eq!((custom[0].id.as_str(), custom[0].label.as_str()), ("nll_probe", "Owner probe"));
+        assert_eq!((custom[0].id.as_str(), custom[0].label.as_str()), ("n1_probe", "Owner probe"));
         let other_report = db.feature_report(&other)?;
-        assert!(!other_report.features.iter().any(|feature| feature.feature == "nll_probe"));
-        assert_eq!(other_report.custom.unwrap()[0].id, "sum_probe");
+        assert!(!other_report.features.iter().any(|feature| feature.feature == "n1_probe"));
+        assert_eq!(other_report.custom.unwrap()[0].id, "s2_probe");
         let directory = db.dsp(&own)?;
-        directory.exec("DELETE FROM owner_migrations WHERE owner='nll_probe'", [])?;
-        directory.exec("DROP TABLE nll_probe", [])?;
+        directory.exec("DELETE FROM owner_migrations WHERE owner='n1_probe'", [])?;
+        directory.exec("DROP TABLE n1_probe", [])?;
         directory.transaction(|| {
-            db.set_code(&own, "nll")?;
-            assert!(db.dsp(&own)?.has_table("nll_probe")?);
+            db.set_custom_id(&own, "n1")?;
+            assert!(db.dsp(&own)?.has_table("n1_probe")?);
             Ok(())
         })?;
-        assert_eq!(db.set_code(&own, "othercode").unwrap_err().code, "custom_feature_transfer_required");
-        assert_eq!(db.set_feature(&other, "nll_probe", true, &actor).unwrap_err().status, 404);
-        assert_eq!(db.set_visibility(&other, "nll_probe", dispatch_core::tenancy::visibility::Visibility::Shown, &actor).unwrap_err().status, 404);
+        // Its custom ID, never its code, keeps its custom features: a new code leaves them, and a
+        // new custom ID is refused while they belong to the one it has.
+        assert_eq!(db.set_custom_id(&own, "othercode").unwrap_err().code, "custom_feature_transfer_required");
+        assert_eq!(db.set_feature(&other, "n1_probe", true, &actor).unwrap_err().status, 404);
+        assert_eq!(db.set_visibility(&other, "n1_probe", dispatch_core::tenancy::visibility::Visibility::Shown, &actor).unwrap_err().status, 404);
         // A stale or imported switch row cannot bypass runtime ownership.
-        db.platform.exec("INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) VALUES (?,'nll_probe',1,'')", [&other])?;
+        db.platform.exec("INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) VALUES (?,'n1_probe',1,'')", [&other])?;
         db.enable_all_features(&other)?;
         db.keep_switches()?;
-        assert!(!db.feature_enabled(&other, "nll_probe")?);
-        assert!(!dispatch_core::tenancy::catalog::grants(&db.features(&other)?, "nll_probe.view"));
-        db.set_feature(&own, "nll_probe", true, &actor)?;
+        assert!(!db.feature_enabled(&other, "n1_probe")?);
+        assert!(!dispatch_core::tenancy::catalog::grants(&db.features(&other)?, "n1_probe.view"));
+        db.set_feature(&own, "n1_probe", true, &actor)?;
         Ok(())
     }).await.unwrap();
     dispatch_core::manifest::events::publish(
@@ -865,26 +867,26 @@ async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code
     let owner = server.signed_in("owner@dispatch.test", &north).await;
     let other = server.signed_in("owner@dispatch.test", &summit).await;
     assert_eq!(
-        server.days(&owner, "nll_probe.limits").await,
+        server.days(&owner, "n1_probe.limits").await,
         Some((json!(120), 7))
     );
     let body = json!({"values":{"days":180},"revision":7});
     let saved = server
         .send(
             "POST",
-            "/api/dsp/settings/nll_next_probe.limits",
+            "/api/dsp/settings/n1_next_probe.limits",
             &owner,
             Some(body.clone()),
         )
         .await;
     assert_eq!(saved.status, 200, "{}", saved.body);
-    assert_eq!(saved.body["section"]["id"], "nll_probe.limits");
+    assert_eq!(saved.body["section"]["id"], "n1_probe.limits");
     assert_eq!(saved.body["section"]["revision"], 8);
     assert_eq!(
         server
             .send(
                 "POST",
-                "/api/dsp/settings/nll_next_probe.limits",
+                "/api/dsp/settings/n1_next_probe.limits",
                 &other,
                 Some(body)
             )
@@ -892,12 +894,12 @@ async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code
             .status,
         404
     );
-    let answer = server.send("GET", "/api/dsp/nll-probe", &owner, None).await;
+    let answer = server.send("GET", "/api/dsp/n1-probe", &owner, None).await;
     assert_eq!(answer.status, 200, "{}", answer.body);
     assert_eq!(answer.body["count"], 1);
     assert_eq!(
         server
-            .send("GET", "/api/dsp/nll-probe", &other, None)
+            .send("GET", "/api/dsp/n1-probe", &other, None)
             .await
             .status,
         404
@@ -908,7 +910,7 @@ async fn custom_storage_switches_events_and_routes_belong_only_to_the_owner_code
     };
     assert_eq!(
         server
-            .send("GET", "/api/dsp/nll-probe", &at_other, None)
+            .send("GET", "/api/dsp/n1-probe", &at_other, None)
             .await
             .status,
         404
@@ -926,8 +928,8 @@ async fn scheduled_custom_upkeep_receives_only_its_owner_even_with_foreign_switc
         // The owner sorts last: receiving its callback means this declaration already
         // passed every non-owner, including one with an imported enabled switch row.
         db.platform.exec("UPDATE dsps SET name='ZZ owner' WHERE id=?", [&own])?;
-        db.platform.exec("INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) VALUES (?,'nll_probe',1,'')", [&summit])?;
-        db.set_feature(&own, "nll_probe", true, &actor)?;
+        db.platform.exec("INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) VALUES (?,'n1_probe',1,'')", [&summit])?;
+        db.set_feature(&own, "n1_probe", true, &actor)?;
         Ok(())
     }).await.unwrap();
     let (sent, mut received) = tokio::sync::mpsc::unbounded_channel();
