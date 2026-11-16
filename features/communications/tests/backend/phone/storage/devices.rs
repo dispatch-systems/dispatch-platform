@@ -27,9 +27,13 @@ fn a_code_pairs_one_phone_once_while_it_lasts() {
     assert_eq!(again.unwrap_err().code.as_str(), "phones_pairing_invalid");
     // A new code replaces one not used yet, and expires, as each says it stands.
     let owner = testing::a_user(&db);
-    let old = db.phones_new_pairing(&dsp, &owner, "old", 10_000).unwrap();
-    let new = db.phones_new_pairing(&dsp, &owner, "new", 10_000).unwrap();
-    let status = |id: &str, at: i64| db.phones_pairing(&dsp, id, at).unwrap();
+    let old = db
+        .phones_new_pairing(&dsp, None, &owner, "old", 10_000)
+        .unwrap();
+    let new = db
+        .phones_new_pairing(&dsp, None, &owner, "new", 10_000)
+        .unwrap();
+    let status = |id: &str, at: i64| db.phones_pairing(&dsp, None, id, at).unwrap();
     assert_eq!(status(&old, 11_000), PairingStatus::Replaced);
     assert_eq!(status(&new, 11_000), PairingStatus::Waiting);
     let replaced = db.phones_pair(&dsp, "old", "key-2", &pairing, 11_000);
@@ -41,7 +45,7 @@ fn a_code_pairs_one_phone_once_while_it_lasts() {
     assert_eq!(late.unwrap_err().code.as_str(), "phones_pairing_invalid");
     assert_eq!(status(&new, 10_000 + PAIRING_MS), PairingStatus::Expired);
     let third = db
-        .phones_new_pairing(&dsp, &owner, "third", 20_000)
+        .phones_new_pairing(&dsp, None, &owner, "third", 20_000)
         .unwrap();
     let second = db
         .phones_pair(&dsp, "third", "key-2", &pairing, 21_000)
@@ -50,9 +54,88 @@ fn a_code_pairs_one_phone_once_while_it_lasts() {
     assert_eq!(status(&third, 21_000), PairingStatus::Paired);
     assert_eq!(status("pairing_unknown", 21_000), PairingStatus::Expired);
     // Removed, a phone's key works no more.
-    db.phones_remove(&dsp, &second.id, 22_000).unwrap();
+    db.phones_remove(&dsp, None, &second.id, 22_000).unwrap();
     assert_eq!(db.phones_device_by_key(&dsp, "key-2").unwrap(), None);
     assert!(db.phones_key_removed(&dsp, "key-2").unwrap());
+}
+
+#[test]
+fn each_line_pairs_names_lists_and_manages_only_its_own_phones() {
+    let (_root, db, dsp) = store();
+    let owner = testing::a_user(&db);
+    let desk = Line {
+        id: "front_desk",
+        name: "Front Desk",
+    };
+    let pairing = |number| Pairing {
+        number,
+        model: "Pixel 8a",
+        app_version: "1.0.0",
+    };
+    // A code for each line, neither replacing the other's; each line's status read only by it.
+    let own = db
+        .phones_new_pairing(&dsp, None, &owner, "own", 1_000)
+        .unwrap();
+    let theirs = db
+        .phones_new_pairing(&dsp, Some(desk), &owner, "theirs", 1_000)
+        .unwrap();
+    let status = |line, id: &str| db.phones_pairing(&dsp, line, id, 1_500).unwrap();
+    assert_eq!(status(None, &own), PairingStatus::Waiting);
+    assert_eq!(status(Some("front_desk"), &theirs), PairingStatus::Waiting);
+    assert_eq!(status(None, &theirs), PairingStatus::Expired);
+    assert_eq!(status(Some("front_desk"), &own), PairingStatus::Expired);
+    // Each line's phones are named for it, counted apart.
+    let desk_phone = db
+        .phones_pair(&dsp, "theirs", "key-desk", &pairing("2065550111"), 2_000)
+        .unwrap();
+    let dispatch = db
+        .phones_pair(&dsp, "own", "key-own", &pairing("2065550100"), 2_000)
+        .unwrap();
+    db.phones_new_pairing(&dsp, Some(desk), &owner, "theirs-2", 3_000)
+        .unwrap();
+    let desk_second = db
+        .phones_pair(&dsp, "theirs-2", "key-desk-2", &pairing(""), 3_000)
+        .unwrap();
+    fn named(device: &Device) -> (&str, Option<&str>) {
+        (device.name.as_str(), device.line.as_deref())
+    }
+    assert_eq!(named(&dispatch), ("Dispatch", None));
+    assert_eq!(named(&desk_phone), ("Front Desk", Some("front_desk")));
+    assert_eq!(named(&desk_second), ("Front Desk 2", Some("front_desk")));
+    assert_eq!(dispatch.action("paired"), "phones.paired");
+    assert_eq!(desk_phone.action("paired"), "front_desk.phone_paired");
+    // Each line lists only its own.
+    let listed = |line: Option<&str>| -> Vec<String> {
+        let devices = db.phones_devices(&dsp, line).unwrap();
+        devices.into_iter().map(|device| device.id).collect()
+    };
+    assert_eq!(listed(None), [dispatch.id.clone()]);
+    assert_eq!(
+        listed(Some("front_desk")),
+        [desk_phone.id.clone(), desk_second.id.clone()]
+    );
+    // Neither renames nor removes the other's.
+    let refused = |result: dispatch_core::Result<()>| result.unwrap_err().code;
+    assert_eq!(
+        refused(
+            db.phones_rename(&dsp, None, &desk_phone.id, "Mine")
+                .map(drop)
+        )
+        .as_str(),
+        "phones_not_found"
+    );
+    assert_eq!(
+        refused(
+            db.phones_remove(&dsp, Some("front_desk"), &dispatch.id, 4_000)
+                .map(drop)
+        )
+        .as_str(),
+        "phones_not_found"
+    );
+    assert_eq!(listed(None), [dispatch.id.clone()]);
+    db.phones_remove(&dsp, Some("front_desk"), &desk_second.id, 4_000)
+        .unwrap();
+    assert_eq!(listed(Some("front_desk")), [desk_phone.id]);
 }
 
 #[test]
@@ -117,7 +200,7 @@ fn a_phone_removed_fails_the_texts_still_waiting_on_it() {
         error: None,
     };
     assert!(db.phones_status(&dsp, &phone.id, &report).unwrap());
-    let (_, failed) = db.phones_remove(&dsp, &phone.id, 5_000).unwrap();
+    let (_, failed) = db.phones_remove(&dsp, None, &phone.id, 5_000).unwrap();
     // The one waiting fails, which removing it answers, for filing; the one sent stays sent.
     assert_eq!(failed, std::slice::from_ref(&waiting.id));
     let now = |id: &str| {

@@ -14,16 +14,16 @@ use crate::backend::{
     model::{ConversationKind, PAGE},
     phone::{
         self,
-        model::{Outgoing, Status},
+        model::{Direction, Outgoing, Status},
         outbox,
-        storage::{DeviceStore, MOST_TEXTS, Reported, TextStore as _},
+        storage::{DeviceStore, Line, MOST_TEXTS, Reported, TextStore as _},
     },
     storage::DOMAIN,
     support::{
         self, DRIVERS, at, cached, failing, filed, moved, phoned, phones, route, routed, saved,
         started, switch, texted, today, unwritten,
     },
-    texts::{contacts, reading, reply, storage::TextStore},
+    texts::{contacts, filing, reading, reply, storage::TextStore},
 };
 use crate::{Communications, ConversationState};
 use chrono::NaiveDate;
@@ -460,6 +460,7 @@ async fn a_text_dispatch_sent_filed_by_the_upkeep_is_under_whoever_at_the_dsp_se
         files: Vec::new(),
         gif: None,
         by: owner,
+        line: None,
     };
     let at_dsp = dsp.clone();
     let sent = state
@@ -738,7 +739,7 @@ async fn texts_waiting_to_be_filed_are_each_filed_however_many_wait() {
     let at_dsp = dsp.clone();
     let came = state
         .run(move |db| {
-            let phone = db.phones_devices(&at_dsp)?.remove(0).id;
+            let phone = db.phones_devices(&at_dsp, None)?.remove(0).id;
             let texts = (0..=MOST_TEXTS as i64)
                 .map(|n| Reported {
                     client_id: format!("sms-{n}"),
@@ -781,6 +782,63 @@ async fn texts_waiting_to_be_filed_are_each_filed_however_many_wait() {
         unfiled.is_empty(),
         "filed on while more remain: {unfiled:?}"
     );
+}
+
+#[tokio::test]
+async fn another_lines_texts_are_never_filed_listed_or_counted_however_long_they_wait() {
+    let (_root, state, dsp) = started();
+    let at_dsp = dsp.clone();
+    let desk = state
+        .run(move |db| {
+            let line = Line {
+                id: "front_desk",
+                name: "Front Desk",
+            };
+            Ok(support::pair_to(db, &at_dsp, line, "+12065550111"))
+        })
+        .await
+        .unwrap();
+    // One number texts both lines; the other line's text is kept, as its phone hears.
+    texted(&state, &dsp, "+14255550199", "Is this dispatch?", now()).await;
+    let (at_dsp, phone) = (dsp.clone(), desk.clone());
+    let theirs = filing::changing(&state, &dsp, move |db| {
+        let text = Reported {
+            client_id: "desk-1".into(),
+            direction: Direction::In,
+            number: "+14255550199".into(),
+            body: "About my paycheck".into(),
+            at: now(),
+            files: Vec::new(),
+        };
+        let id = db.phones_report(&at_dsp, &phone, vec![text])?.remove(0).id;
+        Ok((id.clone(), vec![id]))
+    })
+    .await
+    .unwrap();
+    // However long it waits and every upkeep that passes, it's in no conversation.
+    unfiled(&state, &dsp).await.unwrap();
+    overdue(&state, &dsp, now() + UNFILED_MS).await.unwrap();
+    (MAINTENANCE.run)(state.clone(), false).await;
+    let (at_dsp, id) = (dsp.clone(), theirs.clone());
+    let kept = state
+        .read(move |db| db.communications_text(&at_dsp, &id))
+        .await
+        .unwrap()
+        .expect("kept");
+    assert_eq!(kept.conversation, None);
+    // Dispatch Phone lists, counts and shows only its own.
+    let listed = listed(&state, &dsp).await;
+    assert_eq!(listed.waiting, 1);
+    let shown: Vec<_> = (listed.conversations.iter())
+        .map(|each| each.last.as_ref().map(|last| last.text.as_str()))
+        .collect();
+    assert_eq!(shown, [Some("Is this dispatch?")]);
+    let phones: Vec<_> = listed
+        .phones
+        .iter()
+        .map(|each| each.name.as_str())
+        .collect();
+    assert_eq!(phones, ["Dispatch"]);
 }
 
 #[tokio::test]

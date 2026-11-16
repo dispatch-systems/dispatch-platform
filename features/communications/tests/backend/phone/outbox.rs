@@ -20,6 +20,7 @@ fn to(to: &str, body: String, files: Vec<String>, by: &str) -> Outgoing {
         files,
         gif: None,
         by: by.into(),
+        line: None,
     }
 }
 

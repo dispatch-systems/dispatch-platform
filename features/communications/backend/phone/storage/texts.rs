@@ -251,7 +251,7 @@ impl TextStore for Store {
         let id = crypto::id("text")?;
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            let device = sender(&db, &to, at)?;
+            let device = sender(&db, outgoing.line.as_deref(), &to, at)?;
             let change = next_change(&db)?;
             db.exec(
                 "INSERT INTO phones_texts \
@@ -292,14 +292,15 @@ impl TextStore for Store {
         db.transaction(|| {
             let found = db
                 .one(
-                    "SELECT number FROM phones_texts WHERE id=? AND origin='dispatch' \
-                     AND status='failed'",
+                    "SELECT t.number,d.line FROM phones_texts t \
+                     JOIN phones_devices d ON d.id=t.device_id \
+                     WHERE t.id=? AND t.origin='dispatch' AND t.status='failed'",
                     [id],
                 )?
                 .ok_or_else(|| Error::new("phones_text_not_found", 404))?;
-            // A new attempt, from the phone a new text to its number would go from; the one
-            // before kept by the phone that had it, whose delivery report of it still counts.
-            let device = sender(&db, s(&found, "number"), at)?;
+            // A new attempt, from the phone of its line a new text to its number would go from;
+            // the one before kept by the phone that had it, whose delivery report still counts.
+            let device = sender(&db, found["line"].as_str(), s(&found, "number"), at)?;
             db.exec(
                 "INSERT INTO phones_attempts (text_id,attempt,device_id) \
                  SELECT id,attempt,device_id FROM phones_texts WHERE id=?",
@@ -357,18 +358,19 @@ impl TextStore for Store {
     }
 }
 
-/// The phone a text to `to` goes from at `at`, of the DSP's paired ones: the one that last texted
-/// it, else the one seen last, one online before any offline; refused as `phones_none` with none.
-fn sender(db: &Db, to: &str, at: i64) -> Result<String> {
+/// The phone a text to `to` goes from at `at`, of the line `line`'s paired ones (Dispatch
+/// Phone's own for none), never another line's: the one that last texted it, else the one seen
+/// last, one online before any offline; refused as `phones_none` with none.
+fn sender(db: &Db, line: Option<&str>, to: &str, at: i64) -> Result<String> {
     let found = db
         .one(
             "SELECT d.id FROM phones_devices d \
              LEFT JOIN phones_texts t ON t.device_id=d.id AND t.number=?1 \
-             WHERE d.removed_at IS NULL \
+             WHERE d.removed_at IS NULL AND d.line IS ?3 \
              GROUP BY d.id ORDER BY coalesce(d.last_seen_at,0)>=?2 DESC, \
              max(t.at) IS NULL, max(t.at) DESC, \
              coalesce(d.last_seen_at,0) DESC, d.paired_at LIMIT 1",
-            params![to, at - ONLINE_MS],
+            params![to, at - ONLINE_MS, line],
         )?
         .ok_or_else(|| Error::new("phones_none", 409))?;
     Ok(s(&found, "id").to_owned())

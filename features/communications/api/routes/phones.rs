@@ -2,6 +2,8 @@
 //! the code that pairs the next, renaming one and removing it. Each behind `phones.manage` (Manage
 //! Phones) or core's `connections.manage` (Manage DSP Connections), and refused while
 //! Communications is off for the DSP, which managing all its connections still lets a member in.
+//! Each is of one line of phones (`*_of`): Dispatch Phone's own here, another feature's from its
+//! own card's routes (`api::lines`), which see and change only that line's phones and codes.
 use super::id;
 use crate::{
     api::{
@@ -13,7 +15,7 @@ use crate::{
             app, live,
             model::{Health, Sim},
             pairing,
-            storage::{Device, DeviceStore, PAIRING_MS},
+            storage::{Device, DeviceStore, Line, PAIRING_MS},
         },
         texts::filing,
     },
@@ -70,6 +72,15 @@ fn attention(health: &Health) -> PhoneHealth {
 
 /// The DSP's phones, and the app they install.
 pub(super) fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    listed_of(db, c, input, None)
+}
+/// The phones of `line`, and the app they install.
+pub(crate) fn listed_of(
+    db: &Store,
+    c: &Member,
+    input: &Input,
+    line: Option<Line>,
+) -> Result<Reply> {
     on(c)?;
     v::fields(&input.query, &[])?;
     let now = db::now();
@@ -77,7 +88,7 @@ pub(super) fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let code = latest.as_ref().map(|app| app.version_code);
     Reply::of(&Phones {
         phones: db
-            .phones_devices(c.dsp_id())?
+            .phones_devices(c.dsp_id(), line.map(|line| line.id))?
             .iter()
             .map(|device| row(device, now, code))
             .collect(),
@@ -101,6 +112,15 @@ fn installed(db: &Store, c: &Member, latest: Option<app::App>) -> Result<Option<
 /// A new code to pair the next phone, in place of any shown before: refused as
 /// `phones_address_required` while the DSP has no address of its own for the phone to reach.
 pub(super) fn new_pairing(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    new_pairing_of(db, c, input, None)
+}
+/// A new code to pair the next phone to `line`, in place of any of that line's shown before.
+pub(crate) fn new_pairing_of(
+    db: &Store,
+    c: &Member,
+    input: &Input,
+    line: Option<Line>,
+) -> Result<Reply> {
     on(c)?;
     v::fields(&input.body, &[])?;
     let site = c
@@ -112,7 +132,7 @@ pub(super) fn new_pairing(db: &Store, c: &Member, input: &Input) -> Result<Reply
     let code = pairing::new_code()?;
     let kept = pairing::kept(&code).ok_or_else(|| Error::new("phones_pairing_unavailable", 503))?;
     let at = db::now();
-    let id = db.phones_new_pairing(c.dsp_id(), c.actor(), &kept, at)?;
+    let id = db.phones_new_pairing(c.dsp_id(), line, c.actor(), &kept, at)?;
     Reply::of(&PhonePairing {
         id,
         picture: pairing::picture(&pairing::link(&site, &code))?,
@@ -123,27 +143,48 @@ pub(super) fn new_pairing(db: &Store, c: &Member, input: &Input) -> Result<Reply
 /// How the code `id` the card shows stands: waiting for a phone, paired one, replaced by a newer
 /// code, or expired.
 pub(super) fn pairing_status(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    pairing_status_of(db, c, input, None)
+}
+/// How the code `id` of `line` stands: one of another line's as expired.
+pub(crate) fn pairing_status_of(
+    db: &Store,
+    c: &Member,
+    input: &Input,
+    line: Option<Line>,
+) -> Result<Reply> {
     on(c)?;
     v::fields(&input.query, &[])?;
     let id = id(input.param("id"), "pairing")?;
+    let line = line.map(|line| line.id);
     Reply::of(&PhonePairingStatus {
-        status: db.phones_pairing(c.dsp_id(), &id, db::now())?,
+        status: db.phones_pairing(c.dsp_id(), line, &id, db::now())?,
     })
 }
 /// Gives the phone a new name.
 pub(super) fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    rename_of(db, c, input, None)
+}
+/// Gives the phone of `line` a new name: another line's is refused as not found.
+pub(crate) fn rename_of(
+    db: &Store,
+    c: &Member,
+    input: &Input,
+    line: Option<Line>,
+) -> Result<Reply> {
     on(c)?;
     v::fields(&input.body, &["name"])?;
     let id = id(input.param("id"), "phone")?;
     let name = v::name(&input.body, "name", NAME_MOST)?;
+    let line = line.map(|line| line.id);
     let before = db
         .phones_device(c.dsp_id(), &id)?
+        .filter(|device| device.line.as_deref() == line)
         .ok_or_else(|| Error::new("phones_not_found", 404))?;
-    let device = db.phones_rename(c.dsp_id(), &id, &name)?;
+    let device = db.phones_rename(c.dsp_id(), line, &id, &name)?;
     if device.name != before.name {
         c.audit(
             db,
-            "phones.renamed",
+            &device.action("renamed"),
             &format!("{} to {}", before.name, device.name),
         )?;
     }
@@ -153,6 +194,16 @@ pub(super) fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 /// Removes the phone: its key works no more, its texts stay, and those still waiting on it fail,
 /// filed as they fail.
 pub(super) async fn remove(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    remove_of(state, input, access, None).await
+}
+/// Removes the phone of `line`: another line's is refused as not found.
+pub(crate) async fn remove_of(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    line: Option<Line<'static>>,
+) -> Result<Reply> {
+    let line = line.map(|line| line.id);
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     on(&c)?;
@@ -162,8 +213,8 @@ pub(super) async fn remove(state: Arc<State>, input: Input, access: Dsp) -> Resu
     filing::changing(&state, &dsp, move |db| {
         let c = access.revalidate(db, &c)?;
         on(&c)?;
-        let (device, failed) = db.phones_remove(&c.dsp.id, &id, db::now())?;
-        c.audit(db, "phones.removed", &device.logged())?;
+        let (device, failed) = db.phones_remove(&c.dsp.id, line, &id, db::now())?;
+        c.audit(db, &device.action("removed"), &device.logged())?;
         Ok(((), failed))
     })
     .await?;

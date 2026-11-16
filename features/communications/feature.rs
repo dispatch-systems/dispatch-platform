@@ -235,6 +235,13 @@ pub const FEATURE: Feature = Feature {
                     "migrations/dsp/0022_communications_origins.sql"
                 )),
             },
+            // The line each phone serves, and each code pairs a phone to: Dispatch Phone's own, or
+            // another feature's.
+            Migration {
+                id: 23,
+                name: "phones_lines",
+                apply: Code(backend::phone::storage::add_lines),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.

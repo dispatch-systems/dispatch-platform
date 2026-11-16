@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Download, Ellipsis, Plus, Smartphone } from 'lucide-react';
 import type { DspView } from '../../../../../core/accounts/api/index.js';
 import { phoneText } from '../../../../../core/shell/frontend/lib/format.js';
@@ -9,7 +9,7 @@ import {
   DataState,
   Popover,
 } from '../../../../../core/shell/frontend/ui/index.js';
-import { removePhone, usePhones } from '../../../api/client.js';
+import { dispatchPhones, type LinePhones } from '../../../api/client.js';
 import { waited } from '../../shared/format.js';
 import type { PhoneHealth, PhoneRow } from '../../../api/index.js';
 import { PairDialog } from './PairDialog.js';
@@ -21,22 +21,31 @@ const POLL = 30_000;
 /** How many texts waiting to go on a phone need attention: fewer go within a moment. */
 const BACKLOG = 10;
 
-// Communications' card for the DSP's dispatch phones on Settings' DSP Connections: each phone, by
-// its number, with its name, model and the app's version, tagged Update while the DSP's address
-// hands out a newer one, whether it's online, what needs attention on it as it last said it
-// stands, and renaming or removing it; Add phone, which shows
-// the code that pairs the next one, beside the app to install first; and the app's download, while
+// The card for one line of the DSP's phones on Settings' DSP Connections, under the line's name:
+// Dispatch Phone's own, or another feature's, by its own calls (`phones`), which see and change
+// only that line's. Each phone, by its number, with its name, model and the app's version, tagged
+// Update while the DSP's address hands out a newer one, whether it's online, what needs attention
+// on it as it last said it stands, and renaming or removing it; Add phone, which shows the code
+// that pairs the line's next one, beside the app to install first; and the app's download, while
 // the DSP's address hands one out.
 
-export function PhonesCard(_: { view: DspView }) {
-  const phones = usePhones(POLL);
+export function PhonesCard({
+  title = 'Dispatch Phone',
+  phones: line = dispatchPhones,
+}: {
+  view: DspView;
+  title?: string;
+  phones?: LinePhones;
+}) {
+  const heading = useId();
+  const phones = line.usePhones(POLL);
   const app = phones.data?.app ?? undefined;
   const [pairing, setPairing] = useState(false);
   const [renaming, setRenaming] = useState<PhoneRow>();
   const [removing, setRemoving] = useState<PhoneRow>();
   const remove = useAction(
     async (id: string) => {
-      await removePhone(id);
+      await line.remove(id);
       phones.refresh();
       setRemoving(undefined);
     },
@@ -45,12 +54,12 @@ export function PhonesCard(_: { view: DspView }) {
   return (
     <article
       className="archived-connection-card phones-connection-card"
-      aria-labelledby="phones-connection"
+      aria-labelledby={heading}
     >
       <header>
-        <h3 id="phones-connection">
+        <h3 id={heading}>
           <Smartphone size={20} className="phones-mark" />
-          Phones
+          {title}
         </h3>
       </header>
       <div className="archived-connection-content">
@@ -112,6 +121,7 @@ export function PhonesCard(_: { view: DspView }) {
       </footer>
       {pairing && (
         <PairDialog
+          phones={line}
           app={app}
           onClose={() => {
             setPairing(false);
@@ -121,6 +131,7 @@ export function PhonesCard(_: { view: DspView }) {
       )}
       {renaming && (
         <RenameDialog
+          phones={line}
           phone={renaming}
           onClose={(renamed) => {
             setRenaming(undefined);

@@ -28,7 +28,7 @@ test('Add phone closes once its own code pairs a phone, and a rename asks before
     .click();
   const card = page
     .getByRole('article')
-    .filter({ has: page.getByRole('heading', { name: 'Phones', level: 3 }) });
+    .filter({ has: page.getByRole('heading', { name: 'Dispatch Phone', level: 3 }) });
   const list = card.getByRole('list', { name: 'Phones' });
   await expect(list).toContainText('(206) 555-0100');
   // The code the dialog makes, as the server answers it.
@@ -151,7 +151,7 @@ test('The card offers the app its DSP hands out: its download, an update to an o
     .click();
   const card = page
     .getByRole('article')
-    .filter({ has: page.getByRole('heading', { name: 'Phones', level: 3 }) });
+    .filter({ has: page.getByRole('heading', { name: 'Dispatch Phone', level: 3 }) });
   await expect(card.getByRole('link', { name: 'Download app' })).toHaveAttribute('href', app.link);
   const row = card.getByRole('listitem').filter({ hasText: '(206) 555-0100' });
   const tag = row.getByText('Update', { exact: true });

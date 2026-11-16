@@ -42,7 +42,7 @@ fn before_filing(db: &Store, dsp: &str) {
 /// The text a phone reported from `number` at `at`, saying `body`, with `pictures` pictures whose
 /// bytes haven't come: its ID, and its pictures'.
 fn reported(db: &Store, dsp: &str, number: &str, body: &str, at: i64, pictures: usize) -> Kept {
-    let phone = db.phones_devices(dsp).unwrap().remove(0).id;
+    let phone = db.phones_devices(dsp, None).unwrap().remove(0).id;
     let text = Reported {
         client_id: format!("sms-{number}-{at}"),
         direction: Direction::In,
@@ -195,6 +195,7 @@ async fn texts_filed_before_migration_9_read_as_they_did_their_done_block_and_se
                 files: Vec::new(),
                 gif: None,
                 by: owner,
+                line: None,
             };
             let answer = db.phones_send(&at_dsp, &outgoing, now() - 8 * minute)?.id;
             // a text from 0101, no work phone yet, its number's conversation marked done;
@@ -314,7 +315,7 @@ async fn texts_the_copy_never_read_before_migration_9_are_filed_by_the_next_upke
     let (pictured, picture, failed, failing_in, unread) = state
         .run(move |db| {
             before_filing(db, &at_dsp);
-            let phone = db.phones_devices(&at_dsp)?.remove(0).id;
+            let phone = db.phones_devices(&at_dsp, None)?.remove(0).id;
             let owner = testing::a_user(db);
             // Read by the copy: a text with a picture whose bytes hadn't come, and a question
             // with its answer, sent, in another conversation.
@@ -335,6 +336,7 @@ async fn texts_the_copy_never_read_before_migration_9_are_filed_by_the_next_upke
                 files: Vec::new(),
                 gif: None,
                 by: owner,
+                line: None,
             };
             let answer = db.phones_send(&at_dsp, &outgoing, now() - 7 * minute)?.id;
             let database = db.dsp(&at_dsp)?;

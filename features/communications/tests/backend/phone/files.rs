@@ -84,7 +84,7 @@ async fn bytes_sent_again_leave_those_before_them_kept_while_what_keeps_them_fai
     // The phone reports a text with a picture, filed as it comes, and sends its bytes.
     let at = dsp.clone();
     let (phone, file) = filing::changing(&state, &dsp, move |db| {
-        let phone = db.phones_devices(&at)?.remove(0).id;
+        let phone = db.phones_devices(&at, None)?.remove(0).id;
         let text = reported("a", "+14255550199", now(), 1);
         let kept = db.phones_report(&at, &phone, vec![text])?.remove(0);
         Ok(((phone, kept.files[0].clone()), vec![kept.id]))

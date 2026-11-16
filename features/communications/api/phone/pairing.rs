@@ -75,7 +75,7 @@ pub(super) async fn pair(state: Arc<State>, input: Input, access: Public) -> Res
             db.audit(
                 by.as_deref(),
                 Some(&dsp.id),
-                "phones.paired",
+                &device.action("paired"),
                 &device.logged(),
             )?;
             Ok(device)

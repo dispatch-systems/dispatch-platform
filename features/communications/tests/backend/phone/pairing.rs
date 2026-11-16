@@ -27,7 +27,7 @@ async fn made(state: &Arc<State>, dsp: &str) -> String {
     state
         .run(move |db| {
             let owner = testing::a_user(db);
-            db.phones_new_pairing(&at, &owner, &kept, now())
+            db.phones_new_pairing(&at, None, &owner, &kept, now())
         })
         .await
         .unwrap();
