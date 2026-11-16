@@ -47,6 +47,7 @@ fn dsp(id: &str, name: &str) -> Dsp {
         revision: 1,
         created_at: "2026-10-01T00:00:00.000Z".into(),
         code: None,
+        custom_id: None,
     }
 }
 fn caller(dsps: Vec<Dsp>) -> Caller {
