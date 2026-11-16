@@ -34,7 +34,7 @@ use dispatch_core::{
 use std::sync::Arc;
 
 /// Managing the DSP's phones, as managing all its connections includes.
-pub(super) const MANAGE: Dsp = Dsp("connections.manage|phones.manage");
+pub(crate) const MANAGE: Dsp = Dsp("connections.manage|phones.manage");
 /// The most characters a phone's name may be.
 const NAME_MOST: usize = 60;
 
@@ -75,7 +75,7 @@ pub(super) fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     listed_of(db, c, input, None)
 }
 /// The phones of `line`, and the app they install.
-pub(crate) fn listed_of(
+pub fn listed_of(
     db: &Store,
     c: &Member,
     input: &Input,
@@ -115,7 +115,7 @@ pub(super) fn new_pairing(db: &Store, c: &Member, input: &Input) -> Result<Reply
     new_pairing_of(db, c, input, None)
 }
 /// A new code to pair the next phone to `line`, in place of any of that line's shown before.
-pub(crate) fn new_pairing_of(
+pub fn new_pairing_of(
     db: &Store,
     c: &Member,
     input: &Input,
@@ -146,7 +146,7 @@ pub(super) fn pairing_status(db: &Store, c: &Member, input: &Input) -> Result<Re
     pairing_status_of(db, c, input, None)
 }
 /// How the code `id` of `line` stands: one of another line's as expired.
-pub(crate) fn pairing_status_of(
+pub fn pairing_status_of(
     db: &Store,
     c: &Member,
     input: &Input,
@@ -165,7 +165,7 @@ pub(super) fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     rename_of(db, c, input, None)
 }
 /// Gives the phone of `line` a new name: another line's is refused as not found.
-pub(crate) fn rename_of(
+pub fn rename_of(
     db: &Store,
     c: &Member,
     input: &Input,
@@ -197,7 +197,7 @@ pub(super) async fn remove(state: Arc<State>, input: Input, access: Dsp) -> Resu
     remove_of(state, input, access, None).await
 }
 /// Removes the phone of `line`: another line's is refused as not found.
-pub(crate) async fn remove_of(
+pub async fn remove_of(
     state: Arc<State>,
     input: Input,
     access: Dsp,

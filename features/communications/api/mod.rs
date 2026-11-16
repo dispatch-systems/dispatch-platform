@@ -2,6 +2,7 @@
 //! `client.ts` the frontend's function for each; and apart from them, the address the DSP's
 //! dispatch phones talk to (`phone`), which no member's session reaches.
 pub(crate) mod display;
+pub mod lines;
 mod phone;
 pub(crate) mod routes;
 pub(crate) mod types;

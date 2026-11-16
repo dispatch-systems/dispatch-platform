@@ -5,6 +5,9 @@ mod api;
 mod backend;
 mod integrations;
 
+/// Another feature's line of the DSP's phones, managed from its own card.
+pub use api::lines;
+
 /// How each member has the page look, as Settings keeps it for them.
 pub use api::display::{
     BubbleShape, EmployeeColor, LineSpacing, ListPreview, ListRows, ListWidth, MessageDisplay,

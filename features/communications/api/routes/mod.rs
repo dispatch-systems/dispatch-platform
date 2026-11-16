@@ -18,7 +18,7 @@ mod files;
 mod gifs;
 mod groups;
 mod inbox;
-mod phones;
+pub(crate) mod phones;
 mod push;
 mod replies;
 mod texts;
