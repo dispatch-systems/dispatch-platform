@@ -181,9 +181,9 @@ fn visible(c: &Context, feature: Option<&Feature>, section: &Section) -> bool {
 /// Whether the DSP has `section` as the member sees it: core's always, a feature's while it,
 /// and its part, are on and not hidden from them.
 fn shown(c: &Context, feature: Option<&Feature>, section: &Section) -> bool {
-    feature
-        .is_none_or(|feature| feature.belongs_to(c.dsp.custom_id.as_deref()) && c.has(feature.switch.id))
-        && section.part.is_none_or(|part| c.has(part))
+    feature.is_none_or(|feature| {
+        feature.belongs_to(c.dsp.custom_id.as_deref()) && c.has(feature.switch.id)
+    }) && section.part.is_none_or(|part| c.has(part))
 }
 
 /// `section` as the member sees it, on `page`, by its `record`, its fields' options from

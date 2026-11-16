@@ -359,7 +359,9 @@ impl Store {
             };
             let private: Vec<_> = crate::tenancy::catalog::catalog()
                 .iter()
-                .filter(|feature| feature.owner.is_some() && feature.owner == dsp.custom_id.as_deref())
+                .filter(|feature| {
+                    feature.owner.is_some() && feature.owner == dsp.custom_id.as_deref()
+                })
                 .map(|feature| feature.id.to_owned())
                 .collect();
             let mut summary = DspSummary {

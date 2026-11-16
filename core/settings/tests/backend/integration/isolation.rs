@@ -304,8 +304,7 @@ impl Server {
             if code == "sum" {
                 data.set("section:n1_probe.limits", &json!({"foreign":true}))
                     .unwrap();
-                data.set("n1_probe.kept", &json!({"foreign":true}))
-                    .unwrap();
+                data.set("n1_probe.kept", &json!({"foreign":true})).unwrap();
             }
         }
         drop(store);
