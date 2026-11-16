@@ -9,10 +9,10 @@ use rusqlite::params;
 
 /// Stored ids may outlive a declaration; only a declaration owned by another DSP is refused.
 fn belongs_to(db: &Store, dsp: &str, id: &str) -> Result<bool> {
-    let code = db.find_dsp(dsp)?.code;
+    let owner = db.find_dsp(dsp)?.custom_id;
     Ok(integrations::declared()
         .find(|(_, integration)| integration.id == id)
-        .is_none_or(|(feature, _)| feature.belongs_to(code.as_deref())))
+        .is_none_or(|(feature, _)| feature.belongs_to(owner.as_deref())))
 }
 /// Whether the integration `id` starts on in every workspace, as its feature declares it.
 fn starts_on(id: &str) -> bool {
@@ -71,9 +71,9 @@ impl IntegrationStore for Store {
         let declared: Vec<_> = integrations::for_dsp(self, dsp)?
             .map(|(_, integration)| integration)
             .collect();
-        let code = self.find_dsp(dsp)?.code;
+        let owner = self.find_dsp(dsp)?.custom_id;
         let foreign: Vec<_> = integrations::declared()
-            .filter(|(feature, _)| !feature.belongs_to(code.as_deref()))
+            .filter(|(feature, _)| !feature.belongs_to(owner.as_deref()))
             .map(|(_, integration)| integration.id)
             .collect();
         on.retain(|id| !foreign.contains(&id.as_str()));

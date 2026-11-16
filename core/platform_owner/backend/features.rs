@@ -34,7 +34,7 @@ impl Store {
         )?;
         let features = catalog()
             .iter()
-            .filter(|feature| feature.owner.is_none() || feature.owner == row.code.as_deref())
+            .filter(|feature| feature.owner.is_none() || feature.owner == row.custom_id.as_deref())
             .map(|f| {
                 stored
                     .iter()
@@ -59,7 +59,7 @@ impl Store {
             })
             .collect();
         let provisioned = [DspStatus::Active, DspStatus::Suspended].contains(&row.status);
-        let custom = crate::tenancy::custom::catalog(row.code.as_deref());
+        let custom = crate::tenancy::custom::catalog(row.custom_id.as_deref());
         Ok(DspFeatureReport {
             features,
             custom: (!custom.is_empty()).then_some(custom),

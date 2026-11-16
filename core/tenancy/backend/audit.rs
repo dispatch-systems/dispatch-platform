@@ -11,10 +11,11 @@ const VISIT_WINDOW: i64 = 30 * 60 * 1000;
 // Activity older than a year is removed by the collector's periodic cleanup.
 const AUDIT_RETENTION: i64 = 365 * 24 * 60 * 60 * 1000;
 // Managing a DSP from the platform is never part of that DSP's own log.
-const PLATFORM_ONLY: [&str; 23] = [
+const PLATFORM_ONLY: [&str; 24] = [
     "dsp.created",
     "dsp.setup_retried",
     "dsp.code_changed",
+    "dsp.custom_id_changed",
     "dsp.feature_enabled",
     "dsp.feature_disabled",
     "dsp.feature_hidden",

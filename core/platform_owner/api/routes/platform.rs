@@ -48,6 +48,11 @@ pub fn routes() -> Vec<Route> {
             set_support_visibility,
         ),
         async_post("/api/platform/dsps/{id}/code", PlatformOwner, set_code),
+        async_post(
+            "/api/platform/dsps/{id}/custom-id",
+            PlatformOwner,
+            set_custom_id,
+        ),
         read(
             "/api/platform/dsps/{id}/features",
             PlatformOwner,
@@ -264,6 +269,28 @@ async fn set_code(state: Arc<State>, input: Input, access: PlatformOwner) -> Res
                 &[("code", before, Some(code.clone()))],
             )?;
             db.set_code(dsp, &code)
+        })?;
+        Ok(json!(db.find_dsp(dsp)?))
+    })
+    .await
+}
+
+// Gives a DSP the custom ID its custom features are owned by, which names their folder.
+async fn set_custom_id(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
+    change_dsp(state, input, access, false, |db, dsp, owner, b| {
+        v::fields(b, &["customId"])?;
+        let id = v::text(b, "customId", 1, 16)?.trim().to_ascii_lowercase();
+        let before = db.find_dsp(dsp)?.custom_id;
+        db.platform.transaction(|| {
+            db.audit_with(
+                Some(owner.user.id.as_str()),
+                Some(dsp),
+                "dsp.custom_id_changed",
+                &id,
+                None,
+                &[("customId", before, Some(id.clone()))],
+            )?;
+            db.set_custom_id(dsp, &id)
         })?;
         Ok(json!(db.find_dsp(dsp)?))
     })

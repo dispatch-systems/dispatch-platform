@@ -133,7 +133,7 @@ async fn for_dsps(
         let enabled = state
             .read(move |db| {
                 Ok(db.serves_dsp(&at)?
-                    && feature.belongs_to(db.feature_code(&at)?.as_deref())
+                    && feature.belongs_to(db.feature_owner(&at)?.as_deref())
                     && db.feature_enabled(&at, feature.switch.id)?)
             })
             .await;

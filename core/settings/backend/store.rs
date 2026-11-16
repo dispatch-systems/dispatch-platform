@@ -23,7 +23,7 @@ pub(crate) struct Current {
 /// Every record of a DSP one member reads: the DSP's, and that member's own, each by its key.
 pub(crate) struct Records {
     records: HashMap<String, Value>,
-    code: Option<String>,
+    owner: Option<String>,
 }
 impl Records {
     /// In one query of the DSP's database, whatever number of sections it has: the DSP's, and
@@ -44,12 +44,12 @@ impl Records {
             .collect::<Result<_>>()?;
         Ok(Self {
             records,
-            code: db.feature_code(dsp)?,
+            owner: db.feature_owner(dsp)?,
         })
     }
     /// The record of `section`, the DSP's or the member's own as its scope says.
     pub(crate) fn of(&self, section: &Section, member: Option<&str>) -> Result<&Value> {
-        let applicable = aliases::in_scope(section.id, self.code.as_deref());
+        let applicable = aliases::in_scope(section.id, self.owner.as_deref());
         let keys = record_keys(
             section,
             member,

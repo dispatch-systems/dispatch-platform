@@ -37,8 +37,8 @@ pub fn for_dsp(
     db: &Store,
     dsp: &str,
 ) -> Result<impl Iterator<Item = (&'static Feature, &'static Integration)>> {
-    let code = db.find_dsp(dsp)?.code;
-    Ok(declared().filter(move |(feature, _)| feature.belongs_to(code.as_deref())))
+    let owner = db.find_dsp(dsp)?.custom_id;
+    Ok(declared().filter(move |(feature, _)| feature.belongs_to(owner.as_deref())))
 }
 
 /// Switches the integration `id` on or off in the DSP's workspace `team`, for a member who

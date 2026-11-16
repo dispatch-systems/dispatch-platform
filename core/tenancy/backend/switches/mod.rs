@@ -20,14 +20,18 @@ pub struct SwitchedFeatures {
 }
 
 impl Store {
-    /// The DSP code selecting custom declarations, retained while a deletion finishes.
-    pub(crate) fn feature_code(&self, dsp: &str) -> Result<Option<String>> {
+    /// The DSP's custom ID, which selects the custom features it owns, retained while a
+    /// deletion finishes.
+    pub(crate) fn feature_owner(&self, dsp: &str) -> Result<Option<String>> {
         let found: Option<(Option<String>,)> = self.platform.one_as(
-            "SELECT code FROM dsps WHERE id=?1 UNION ALL SELECT code FROM dsp_deletions WHERE dsp_id=?1 LIMIT 1", [dsp])?;
-        Ok(found.and_then(|(code,)| code))
+            "SELECT custom_id FROM dsps WHERE id=?1 \
+             UNION ALL SELECT custom_id FROM dsp_deletions WHERE dsp_id=?1 LIMIT 1",
+            [dsp],
+        )?;
+        Ok(found.and_then(|(owner,)| owner))
     }
     pub(crate) fn owns_feature(&self, dsp: &str, owner: Option<&str>) -> Result<bool> {
-        Ok(owner.is_none() || self.feature_code(dsp)?.as_deref() == owner)
+        Ok(owner.is_none() || self.feature_owner(dsp)?.as_deref() == owner)
     }
 
     /// The DSP's features, in catalog order: what is switched on, less the tabs of a
@@ -47,10 +51,10 @@ impl Store {
             )?
             .into_iter()
             .collect();
-        let code = self.feature_code(dsp)?;
+        let owner = self.feature_owner(dsp)?;
         Ok(catalog()
             .iter()
-            .filter(|f| f.owner.is_none_or(|owner| Some(owner) == code.as_deref()))
+            .filter(|f| f.owner.is_none_or(|of| Some(of) == owner.as_deref()))
             .filter(|f| f.mandatory || stored.get(f.id).copied().unwrap_or(f.default))
             .map(|f| f.id.to_owned())
             .collect())
@@ -102,7 +106,7 @@ impl Store {
                 self.platform.exec(
                     "INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) \
                      SELECT DISTINCT dsp_id,?1,1,?2 FROM dsp_features WHERE enabled=1 \
-                     AND feature IN (SELECT value FROM json_each(?3)) AND (?4 IS NULL OR dsp_id IN (SELECT id FROM dsps WHERE code=?4)) \
+                     AND feature IN (SELECT value FROM json_each(?3)) AND (?4 IS NULL OR dsp_id IN (SELECT id FROM dsps WHERE custom_id=?4)) \
                      ON CONFLICT(dsp_id,feature) DO NOTHING",
                     params![page.id, iso(), serde_json::to_string(&parts)?, page.owner],
                 )?;
@@ -131,7 +135,7 @@ impl Store {
                 if was != feature.default {
                     self.platform.exec(
                         "INSERT OR IGNORE INTO dsp_features(dsp_id,feature,enabled,changed_at) \
-                         SELECT id,?1,?2,?3 FROM dsps WHERE (?4 IS NULL OR code=?4)",
+                         SELECT id,?1,?2,?3 FROM dsps WHERE (?4 IS NULL OR custom_id=?4)",
                         params![feature.id, was, iso(), feature.owner],
                     )?;
                 }

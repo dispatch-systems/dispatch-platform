@@ -53,12 +53,13 @@ struct PrivateAsset {
 }
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Audience {
-    pub code: Option<String>,
+    /// The custom ID of the DSP whose address the request came to, for a member who may open it.
+    pub owner: Option<String>,
     pub platform: bool,
 }
 impl Audience {
     pub fn sees(&self, owner: Option<&str>) -> bool {
-        owner.is_none() || self.platform || owner == self.code.as_deref()
+        owner.is_none() || self.platform || owner == self.owner.as_deref()
     }
 }
 
@@ -95,7 +96,7 @@ pub(crate) async fn audience(
         .read(move |db| {
             use super::route::Grant;
             let auth = super::route::Session.authorize(db, &input)?;
-            let code = if let crate::foundation::config::Site::Dsp(code) = &input.site {
+            let owner = if let crate::foundation::config::Site::Dsp(code) = &input.site {
                 if let Some(dsp) = db.dsp_at(code)?
                     && db.may(
                         &auth.user.id,
@@ -104,7 +105,7 @@ pub(crate) async fn audience(
                         crate::tenancy::roles::ACCESS,
                     )?
                 {
-                    Some(code.clone())
+                    dsp.custom_id
                 } else {
                     None
                 }
@@ -112,7 +113,7 @@ pub(crate) async fn audience(
                 None
             };
             Ok(Audience {
-                code,
+                owner,
                 platform: auth.user.platform_owner,
             })
         })

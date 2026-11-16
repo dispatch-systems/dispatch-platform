@@ -182,7 +182,7 @@ fn visible(c: &Context, feature: Option<&Feature>, section: &Section) -> bool {
 /// and its part, are on and not hidden from them.
 fn shown(c: &Context, feature: Option<&Feature>, section: &Section) -> bool {
     feature
-        .is_none_or(|feature| feature.belongs_to(c.dsp.code.as_deref()) && c.has(feature.switch.id))
+        .is_none_or(|feature| feature.belongs_to(c.dsp.custom_id.as_deref()) && c.has(feature.switch.id))
         && section.part.is_none_or(|part| c.has(part))
 }
 

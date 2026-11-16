@@ -224,6 +224,11 @@ const PLATFORM: &[Migration] = &[
         name: "deleted_dsp_code",
         apply: Code(deleted_dsp_code),
     },
+    Migration {
+        id: 29,
+        name: "dsp_custom_ids",
+        apply: Code(dsp_custom_ids),
+    },
 ];
 const JOBS: &[Migration] = &[
     Migration {
@@ -449,4 +454,12 @@ fn security_hardening(db: &Db) -> Result<()> {
 
 fn deleted_dsp_code(db: &Db) -> Result<()> {
     add_column(db, "dsp_deletions", "code", "TEXT")
+}
+// The ID each DSP's custom features are owned by, apart from its short code, so a feature's
+// folder never names the DSP: none until the platform owner gives it one. No two DSPs share one,
+// and a deletion keeps it until it finishes, as it keeps the code.
+fn dsp_custom_ids(db: &Db) -> Result<()> {
+    add_column(db, "dsps", "custom_id", "TEXT")?;
+    db.0.execute_batch("CREATE UNIQUE INDEX IF NOT EXISTS dsps_custom_id ON dsps(custom_id)")?;
+    add_column(db, "dsp_deletions", "custom_id", "TEXT")
 }

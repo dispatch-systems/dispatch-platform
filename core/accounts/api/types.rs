@@ -53,6 +53,9 @@ pub struct Dsp {
     pub created_at: String,
     /// Its short code, which names its address, in lowercase: none until it is set up.
     pub code: Option<String>,
+    /// The ID its custom features are owned by, which names their folder: none until the
+    /// platform owner gives it one.
+    pub custom_id: Option<String>,
 }
 impl FromRow for Dsp {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -66,6 +69,7 @@ impl FromRow for Dsp {
             revision: row.get("revision")?,
             created_at: row.get("created_at")?,
             code: row.get("code")?,
+            custom_id: row.get("custom_id")?,
         })
     }
 }

@@ -142,7 +142,7 @@ impl Store {
         migrations::migrate_dsp(
             &*self.dsp_unverified(id)?,
             id,
-            self.feature_code(id)?.as_deref(),
+            self.feature_owner(id)?.as_deref(),
         )
     }
     pub(crate) fn cached_database(&self, path: &Path, kind: Kind) -> Result<DspLease<'_>> {
@@ -181,7 +181,7 @@ impl Store {
         Db::create_dsp(
             &self.area(id, "data")?.join("dispatch.sqlite"),
             id,
-            self.feature_code(id)?.as_deref(),
+            self.feature_owner(id)?.as_deref(),
         )
     }
 }

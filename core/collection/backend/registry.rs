@@ -221,7 +221,7 @@ impl Store {
                     db::migrate_for(
                         &*self.added_storage(id, provider, storage)?,
                         storage.kind,
-                        self.feature_code(id)?.as_deref(),
+                        self.feature_owner(id)?.as_deref(),
                     )?;
                     (storage.verify)(&*self.added_storage(id, provider, storage)?)?;
                     continue;
@@ -233,7 +233,7 @@ impl Store {
                     &data.join(storage.id).join(format!("{}.sqlite", storage.id)),
                     storage.kind,
                     &identity_seed(id, provider, storage.source),
-                    self.feature_code(id)?.as_deref(),
+                    self.feature_owner(id)?.as_deref(),
                 )?;
                 added_identity(&target, id, provider, storage)?;
                 drop(target);
@@ -258,7 +258,7 @@ impl Store {
                 db::migrate_for(
                     &*self.collector(id, provider)?,
                     provider.database(),
-                    self.feature_code(id)?.as_deref(),
+                    self.feature_owner(id)?.as_deref(),
                 )?;
             }
         }
@@ -286,7 +286,7 @@ impl Store {
             &data.join(provider.relative_path()),
             provider.database(),
             &provider.collector().seed(id),
-            self.feature_code(id)?.as_deref(),
+            self.feature_owner(id)?.as_deref(),
         )?;
         identity(&target, id, provider)?;
         Ok(target)
@@ -303,7 +303,7 @@ impl Store {
             db::migrate_for(
                 &*self.collector(id, provider)?,
                 provider.database(),
-                self.feature_code(id)?.as_deref(),
+                self.feature_owner(id)?.as_deref(),
             )?;
             return self.verify_collector(id, provider);
         }
@@ -327,11 +327,11 @@ impl Store {
         provider
             .collector()
             .verify(&*self.collector(id, provider)?)?;
-        let code = self.feature_code(id)?;
+        let owner = self.feature_owner(id)?;
         for kind in provider.job_kinds() {
             if registry()
                 .keeping(kind)
-                .is_some_and(|feature| !feature.belongs_to(code.as_deref()))
+                .is_some_and(|feature| !feature.belongs_to(owner.as_deref()))
             {
                 continue;
             }
