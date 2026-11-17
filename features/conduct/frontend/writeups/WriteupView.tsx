@@ -9,10 +9,12 @@ import { SignedCopy } from './SignedCopy.js';
 import { usePrintNotice } from '../notice/usePrintNotice.js';
 import { SignedState, categoryName, personOf } from '../parts.js';
 import { SignDialog } from './SignDialog.js';
+import { WriteupText } from './WriteupText.js';
 
 /**
  * One writeup as it prints: printed, changed or deleted until it's signed, then only printed,
- * or deleted by someone who manages Conduct (`manages`).
+ * or deleted by someone who manages Conduct (`manages`). On a phone its words are text above
+ * the page, Print and Mark signed stay at the foot of the screen, and Delete ends the page.
  */
 export function WriteupView({
   overview,
@@ -55,7 +57,7 @@ export function WriteupView({
         {(writeup) => {
           const person = personOf(overview, writeup.person);
           return (
-            <>
+            <div className="conduct-writeup">
               <div className="page-heading">
                 <div>
                   <h1>{person.name}</h1>
@@ -65,7 +67,11 @@ export function WriteupView({
                 </div>
                 <div className="heading-actions">
                   {(!writeup.signedOn || manages) && (
-                    <button type="button" className="danger" onClick={() => setDeleting(true)}>
+                    <button
+                      type="button"
+                      className="danger conduct-writeup-delete"
+                      onClick={() => setDeleting(true)}
+                    >
                       <Trash2 size={16} />
                       Delete
                     </button>
@@ -76,23 +82,26 @@ export function WriteupView({
                       Edit
                     </button>
                   )}
-                  <button type="button" onClick={() => print(writeup)}>
-                    <Printer size={16} />
-                    Print
-                  </button>
-                  {!writeup.signedOn && (
-                    <button
-                      type="button"
-                      className="primary"
-                      disabled={beginSign.busy}
-                      onClick={() => void beginSign.run()}
-                    >
-                      <PenLine size={16} />
-                      Mark signed
+                  <div className="conduct-actions-main">
+                    <button type="button" onClick={() => print(writeup)}>
+                      <Printer size={16} />
+                      Print
                     </button>
-                  )}
+                    {!writeup.signedOn && (
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={beginSign.busy}
+                        onClick={() => void beginSign.run()}
+                      >
+                        <PenLine size={16} />
+                        Mark signed
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
+              <WriteupText writeup={writeup} />
               <NoticePaper content={writeup} />
               {writeup.hasCopy && (
                 <section className="conduct-copy-section">
@@ -123,7 +132,7 @@ export function WriteupView({
                   This writeup for {person.name} will be deleted.
                 </ConfirmDialog>
               )}
-            </>
+            </div>
           );
         }}
       </DataState>

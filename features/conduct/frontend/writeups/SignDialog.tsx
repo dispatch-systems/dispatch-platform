@@ -89,7 +89,7 @@ export function SignDialog({
   const note = notice.tier === 'final' ? finalNote(notice.finalKind, notice.suspension) : '';
   return (
     <Modal title="Mark signed" dismissible={phase !== 'saving'} onClose={cancel}>
-      <div className="conduct-dialog">
+      <div className="conduct-dialog conduct-sign">
         <div className="conduct-sign-summary">
           <Person person={personOf(overview, notice.person)} />
           <span className="muted">
