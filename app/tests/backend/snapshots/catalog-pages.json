@@ -143,6 +143,14 @@
       "requires": [],
       "default": false,
       "mandatory": false
+    },
+    {
+      "id": "pendingid_hr_line",
+      "label": "HR Line",
+      "permissions": ["pendingid_hr_line.phones"],
+      "requires": [],
+      "default": false,
+      "mandatory": false
     }
   ],
   "subfeatures": [
@@ -225,6 +233,7 @@
     "vans",
     "live_route_data",
     "conduct",
+    "pendingid_hr_line",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

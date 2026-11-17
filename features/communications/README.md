@@ -357,8 +357,8 @@ decides ([Texts](#texts)).
   ([Texts](#texts)), so another line's are never in a conversation of its, counted, listed,
   searched or alerted on; only they send its answers, and another line's only its own. A code
   replaces only its own line's code not used yet. Another line's phones are named for it, its
-  name, then its name and 2 and so on, and their log entries are its (`<line>.phone_paired`,
-  `_renamed`, `_removed`), which it words. The phones' address is one for every line: a phone is
+  name, then its name and 2 and so on, and their log entries are its (`<line>.phones.paired`,
+  `.renamed`, `.removed`), which it words. The phones' address is one for every line: a phone is
   known by its key, whatever line it serves.
 - **The card:** Dispatch Phone, on Settings' DSP Connections, for those who manage the DSP's
   phones or all its connections (`connectionPieces`, `dsp`), while Dispatch Phone is on: its own

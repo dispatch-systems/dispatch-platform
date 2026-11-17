@@ -963,6 +963,7 @@ dependencies = [
  "dispatch-live-route-data",
  "dispatch-mcp",
  "dispatch-paycom",
+ "dispatch-pendingid-hr-line",
  "dispatch-routes",
  "dispatch-routes-contract",
  "dispatch-settings",
@@ -1297,6 +1298,14 @@ dependencies = [
  "tempfile",
  "tokio",
  "ts-rs",
+]
+
+[[package]]
+name = "dispatch-pendingid-hr-line"
+version = "0.0.0"
+dependencies = [
+ "dispatch-communications",
+ "dispatch-core",
 ]
 
 [[package]]

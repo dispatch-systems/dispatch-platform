@@ -103,13 +103,13 @@ fn each_line_pairs_names_lists_and_manages_only_its_own_phones() {
     assert_eq!(named(&desk_phone), ("Front Desk", Some("front_desk")));
     assert_eq!(named(&desk_second), ("Front Desk 2", Some("front_desk")));
     assert_eq!(dispatch.action("paired"), "phones.paired");
-    assert_eq!(desk_phone.action("paired"), "front_desk.phone_paired");
+    assert_eq!(desk_phone.action("paired"), "front_desk.phones.paired");
     // Each line lists only its own.
     let listed = |line: Option<&str>| -> Vec<String> {
         let devices = db.phones_devices(&dsp, line).unwrap();
         devices.into_iter().map(|device| device.id).collect()
     };
-    assert_eq!(listed(None), [dispatch.id.clone()]);
+    assert_eq!(listed(None), std::slice::from_ref(&dispatch.id));
     assert_eq!(
         listed(Some("front_desk")),
         [desk_phone.id.clone(), desk_second.id.clone()]
@@ -132,7 +132,7 @@ fn each_line_pairs_names_lists_and_manages_only_its_own_phones() {
         .as_str(),
         "phones_not_found"
     );
-    assert_eq!(listed(None), [dispatch.id.clone()]);
+    assert_eq!(listed(None), std::slice::from_ref(&dispatch.id));
     db.phones_remove(&dsp, Some("front_desk"), &desk_second.id, 4_000)
         .unwrap();
     assert_eq!(listed(Some("front_desk")), [desk_phone.id]);

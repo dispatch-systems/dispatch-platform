@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "collectors/*", "features/*", "features/*/contract", "mcp", "app/backend", "ops/host-manager", "tooling/cli", "tooling/shared", "services/support-worker"]
+members = ["core", "collectors/*", "features/*", "features/*/contract", "mcp", "app/backend", "ops/host-manager", "tooling/cli", "tooling/shared", "services/support-worker", "features/custom/pendingid/hr_line"]
 exclude = ["features/custom"]
 resolver = "3"
 

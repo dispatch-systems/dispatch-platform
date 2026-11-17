@@ -124,11 +124,11 @@ impl Device {
         self.last_seen_at.is_none_or(|at| now - at >= SEEN_MS)
     }
     /// What the activity log calls `what` done to the phone: `phones.<what>` for one of Dispatch
-    /// Phone's own line, `<line>.phone_<what>` for another feature's, which words it.
+    /// Phone's own line, `<line>.phones.<what>` for another feature's, which words it.
     pub fn action(&self, what: &str) -> String {
         match &self.line {
             None => format!("phones.{what}"),
-            Some(line) => format!("{line}.phone_{what}"),
+            Some(line) => format!("{line}.phones.{what}"),
         }
     }
     /// How the phone reads in the activity log: its name, and its number once it said it.

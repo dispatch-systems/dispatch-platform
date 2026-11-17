@@ -75,12 +75,7 @@ pub(super) fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     listed_of(db, c, input, None)
 }
 /// The phones of `line`, and the app they install.
-pub fn listed_of(
-    db: &Store,
-    c: &Member,
-    input: &Input,
-    line: Option<Line>,
-) -> Result<Reply> {
+pub fn listed_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
     on(c)?;
     v::fields(&input.query, &[])?;
     let now = db::now();
@@ -115,12 +110,7 @@ pub(super) fn new_pairing(db: &Store, c: &Member, input: &Input) -> Result<Reply
     new_pairing_of(db, c, input, None)
 }
 /// A new code to pair the next phone to `line`, in place of any of that line's shown before.
-pub fn new_pairing_of(
-    db: &Store,
-    c: &Member,
-    input: &Input,
-    line: Option<Line>,
-) -> Result<Reply> {
+pub fn new_pairing_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
     on(c)?;
     v::fields(&input.body, &[])?;
     let site = c
@@ -165,12 +155,7 @@ pub(super) fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     rename_of(db, c, input, None)
 }
 /// Gives the phone of `line` a new name: another line's is refused as not found.
-pub fn rename_of(
-    db: &Store,
-    c: &Member,
-    input: &Input,
-    line: Option<Line>,
-) -> Result<Reply> {
+pub fn rename_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
     on(c)?;
     v::fields(&input.body, &["name"])?;
     let id = id(input.param("id"), "phone")?;

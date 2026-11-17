@@ -22,6 +22,8 @@ pub const FEATURES: &[&Feature] = &[
     &dispatch_home::FEATURE.registered(None, "home"),
     #[cfg(feature = "live_route_data")]
     &dispatch_live_route_data::FEATURE.registered(None, "live_route_data"),
+    #[cfg(feature = "pendingid_hr_line")]
+    &dispatch_pendingid_hr_line::FEATURE.registered(Some("pendingid"), "pendingid_hr_line"),
     #[cfg(feature = "routes")]
     &dispatch_routes::FEATURE.registered(None, "routes"),
     #[cfg(feature = "settings")]

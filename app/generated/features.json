@@ -834,6 +834,55 @@
     "tables": {},
     "subfeatures": []
   },
+  "pendingid_hr_line": {
+    "directory": "features/custom/pendingid/hr_line",
+    "owner": "pendingid",
+    "collectors": [],
+    "depends_on": [
+      "communications"
+    ],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "pendingid_hr_line.phones"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [
+          [
+            "pendingid_hr_line.phones.",
+            "connections"
+          ]
+        ],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "integrations": [],
+      "live": [],
+      "maintenance": [],
+      "on": [],
+      "people": [],
+      "routes": [
+        "GET /api/dsp/pendingid-hr-line/phones",
+        "POST /api/dsp/pendingid-hr-line/phones/pairing",
+        "GET /api/dsp/pendingid-hr-line/phones/pairing/{id}",
+        "POST /api/dsp/pendingid-hr-line/phones/{id}/rename",
+        "POST /api/dsp/pendingid-hr-line/phones/{id}/remove"
+      ],
+      "exposes": [],
+      "env": [],
+      "settings": []
+    },
+    "switch": "pendingid_hr_line",
+    "mandatory": false,
+    "tables": {},
+    "subfeatures": []
+  },
   "routes": {
     "directory": "features/routes",
     "owner": null,

@@ -52,10 +52,7 @@ export function PhonesCard({
     { success: 'Phone removed' },
   );
   return (
-    <article
-      className="archived-connection-card phones-connection-card"
-      aria-labelledby={heading}
-    >
+    <article className="archived-connection-card phones-connection-card" aria-labelledby={heading}>
       <header>
         <h3 id={heading}>
           <Smartphone size={20} className="phones-mark" />
