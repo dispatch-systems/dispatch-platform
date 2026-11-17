@@ -332,17 +332,23 @@ export const markGroupDone = (id: string, seen?: GroupEntry | null) =>
     `${communicationsUrl}/groups/${id}/done`,
     seen ? { seen: `${seen.at}:${seen.id}` } : {},
   );
-/** The DSP's phones, as those who manage them or all its connections see them. */
-const phonesUrl = `${communicationsUrl}/phones`;
-/** The DSP's phones, read again every `poll` milliseconds, as they check in. */
-export const usePhones = (poll: number) => useData<Phones>(phonesUrl, poll);
-/** A new code that pairs the next phone, in place of any shown before. */
-export const newPairing = () => api<PhonePairing>(`${phonesUrl}/pairing`, {});
-/** How the code `id` stands, read again every `poll` milliseconds; nothing without one. */
-export const usePairing = (id: string | undefined, poll: number) =>
-  useData<PhonePairingStatus>(id ? `${phonesUrl}/pairing/${encodeURIComponent(id)}` : '', poll);
-export const renamePhone = (id: string, name: string) =>
-  api<PhoneRow>(`${phonesUrl}/${encodeURIComponent(id)}/rename`, { name });
-/** Removes the phone: its key works no more, and its texts stay. */
-export const removePhone = (id: string) =>
-  api<{ ok: true }>(`${phonesUrl}/${encodeURIComponent(id)}/remove`, {});
+/** Managing one line's phones at `url`, as its card on DSP Connections does: Dispatch Phone's own,
+ * or another feature's, from its own card, by the same calls and words. */
+export function linePhones(url: string) {
+  return {
+    /** The line's phones, read again every `poll` milliseconds, as they check in. */
+    usePhones: (poll: number) => useData<Phones>(url, poll),
+    /** A new code that pairs the line's next phone, in place of any of its shown before. */
+    newPairing: () => api<PhonePairing>(`${url}/pairing`, {}),
+    /** How the code `id` stands, read again every `poll` milliseconds; nothing without one. */
+    usePairing: (id: string | undefined, poll: number) =>
+      useData<PhonePairingStatus>(id ? `${url}/pairing/${encodeURIComponent(id)}` : '', poll),
+    rename: (id: string, name: string) =>
+      api<PhoneRow>(`${url}/${encodeURIComponent(id)}/rename`, { name }),
+    /** Removes the phone: its key works no more, and its texts stay. */
+    remove: (id: string) => api<{ ok: true }>(`${url}/${encodeURIComponent(id)}/remove`, {}),
+  };
+}
+export type LinePhones = ReturnType<typeof linePhones>;
+/** Dispatch Phone's own phones, as those who manage them or all its connections see them. */
+export const dispatchPhones = linePhones(`${communicationsUrl}/phones`);

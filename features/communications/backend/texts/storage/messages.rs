@@ -207,6 +207,9 @@ macro_rules! waiting_since {
 
 /// The numbers' conversations that are listed: those of numbers not blocked.
 const LISTED: &str = "kind='number' AND number NOT IN (SELECT number FROM communications_blocked)";
+/// A text of a phone of Dispatch Phone's own line: only those are filed, so another line's texts
+/// are never in a conversation of its, nor counted, listed, searched or alerted on.
+const OWN_LINE: &str = "device_id IN (SELECT id FROM phones_devices WHERE line IS NULL)";
 /// Where a first page starts, as `before`: after every conversation and text.
 const END: (i64, &str) = (i64::MAX, "\u{10FFFF}");
 /// Where a first page of texts oldest first starts, as `after`: before every text.
@@ -355,8 +358,11 @@ impl TextStore for Store {
     }
     fn unfiled_communications_texts_of(&self, dsp: &str, ids: &[String]) -> Result<Vec<Unfiled>> {
         self.dsp(dsp)?.query_as(
-            "SELECT id,number,at,sent_by FROM phones_texts \
-             WHERE id IN (SELECT value FROM json_each(?)) AND conversation_id IS NULL",
+            &format!(
+                "SELECT id,number,at,sent_by FROM phones_texts \
+                 WHERE id IN (SELECT value FROM json_each(?)) AND conversation_id IS NULL \
+                 AND {OWN_LINE}"
+            ),
             [serde_json::to_string(ids)?],
         )
     }
@@ -377,8 +383,10 @@ impl TextStore for Store {
     ) -> Result<Vec<(i64, String)>> {
         let (at, id) = after.unwrap_or(START);
         self.dsp(dsp)?.query_as(
-            "SELECT at,id FROM phones_texts WHERE conversation_id IS NULL \
-             AND (at>?1 OR (at=?1 AND id>?2)) ORDER BY at,id LIMIT ?3",
+            &format!(
+                "SELECT at,id FROM phones_texts WHERE conversation_id IS NULL AND {OWN_LINE} \
+                 AND (at>?1 OR (at=?1 AND id>?2)) ORDER BY at,id LIMIT ?3"
+            ),
             params![at, id, most as i64],
         )
     }
@@ -404,8 +412,10 @@ impl TextStore for Store {
         most: usize,
     ) -> Result<Vec<Unfiled>> {
         self.dsp(dsp)?.query_as(
-            "SELECT id,number,at,sent_by FROM phones_texts WHERE conversation_id IS NULL \
-             AND unfiled_since<=?1 ORDER BY at,id LIMIT ?2",
+            &format!(
+                "SELECT id,number,at,sent_by FROM phones_texts WHERE conversation_id IS NULL \
+                 AND {OWN_LINE} AND unfiled_since<=?1 ORDER BY at,id LIMIT ?2"
+            ),
             params![since, most as i64],
         )
     }
@@ -431,8 +441,10 @@ impl TextStore for Store {
             };
             let placed = origins::place(&db, Transport::Text, id, Some(&conversation), || {
                 db.exec(
-                    "UPDATE phones_texts SET conversation_id=?,sender_name=?,blocked=? \
-                 WHERE id=? AND conversation_id IS NULL",
+                    &format!(
+                        "UPDATE phones_texts SET conversation_id=?,sender_name=?,blocked=? \
+                         WHERE id=? AND conversation_id IS NULL AND {OWN_LINE}"
+                    ),
                     params![conversation, sender_name, blocked, id],
                 )
             })?;

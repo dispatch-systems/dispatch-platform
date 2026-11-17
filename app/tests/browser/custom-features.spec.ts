@@ -75,7 +75,12 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
   await page.route('**/api/session', async (route) => {
     const response = await route.fetch();
     const session = await response.json();
-    if (response.ok() && session.user.platformOwner) session.platformFrontend = platformEntry;
+    // The stand-in's pages load the owner's media, which a document loaded before signing in
+    // leaves out of its policy.
+    if (response.ok() && session.user.platformOwner) {
+      session.platformFrontend = platformEntry;
+      session.customSources = true;
+    }
     await route.fulfill({ response, json: session });
   });
   await page.route(`**${platformEntry}`, (route) =>
@@ -415,6 +420,7 @@ test("the platform lists custom controls only on their owning DSP's Features tab
     const session = await response.json();
     if (response.ok()) {
       session.platformFrontend = feature.platformEntry;
+      session.customSources = true;
       summarize(session.dsps);
     }
     await route.fulfill({ response, json: session });

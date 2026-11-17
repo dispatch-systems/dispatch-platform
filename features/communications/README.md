@@ -349,8 +349,20 @@ between: a phone opens its own connection to its DSP's address. The phone side
 went, and their bytes; never who a text is from or which conversation it's in, which filing
 decides ([Texts](#texts)).
 
-- **The card:** on Settings' DSP Connections, for those who manage the DSP's phones or all its
-  connections (`connectionPieces`, `dsp`), while Dispatch Phone is on: each phone, by its number,
+- **Lines:** each phone serves one line, the line of the code that paired it, for good:
+  Dispatch Phone's own, or another feature's, by that feature's name (`phone::storage::Line`),
+  which pairs, lists, renames and removes its own from a card of its own
+  (`api::routes::phones`'s `*_of`, by the same rules as below). Only Dispatch Phone's own line's
+  phones are on its card, its page, its banner and its alerts; only their texts are filed
+  ([Texts](#texts)), so another line's are never in a conversation of its, counted, listed,
+  searched or alerted on; only they send its answers, and another line's only its own. A code
+  replaces only its own line's code not used yet. Another line's phones are named for it, its
+  name, then its name and 2 and so on, and their log entries are its (`<line>.phones.paired`,
+  `.renamed`, `.removed`), which it words. The phones' address is one for every line: a phone is
+  known by its key, whatever line it serves.
+- **The card:** Dispatch Phone, on Settings' DSP Connections, for those who manage the DSP's
+  phones or all its connections (`connectionPieces`, `dsp`), while Dispatch Phone is on: its own
+  line's phones, each by its number,
   with its name, model and the app's version, tagged Update while that's older than the one the
   DSP's address hands out, Online once it checked in in the last two minutes, else Offline and
   for how long, read again every 30 seconds; what needs attention on it, as it last said it stands
@@ -447,8 +459,8 @@ decides ([Texts](#texts)).
 
 ## Texts
 
-What the DSP's dispatch phones relay, as the phone side keeps them, one row each: filed in its
-conversation as it's kept or changes; and answering, or sending again one that failed, which
+What the DSP's dispatch phones of Dispatch Phone's own line relay ([Lines](#dispatch-phones)), as
+the phone side keeps them, one row each: filed in its conversation as it's kept or changes; and answering, or sending again one that failed, which
 queues a text for a phone.
 
 - **Filed:** in the same write and transaction as the phone side keeps a phone's report, a

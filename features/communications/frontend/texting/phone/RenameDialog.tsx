@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
 import { Modal, SaveChangesDialog } from '../../../../../core/shell/frontend/ui/index.js';
-import { renamePhone } from '../../../api/client.js';
+import type { LinePhones } from '../../../api/client.js';
 import type { PhoneRow } from '../../../api/index.js';
 
 // Renaming one of the DSP's phones, as Dispatch or Station 2. A name changed and not saved is
@@ -9,9 +9,11 @@ import type { PhoneRow } from '../../../api/index.js';
 // only Save and Discard, as the role sheet does. Closing the browser tab drops it silently.
 
 export function RenameDialog({
+  phones,
   phone,
   onClose,
 }: {
+  phones: LinePhones;
   phone: PhoneRow;
   /** Closes it, told whether the phone was renamed. */
   onClose: (renamed: boolean) => void;
@@ -19,7 +21,9 @@ export function RenameDialog({
   const [name, setName] = useState(phone.name);
   const [confirming, setConfirming] = useState(false);
   const changed = name.trim() !== phone.name;
-  const rename = useAction(() => renamePhone(phone.id, name.trim()), { success: 'Phone renamed' });
+  const rename = useAction(() => phones.rename(phone.id, name.trim()), {
+    success: 'Phone renamed',
+  });
   // Whether a save went through, so closing after it has the card read the phones again.
   const renamed = useRef(false);
   const save = async () => {

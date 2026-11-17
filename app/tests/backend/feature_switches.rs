@@ -103,7 +103,8 @@ fn a_new_dsp_starts_with_only_what_every_dsp_has_and_a_demo_dsp_with_all_but_liv
             .filter(|role| !role.owner)
             .all(|role| role.permissions.is_empty())
     );
-    // A demo has every feature but those that read a provider live, which only a switch starts.
+    // A demo has every feature but those that read a provider live, which only a switch starts,
+    // and the custom features of other DSPs' custom IDs.
     db.enable_all_features(&dsp.id).unwrap();
     let reads_live = |id: &str| {
         let mut features = dispatch_core::manifest::registry().features.iter();
@@ -111,7 +112,11 @@ fn a_new_dsp_starts_with_only_what_every_dsp_has_and_a_demo_dsp_with_all_but_liv
     };
     let all: Vec<_> = catalog()
         .iter()
-        .filter(|f| !reads_live(f.id))
+        .filter(|f| {
+            !reads_live(f.id)
+                && f.owner
+                    .is_none_or(|owner| dsp.custom_id.as_deref() == Some(owner))
+        })
         .map(|f| f.id.to_owned())
         .collect();
     assert_eq!(db.features(&dsp.id).unwrap(), all);

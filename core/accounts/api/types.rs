@@ -265,6 +265,9 @@ pub struct SessionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub platform_frontend: Option<String>,
+    /// Whether a custom feature this account sees loads outside sources, which the policy of a
+    /// page loaded before signing in leaves out: the page loads again once they're in.
+    pub custom_sources: bool,
     pub development: bool,
     pub environment: Environment,
     pub release: String,

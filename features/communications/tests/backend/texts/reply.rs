@@ -131,7 +131,7 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     let replacement = filing::changing(&state, &dsp, move |db| {
         let replacement = phone::support::paired(db, &at, "retry-key", "2065550101");
         db.phones_seen(&at, &replacement.id, now())?;
-        let (_, failed) = db.phones_remove(&at, &old_device, now())?;
+        let (_, failed) = db.phones_remove(&at, None, &old_device, now())?;
         Ok((replacement.id, failed))
     })
     .await

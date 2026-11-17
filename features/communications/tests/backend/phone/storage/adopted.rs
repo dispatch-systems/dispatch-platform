@@ -6,7 +6,7 @@ use super::*;
 use crate::{
     api::types::PairingStatus,
     backend::{
-        phone::support::{CODE, kept, outgoing, paired, store},
+        phone::support::{CODE, kept, store},
         support::migrate,
     },
 };
@@ -29,34 +29,35 @@ fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_p
         .0
         .execute_batch(include_str!("schema/phones.sql"))
         .unwrap();
-    drop(before);
-    // As Phones left them: a phone paired, and a text Dispatch queued for it with a picture, its
-    // bytes kept.
+    // As Phones left them: a phone paired, as Phones paired it, and a text Dispatch queued for it
+    // with a picture, its bytes kept.
     let key = crypto::sha("phone-key");
-    let phone = paired(&db, &dsp, &key, "2065550100");
     let bytes = b"door";
     let sha256 = crypto::sha(bytes);
+    before
+        .0
+        .execute_batch(&format!(
+            "INSERT INTO phones_devices \
+             (id,name,number,model,app_version,key_sha256,paired_at,paired_by,last_seen_at) \
+             VALUES ('phone_adopted','Dispatch','+12065550100','Pixel 8a','1.0.0','{key}',2000,\
+             '{owner}',2000); \
+             UPDATE phones_change SET last=1; \
+             INSERT INTO phones_texts \
+             (id,device_id,direction,origin,number,body,at,sent_by,status,status_at,attempt,change) \
+             VALUES ('text_adopted','phone_adopted','out','dispatch','+14255550199','On my way',\
+             3000,'{owner}','waiting',3000,1,1); \
+             INSERT INTO phones_files (id,text_id,added_by,name,mime,size,sha256,added_at) \
+             VALUES ('file_adopted','text_adopted','{owner}','door.png','image/png',4,'{sha256}',\
+             3000);"
+        ))
+        .unwrap();
+    drop(before);
     std::fs::write(kept(&db, &dsp).join(&sha256), bytes).unwrap();
-    let file = ReportedFile {
-        name: "door.png".into(),
-        mime: "image/png".into(),
-        size: 4,
-        on_phone: false,
-    };
-    let picture = db
-        .phones_add_file(&dsp, &owner, &file, &sha256, 3_000)
-        .unwrap();
-    let waiting = db
-        .phones_send(
-            &dsp,
-            &outgoing("4255550199", vec![picture.id.clone()], &owner),
-            3_000,
-        )
-        .unwrap();
+    let phone = db.phones_device(&dsp, "phone_adopted").unwrap().unwrap();
 
     // The server starts on a build where Communications owns them: its migrations 7 and 8 run
-    // over it.
-    migrate(&db, &dsp, &[7, 8, 19]);
+    // over it, with the later ones adding columns its code writes (19, 23).
+    migrate(&db, &dsp, &[7, 8, 19, 23]);
 
     // The phone's key still works, its text still waits for it with its picture, and the
     // picture's bytes are still there to fetch.
@@ -73,9 +74,12 @@ fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_p
             )
         })
         .collect();
-    assert_eq!(outbox, [(waiting.id, vec![picture.id.clone()])]);
+    assert_eq!(
+        outbox,
+        [("text_adopted".to_owned(), vec!["file_adopted".to_owned()])]
+    );
     let fetched = db
-        .phones_outgoing_file(&dsp, &phone.id, &picture.id)
+        .phones_outgoing_file(&dsp, &phone.id, "file_adopted")
         .unwrap()
         .and_then(|file| file.file.sha256)
         .expect("its picture, kept");
@@ -83,10 +87,10 @@ fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_p
     assert_eq!(read, bytes);
     // A code made now pairs by its own ID, as migration 8's columns keep it.
     let made = db
-        .phones_new_pairing(&dsp, &owner, &format!("{CODE}-2"), 4_000)
+        .phones_new_pairing(&dsp, None, &owner, &format!("{CODE}-2"), 4_000)
         .unwrap();
     assert_eq!(
-        db.phones_pairing(&dsp, &made, 4_000).unwrap(),
+        db.phones_pairing(&dsp, None, &made, 4_000).unwrap(),
         PairingStatus::Waiting
     );
 }

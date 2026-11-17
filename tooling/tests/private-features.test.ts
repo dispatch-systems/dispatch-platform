@@ -16,9 +16,13 @@ test('the dashboard build keeps custom entries, lazy code, styles and resources 
   };
   write('app/frontend/index.html', '<script type="module" src="/public.ts"></script>');
   write('app/frontend/shared.ts', 'export const shared = "shared-runtime";');
+  // A public component with styles of its own, which a custom feature reuses too.
+  write('app/frontend/card.ts', `import './card.css'; export const card = 'public_card';`);
+  write('app/frontend/card.css', '.public-card { color: green; }');
   write(
     'app/frontend/public.ts',
     `import { shared } from './shared'; document.title = shared;
+     window.openCard = () => import('./card');
      window.openOwner = () => import(${JSON.stringify(path.join(root, 'core/platform_owner/api/runtime.ts'))});`,
   );
   write('core/platform_owner/api/runtime.ts', 'export const label = "PLATFORM_ONLY_LABEL";');
@@ -38,7 +42,8 @@ test('the dashboard build keeps custom entries, lazy code, styles and resources 
       `import './private.css';
        import picture from './private.svg';
        import { shared } from '../../../../../app/frontend/shared';
-       export const feature = { name: '${owner}_${name}', label: '${name.toUpperCase()}_PRIVATE_LABEL', picture, shared, page: () => import('./page') };`,
+       import { card } from '../../../../../app/frontend/card';
+       export const feature = { name: '${owner}_${name}', label: '${name.toUpperCase()}_PRIVATE_LABEL', picture, shared, card, page: () => import('./page') };`,
     );
     write(`${dir}/page.ts`, `import './lazy.css'; export const page = '${name}_private_page';`);
     write(`${dir}/private.css`, `.${name}-private { color: red; }`);

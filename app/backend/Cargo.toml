@@ -23,6 +23,7 @@ test = false
 # it. A test that needs the whole product asks for `default`. A feature's own lists the features its crate uses.
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
 default = [
+    "cjf87gqd_hr_line",
     "communications",
     "conduct",
     "daily_performance",
@@ -41,6 +42,7 @@ default = [
     "vans",
     "weekly_scorecard",
 ]
+cjf87gqd_hr_line = ["dep:dispatch-cjf87gqd-hr-line", "communications"]
 communications = ["dep:dispatch-communications", "slack"]
 conduct = ["dep:dispatch-conduct"]
 daily_performance = ["dep:dispatch-daily-performance"]
@@ -70,6 +72,7 @@ dispatch-host = { path = "../../ops/host-manager" }
 dispatch-mcp = { path = "../../mcp", default-features = false }
 dispatch-paycom = { path = "../../collectors/paycom" }
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
+dispatch-cjf87gqd-hr-line = { path = "../../features/custom/cjf87gqd/hr_line", optional = true }
 dispatch-communications = { path = "../../features/communications", optional = true }
 dispatch-conduct = { path = "../../features/conduct", optional = true }
 dispatch-daily-performance = { path = "../../features/daily_performance", optional = true }

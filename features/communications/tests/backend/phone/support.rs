@@ -22,7 +22,8 @@ pub fn store() -> (impl Drop, Store, String) {
 /// A phone paired by a code the DSP's owner made, with the key `key`.
 pub fn paired(db: &Store, dsp: &str, key: &str, number: &str) -> Device {
     let owner = testing::a_user(db);
-    db.phones_new_pairing(dsp, &owner, CODE, 1_000).unwrap();
+    db.phones_new_pairing(dsp, None, &owner, CODE, 1_000)
+        .unwrap();
     let pairing = Pairing {
         number,
         model: "Pixel 8a",
@@ -56,6 +57,7 @@ pub fn outgoing(to: &str, files: Vec<String>, by: &str) -> Outgoing {
         files,
         gif: None,
         by: by.into(),
+        line: None,
     }
 }
 /// Where the DSP's pictures' bytes are kept, made private as the phone side makes it.

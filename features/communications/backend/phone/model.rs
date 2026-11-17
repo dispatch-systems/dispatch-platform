@@ -187,6 +187,8 @@ pub struct Outgoing {
     pub gif: Option<MessageGif>,
     /// Who at the DSP sends it.
     pub by: String,
+    /// The line it goes from, by its feature's name: none for Dispatch Phone's own.
+    pub line: Option<String>,
 }
 
 /// A picture someone adds for a text not sent yet.

@@ -949,6 +949,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "chrono-tz",
+ "dispatch-cjf87gqd-hr-line",
  "dispatch-communications",
  "dispatch-conduct",
  "dispatch-core",
@@ -982,6 +983,14 @@ dependencies = [
  "tokio",
  "ts-rs",
  "url",
+]
+
+[[package]]
+name = "dispatch-cjf87gqd-hr-line"
+version = "0.0.0"
+dependencies = [
+ "dispatch-communications",
+ "dispatch-core",
 ]
 
 [[package]]

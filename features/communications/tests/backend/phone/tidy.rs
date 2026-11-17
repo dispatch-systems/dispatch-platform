@@ -105,13 +105,15 @@ fn bytes_left_arriving_an_hour_go() {
 fn codes_expired_go_though_no_bytes_can_be_looked_at() {
     let (_root, db, dsp) = store();
     let owner = testing::a_user(&db);
-    let code = db.phones_new_pairing(&dsp, &owner, CODE, 1_000).unwrap();
+    let code = db
+        .phones_new_pairing(&dsp, None, &owner, CODE, 1_000)
+        .unwrap();
     // Something else stands where the bytes are kept, so the folder can't be read.
     let folder = kept(&db, &dsp);
     std::fs::remove_dir(&folder).unwrap();
     std::fs::write(&folder, b"").unwrap();
     let_go(&db, &dsp, 2_000);
     // Asked how it stood while it still worked, a code kept is waiting; one let go, expired.
-    let status = db.phones_pairing(&dsp, &code, 1_000).unwrap();
+    let status = db.phones_pairing(&dsp, None, &code, 1_000).unwrap();
     assert_eq!(status, PairingStatus::Expired, "the code goes anyway");
 }

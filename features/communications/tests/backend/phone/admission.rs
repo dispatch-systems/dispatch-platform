@@ -106,7 +106,8 @@ impl Served {
 /// uses one fixed code per DSP; a DSP's second phone needs its own.
 fn paired_by(db: &Store, dsp: &str, owner: &str, code: &str, key: &str, number: &str) -> Device {
     let code = crypto::sha(code);
-    db.phones_new_pairing(dsp, owner, &code, 1_000).unwrap();
+    db.phones_new_pairing(dsp, None, owner, &code, 1_000)
+        .unwrap();
     db.phones_pair(
         dsp,
         &code,
@@ -540,7 +541,7 @@ async fn a_removed_phone_is_refused(fixture: &Fixture, served: &Served) {
     } = fixture;
     let (of, device) = (a.clone(), phone_a.id.clone());
     testing::requested(filing::changing(state, a, move |db| {
-        let (_, failed) = db.phones_remove(&of, &device, now())?;
+        let (_, failed) = db.phones_remove(&of, None, &device, now())?;
         Ok(((), failed))
     }))
     .await
@@ -768,7 +769,7 @@ async fn a_grant_reauthorizes_a_phone_removed_while_queued(fixture: &Fixture, ca
     removed.drive_to(127).await;
     let (of, device) = (a.clone(), phone_c.id.clone());
     testing::requested(filing::changing(state, a, move |db| {
-        let (_, failed) = db.phones_remove(&of, &device, now())?;
+        let (_, failed) = db.phones_remove(&of, None, &device, now())?;
         Ok(((), failed))
     }))
     .await
@@ -798,7 +799,7 @@ async fn removal_wakes_a_registered_phone(fixture: &Fixture, capacity: usize) {
     removed.drive_to(127).await;
     let (of, device) = (b.clone(), phone_d.id.clone());
     testing::requested(filing::changing(state, b, move |db| {
-        let (_, failed) = db.phones_remove(&of, &device, now())?;
+        let (_, failed) = db.phones_remove(&of, None, &device, now())?;
         Ok(((), failed))
     }))
     .await

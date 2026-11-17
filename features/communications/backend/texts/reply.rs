@@ -62,6 +62,7 @@ pub async fn send(
             files,
             gif,
             by: c.auth.user.id.clone(),
+            line: None,
         };
         let sent = outbox::send(db, &c.dsp.id, &outgoing, now())?;
         db.queued_communications_text(&c.dsp.id, &sent.id, &at)?;

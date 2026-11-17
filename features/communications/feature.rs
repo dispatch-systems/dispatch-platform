@@ -5,6 +5,9 @@ mod api;
 mod backend;
 mod integrations;
 
+/// Another feature's line of the DSP's phones, managed from its own card.
+pub use api::lines;
+
 /// How each member has the page look, as Settings keeps it for them.
 pub use api::display::{
     BubbleShape, EmployeeColor, LineSpacing, ListPreview, ListRows, ListWidth, MessageDisplay,
@@ -234,6 +237,13 @@ pub const FEATURE: Feature = Feature {
                 apply: Sql(include_str!(
                     "migrations/dsp/0022_communications_origins.sql"
                 )),
+            },
+            // The line each phone serves, and each code pairs a phone to: Dispatch Phone's own, or
+            // another feature's.
+            Migration {
+                id: 23,
+                name: "phones_lines",
+                apply: Code(backend::phone::storage::add_lines),
             },
         ],
     }],

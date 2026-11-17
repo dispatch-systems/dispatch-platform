@@ -10,7 +10,12 @@ export type SessionResponse = { user: PublicUser, csrf: string, dsps: Array<DspS
 /**
  * Private platform slots and labels, sent only to a verified platform owner.
  */
-platformFrontend?: string, development: boolean, environment: Environment, release: string, providerMode: ProviderMode, source: RuntimeSource, security: SecurityStatus,
+platformFrontend?: string,
+/**
+ * Whether a custom feature this account sees loads outside sources, which the policy of a
+ * page loaded before signing in leaves out: the page loads again once they're in.
+ */
+customSources: boolean, development: boolean, environment: Environment, release: string, providerMode: ProviderMode, source: RuntimeSource, security: SecurityStatus,
 /**
  * Host-issued observation and support sessions can only inspect the dashboard.
  */

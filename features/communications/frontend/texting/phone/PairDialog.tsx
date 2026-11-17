@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { countdown } from '../../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading, Modal } from '../../../../../core/shell/frontend/ui/index.js';
-import { newPairing, usePairing } from '../../../api/client.js';
+import type { LinePhones } from '../../../api/client.js';
 import type { PhoneApp, PhonePairing } from '../../../api/index.js';
 
 /** How often the dialog asks after its code until the server says it paired, was replaced or
@@ -13,14 +13,22 @@ const POLL = 3_000;
 // at a press. It closes itself once its own code paired a phone. While the DSP's address hands out
 // the app, installing it comes first: its download as a picture a phone's camera reads.
 
-export function PairDialog({ app, onClose }: { app?: PhoneApp; onClose: () => void }) {
+export function PairDialog({
+  phones,
+  app,
+  onClose,
+}: {
+  phones: LinePhones;
+  app?: PhoneApp;
+  onClose: () => void;
+}) {
   const [pairing, setPairing] = useState<PhonePairing>();
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
   const make = () => {
     setError('');
     setPairing(undefined);
-    newPairing().then(setPairing, (failure: Error) => setError(failure.message));
+    phones.newPairing().then(setPairing, (failure: Error) => setError(failure.message));
   };
   useEffect(make, []);
   useEffect(() => {
@@ -29,7 +37,7 @@ export function PairDialog({ app, onClose }: { app?: PhoneApp; onClose: () => vo
   }, []);
   const lapsed = pairing !== undefined && now >= pairing.expiresAt;
   const [asking, setAsking] = useState(true);
-  const { data, refresh } = usePairing(pairing?.id, asking ? POLL : 0);
+  const { data, refresh } = phones.usePairing(pairing?.id, asking ? POLL : 0);
   const status = data?.status;
   useEffect(() => setAsking(status === undefined || status === 'waiting'), [status]);
   // Expired here, it asks once more: a phone may have paired since it last asked.

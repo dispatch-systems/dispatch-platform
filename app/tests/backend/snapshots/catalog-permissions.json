@@ -32,7 +32,8 @@
     ["live_route_data.manage", "Manage Live Route Data"],
     ["phones.manage", "Manage Phones"],
     ["conduct.use", "Use Conduct"],
-    ["conduct.manage", "Manage Conduct"]
+    ["conduct.manage", "Manage Conduct"],
+    ["cjf87gqd_hr_line.phones", "Manage HR Line Phones"]
   ],
   "implied": [
     ["timecard.manage", "timecard.view"],

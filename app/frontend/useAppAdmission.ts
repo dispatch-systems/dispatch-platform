@@ -84,12 +84,9 @@ export function useAppAdmission(
         const next = await reading;
         if (request !== sessionRequest.current) return;
         // A signed-out document cannot include an owner's private page sources in its
-        // CSP. Signing in or completing MFA needs a fresh document before admission.
-        if (
-          afterLogin &&
-          (!next.security.required || next.security.verified) &&
-          (next.platformFrontend || next.dsps.some((dsp) => dsp.customFeatures?.length))
-        ) {
+        // CSP. Signing in or completing MFA to a custom feature's sources needs a fresh
+        // document before admission.
+        if (afterLogin && next.customSources) {
           location.reload();
           return;
         }

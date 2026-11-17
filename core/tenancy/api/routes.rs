@@ -48,16 +48,29 @@ fn site(db: &Store, _: &Anyone, input: &Input) -> Result<Reply> {
 
 fn session(db: &Store, user: &User, _: &Input) -> Result<Reply> {
     let security = db.security_status(user)?;
+    let verified = !security.required || security.verified;
+    let dsps = if verified {
+        summaries(db, user)?
+    } else {
+        Vec::new()
+    };
+    // A platform owner sees every custom feature; anyone else, their DSPs' own.
+    let sees = |owner: &str| {
+        user.user.platform_owner
+            || dsps
+                .iter()
+                .any(|summary| summary.dsp.custom_id.as_deref() == Some(owner))
+    };
+    let custom_sources = verified
+        && crate::manifest::registry()
+            .page_sources()
+            .any(|(feature, _)| feature.owner.is_some_and(sees));
     Reply::of(&SessionResponse {
         user: user.user.clone(),
         csrf: user.csrf.clone(),
-        dsps: if security.required && !security.verified {
-            Vec::new()
-        } else {
-            summaries(db, user)?
-        },
+        dsps,
         platform_frontend: (user.user.platform_owner
-            && (!security.required || security.verified)
+            && verified
             && crate::manifest::registry()
                 .features
                 .iter()
@@ -65,6 +78,7 @@ fn session(db: &Store, user: &User, _: &Input) -> Result<Reply> {
         .then(|| crate::server::http::custom_frontend(user.state, "platform"))
         .flatten()
         .map(|(url, _)| url),
+        custom_sources,
         development: db.config.development,
         environment: db.config.environment,
         release: db.config.release.clone(),

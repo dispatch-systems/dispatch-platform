@@ -1,4 +1,53 @@
 {
+  "cjf87gqd_hr_line": {
+    "directory": "features/custom/cjf87gqd/hr_line",
+    "owner": "cjf87gqd",
+    "collectors": [],
+    "depends_on": [
+      "communications"
+    ],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "cjf87gqd_hr_line.phones"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [
+          [
+            "cjf87gqd_hr_line.phones.",
+            "connections"
+          ]
+        ],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "integrations": [],
+      "live": [],
+      "maintenance": [],
+      "on": [],
+      "people": [],
+      "routes": [
+        "GET /api/dsp/cjf87gqd-hr-line/phones",
+        "POST /api/dsp/cjf87gqd-hr-line/phones/pairing",
+        "GET /api/dsp/cjf87gqd-hr-line/phones/pairing/{id}",
+        "POST /api/dsp/cjf87gqd-hr-line/phones/{id}/rename",
+        "POST /api/dsp/cjf87gqd-hr-line/phones/{id}/remove"
+      ],
+      "exposes": [],
+      "env": [],
+      "settings": []
+    },
+    "switch": "cjf87gqd_hr_line",
+    "mandatory": false,
+    "tables": {},
+    "subfeatures": []
+  },
   "communications": {
     "directory": "features/communications",
     "owner": null,

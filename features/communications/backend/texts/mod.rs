@@ -29,20 +29,22 @@ use dispatch_core::{
 /// The minutes in a day: how far past its midnight a day may begin, as one clocks skip whole.
 const DAY_MINUTES: i64 = 24 * 60;
 
-/// The DSP's dispatch phones, and whether each is online: none until one is paired.
+/// The DSP's dispatch phones, Dispatch Phone's own line's, and whether each is online: none until
+/// one is paired.
 pub fn phones(db: &Store, dsp: &str) -> Result<Vec<DispatchPhone>> {
     let now = db::now();
     Ok(db
-        .phones_devices(dsp)?
+        .phones_devices(dsp, None)?
         .into_iter()
         .map(|device| dispatch_phone(device, now))
         .collect())
 }
-/// The DSP's dispatch phones an app holds, leaving out the demo's stand-in.
+/// The DSP's dispatch phones an app holds, Dispatch Phone's own line's, leaving out the demo's
+/// stand-in.
 pub fn held_phones(db: &Store, dsp: &str) -> Result<Vec<DispatchPhone>> {
     let now = db::now();
     Ok(db
-        .phones_devices(dsp)?
+        .phones_devices(dsp, None)?
         .into_iter()
         .filter(|device| !device.stand_in)
         .map(|device| dispatch_phone(device, now))

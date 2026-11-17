@@ -48,6 +48,25 @@ pub(crate) fn add_app_version_codes(db: &Db) -> Result<()> {
 pub(crate) fn add_health(db: &Db) -> Result<()> {
     add_column(db, "phones_devices", "health", "TEXT")
 }
+/// Communications' migration 23: the line each phone serves (`line`), and the line each code
+/// pairs a phone to, with the name its phones are given (`line_name`): none for Dispatch Phone's
+/// own, as every phone and code before was.
+pub(crate) fn add_lines(db: &Db) -> Result<()> {
+    add_column(db, "phones_devices", "line", "TEXT")?;
+    add_column(db, "phones_pairings", "line", "TEXT")?;
+    add_column(db, "phones_pairings", "line_name", "TEXT")
+}
+
+/// A line of the DSP's phones other than Dispatch Phone's own: another feature's, by its name
+/// (`id`), whose phones are named for it as they pair (`name`, then `name 2` and so on). Dispatch
+/// Phone's own line is none, its phones named Dispatch, then Phone 2 and so on. Each phone serves
+/// the line of the code that paired it, always: only that line's texts are filed, counted and
+/// answered from it, and only that line sends from it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Line<'a> {
+    pub id: &'a str,
+    pub name: &'a str,
+}
 
 /// One of the DSP's phones, as kept.
 #[derive(Clone, Debug, PartialEq)]
@@ -65,6 +84,8 @@ pub struct Device {
     pub health: Option<Health>,
     /// Whether it's a stand-in, the demo's, which no app holds.
     pub stand_in: bool,
+    /// The line it serves, by its feature's name: none for Dispatch Phone's own.
+    pub line: Option<String>,
 }
 impl Device {
     fn of(row: &Value) -> Self {
@@ -82,6 +103,7 @@ impl Device {
                 .as_str()
                 .and_then(|health| serde_json::from_str(health).ok()),
             stand_in: n(row, "stand_in") == 1,
+            line: row["line"].as_str().map(str::to_owned),
         }
     }
     /// Whether it runs `app` already.
@@ -100,6 +122,14 @@ impl Device {
     /// last that was.
     pub fn noting(&self, now: i64) -> bool {
         self.last_seen_at.is_none_or(|at| now - at >= SEEN_MS)
+    }
+    /// What the activity log calls `what` done to the phone: `phones.<what>` for one of Dispatch
+    /// Phone's own line, `<line>.phones.<what>` for another feature's, which words it.
+    pub fn action(&self, what: &str) -> String {
+        match &self.line {
+            None => format!("phones.{what}"),
+            Some(line) => format!("{line}.phones.{what}"),
+        }
     }
     /// How the phone reads in the activity log: its name, and its number once it said it.
     pub fn logged(&self) -> String {
@@ -127,7 +157,9 @@ pub struct AppVersion {
 
 /// What the phone side keeps of the DSP's phones and the code that pairs the next.
 pub trait DeviceStore {
-    fn phones_devices(&self, dsp: &str) -> Result<Vec<Device>>;
+    /// The phones of the line `line`, by its feature's name, or of Dispatch Phone's own (none).
+    fn phones_devices(&self, dsp: &str, line: Option<&str>) -> Result<Vec<Device>>;
+    /// The phone `id`, of any line.
     fn phones_device(&self, dsp: &str, id: &str) -> Result<Option<Device>>;
     /// The phone holding the key `key_sha256`, not removed.
     fn phones_device_by_key(&self, dsp: &str, key_sha256: &str) -> Result<Option<Device>>;
@@ -137,15 +169,36 @@ pub trait DeviceStore {
     fn phones_app_version(&self, dsp: &str, device: &str, app: &AppVersion) -> Result<()>;
     /// Notes how the phone says it stands.
     fn phones_health(&self, dsp: &str, device: &str, health: &Health) -> Result<()>;
-    fn phones_rename(&self, dsp: &str, id: &str, name: &str) -> Result<Device>;
-    /// Removes the phone: its key works no more, and the texts still waiting on it fail, as no
-    /// phone would send them. The phone as it was, and the texts that failed.
-    fn phones_remove(&self, dsp: &str, id: &str, at: i64) -> Result<(Device, Vec<String>)>;
-    /// Keeps the code that pairs the next phone, replacing any not used yet: its ID.
-    fn phones_new_pairing(&self, dsp: &str, by: &str, code_sha256: &str, at: i64)
-    -> Result<String>;
-    /// How the code `id` stands at `at`.
-    fn phones_pairing(&self, dsp: &str, id: &str, at: i64) -> Result<PairingStatus>;
+    /// Renames the phone `id` of the line `line`: refused as `phones_not_found` for another's.
+    fn phones_rename(&self, dsp: &str, line: Option<&str>, id: &str, name: &str) -> Result<Device>;
+    /// Removes the phone `id` of the line `line`: its key works no more, and the texts still
+    /// waiting on it fail, as no phone would send them. The phone as it was, and the texts that
+    /// failed. Refused as `phones_not_found` for another line's.
+    fn phones_remove(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        id: &str,
+        at: i64,
+    ) -> Result<(Device, Vec<String>)>;
+    /// Keeps the code that pairs the next phone to `line`, or to Dispatch Phone's own (none),
+    /// replacing any of that line's not used yet: its ID.
+    fn phones_new_pairing(
+        &self,
+        dsp: &str,
+        line: Option<Line>,
+        by: &str,
+        code_sha256: &str,
+        at: i64,
+    ) -> Result<String>;
+    /// How the code `id` of the line `line` stands at `at`: one of another line's as expired.
+    fn phones_pairing(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        id: &str,
+        at: i64,
+    ) -> Result<PairingStatus>;
     /// Pairs a phone by the code `code_sha256`, giving it the key `key_sha256`: refused as
     /// `phones_pairing_invalid` for a code used, replaced, expired or unknown.
     fn phones_pair(
@@ -183,11 +236,12 @@ fn device(store: &Store, dsp: &str, column: &str, value: &str) -> Result<Option<
 }
 
 impl DeviceStore for Store {
-    fn phones_devices(&self, dsp: &str) -> Result<Vec<Device>> {
+    fn phones_devices(&self, dsp: &str, line: Option<&str>) -> Result<Vec<Device>> {
         let db = self.dsp(dsp)?;
         let rows = db.all(
-            "SELECT * FROM phones_devices WHERE removed_at IS NULL ORDER BY paired_at,id",
-            [],
+            "SELECT * FROM phones_devices WHERE removed_at IS NULL AND line IS ? \
+             ORDER BY paired_at,id",
+            [line],
         )?;
         Ok(rows.iter().map(Device::of).collect())
     }
@@ -218,20 +272,27 @@ impl DeviceStore for Store {
         )?;
         Ok(())
     }
-    fn phones_rename(&self, dsp: &str, id: &str, name: &str) -> Result<Device> {
+    fn phones_rename(&self, dsp: &str, line: Option<&str>, id: &str, name: &str) -> Result<Device> {
         let db = self.dsp(dsp)?;
         let changed = db.exec(
-            "UPDATE phones_devices SET name=? WHERE id=? AND removed_at IS NULL",
-            params![name, id],
+            "UPDATE phones_devices SET name=? WHERE id=? AND removed_at IS NULL AND line IS ?",
+            params![name, id, line],
         )?;
         ensure(changed == 1, "phones_not_found", 404)?;
         drop(db);
         self.phones_device(dsp, id)?
             .ok_or_else(|| Error::new("phones_not_found", 404))
     }
-    fn phones_remove(&self, dsp: &str, id: &str, at: i64) -> Result<(Device, Vec<String>)> {
+    fn phones_remove(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        id: &str,
+        at: i64,
+    ) -> Result<(Device, Vec<String>)> {
         let device = self
             .phones_device(dsp, id)?
+            .filter(|device| device.line.as_deref() == line)
             .ok_or_else(|| Error::new("phones_not_found", 404))?;
         let db = self.dsp(dsp)?;
         let failed = db.transaction(|| {
@@ -246,31 +307,40 @@ impl DeviceStore for Store {
     fn phones_new_pairing(
         &self,
         dsp: &str,
+        line: Option<Line>,
         by: &str,
         code_sha256: &str,
         at: i64,
     ) -> Result<String> {
         let id = crypto::id("pairing")?;
+        let (line, line_name) = (line.map(|line| line.id), line.map(|line| line.name));
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             db.exec(
                 "UPDATE phones_pairings SET replaced_at=? \
-                 WHERE used_at IS NULL AND replaced_at IS NULL",
-                [at],
+                 WHERE used_at IS NULL AND replaced_at IS NULL AND line IS ?",
+                params![at, line],
             )?;
             db.exec(
-                "INSERT INTO phones_pairings (id,code_sha256,created_by,created_at,expires_at) \
-                 VALUES (?,?,?,?,?)",
-                params![id, code_sha256, by, at, at + PAIRING_MS],
+                "INSERT INTO phones_pairings \
+                 (id,code_sha256,created_by,created_at,expires_at,line,line_name) \
+                 VALUES (?,?,?,?,?,?,?)",
+                params![id, code_sha256, by, at, at + PAIRING_MS, line, line_name],
             )?;
             Ok(())
         })?;
         Ok(id)
     }
-    fn phones_pairing(&self, dsp: &str, id: &str, at: i64) -> Result<PairingStatus> {
+    fn phones_pairing(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        id: &str,
+        at: i64,
+    ) -> Result<PairingStatus> {
         let found = self.dsp(dsp)?.one(
-            "SELECT used_at,replaced_at,expires_at FROM phones_pairings WHERE id=?",
-            [id],
+            "SELECT used_at,replaced_at,expires_at FROM phones_pairings WHERE id=? AND line IS ?",
+            params![id, line],
         )?;
         Ok(match found {
             Some(code) if code["used_at"].is_i64() => PairingStatus::Paired,
@@ -293,24 +363,26 @@ impl DeviceStore for Store {
         db.transaction(|| {
             let code = db
                 .one(
-                    "SELECT created_by FROM phones_pairings WHERE code_sha256=? \
+                    "SELECT created_by,line,line_name FROM phones_pairings WHERE code_sha256=? \
                      AND used_at IS NULL AND replaced_at IS NULL AND expires_at>?",
                     params![code_sha256, at],
                 )?
                 .ok_or_else(|| Error::new("phones_pairing_invalid", 401))?;
+            let line = code["line"].as_str();
             let count = db.count(
-                "SELECT count(*) FROM phones_devices WHERE removed_at IS NULL",
-                [],
+                "SELECT count(*) FROM phones_devices WHERE removed_at IS NULL AND line IS ?",
+                [line],
             )?;
-            let name = if count == 0 {
-                "Dispatch".to_owned()
-            } else {
-                format!("Phone {}", count + 1)
+            let name = match (code["line_name"].as_str(), count) {
+                (None, 0) => "Dispatch".to_owned(),
+                (None, _) => format!("Phone {}", count + 1),
+                (Some(name), 0) => name.to_owned(),
+                (Some(name), _) => format!("{name} {}", count + 1),
             };
             db.exec(
                 "INSERT INTO phones_devices \
-                 (id,name,number,model,app_version,key_sha256,paired_at,paired_by,last_seen_at) \
-                 VALUES (?,?,?,?,?,?,?,?,?)",
+                 (id,name,number,model,app_version,key_sha256,paired_at,paired_by,last_seen_at,\
+                 line) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 params![
                     id,
                     name,
@@ -320,7 +392,8 @@ impl DeviceStore for Store {
                     key_sha256,
                     at,
                     s(&code, "created_by"),
-                    at
+                    at,
+                    line
                 ],
             )?;
             db.exec(

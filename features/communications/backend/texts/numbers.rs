@@ -17,7 +17,7 @@ pub struct Numbers {
 impl Numbers {
     pub fn read(db: &Store, dsp: &str) -> Result<Self> {
         let phones = db
-            .phones_devices(dsp)?
+            .phones_devices(dsp, None)?
             .into_iter()
             .map(|device| (device.id, device.name))
             .collect();

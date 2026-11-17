@@ -2,8 +2,8 @@
 //! phone reports, each kept once, and how Dispatch's texts go.
 use super::*;
 use crate::backend::phone::{
-    model::{Direction, EXPIRY_MS, Origin, PHONE_OFFLINE, Status},
-    storage::{DeviceStore, FileStore, Pairing, ReportedFile},
+    model::{Direction, EXPIRY_MS, Origin, Outgoing, PHONE_OFFLINE, Status},
+    storage::{DeviceStore, FileStore, Line, Pairing, ReportedFile},
     support::{outgoing, paired, reported, store},
 };
 use dispatch_core::testing;
@@ -51,7 +51,7 @@ fn a_text_reported_twice_is_kept_once() {
     assert!(later.files[0].kept);
     assert!(later.change > other.change);
     // Another phone can't send bytes for it.
-    db.phones_new_pairing(&dsp, &testing::a_user(&db), "other", 7_000)
+    db.phones_new_pairing(&dsp, None, &testing::a_user(&db), "other", 7_000)
         .unwrap();
     let pairing = Pairing {
         number: "",
@@ -144,9 +144,75 @@ fn how_a_text_went_only_moves_on() {
     assert!(!db.phones_status(&dsp, "phone_other", &foreign).unwrap());
     // With no phone paired, a text isn't tried again: no phone would send it.
     assert!(status(&other.id, theirs, Status::Failed));
-    db.phones_remove(&dsp, &phone.id, 11_000).unwrap();
+    db.phones_remove(&dsp, None, &phone.id, 11_000).unwrap();
     let orphan = db.phones_retry(&dsp, &other.id, 12_000);
     assert_eq!(orphan.unwrap_err().code.as_str(), "phones_none");
+}
+
+#[test]
+fn a_text_goes_and_is_tried_again_only_from_a_phone_of_its_own_line() {
+    let (_root, db, dsp) = store();
+    let owner = testing::a_user(&db);
+    let desk = Line {
+        id: "front_desk",
+        name: "Front Desk",
+    };
+    let on_desk = |to: &str| Outgoing {
+        line: Some("front_desk".into()),
+        ..outgoing(to, vec![], &owner)
+    };
+    // With only Dispatch Phone's own, another line has none to send from.
+    let dispatch = paired(&db, &dsp, "key-1", "2065550100");
+    let none = db.phones_send(&dsp, &on_desk("4255550199"), 2_000);
+    assert_eq!(none.unwrap_err().code.as_str(), "phones_none");
+    // Its phone online, and the last to hear from the number, never sends Dispatch Phone's.
+    db.phones_new_pairing(&dsp, Some(desk), &owner, "desk", 3_000)
+        .unwrap();
+    let pairing = Pairing {
+        number: "2065550111",
+        model: "Pixel",
+        app_version: "1",
+    };
+    let desk_phone = db
+        .phones_pair(&dsp, "desk", "key-desk", &pairing, 3_000)
+        .unwrap();
+    db.phones_report(
+        &dsp,
+        &desk_phone.id,
+        vec![reported("x", "+14255550199", 4_000, 0)],
+    )
+    .unwrap();
+    db.phones_seen(&dsp, &desk_phone.id, 300_000).unwrap();
+    let ours = db
+        .phones_send(&dsp, &outgoing("4255550199", vec![], &owner), 300_000)
+        .unwrap();
+    assert_eq!(ours.phone, dispatch.id);
+    let theirs = db
+        .phones_send(&dsp, &on_desk("4255550199"), 300_000)
+        .unwrap();
+    assert_eq!(theirs.phone, desk_phone.id);
+    // Each failed, each is tried again from its own line's, the other's online or not.
+    for (text, phone) in [(&ours, &dispatch.id), (&theirs, &desk_phone.id)] {
+        let attempt = db
+            .phones_outbox(&dsp, phone)
+            .unwrap()
+            .into_iter()
+            .find(|(queued, _)| queued.id == text.id)
+            .unwrap()
+            .1;
+        let failed = StatusReport {
+            id: text.id.clone(),
+            attempt,
+            status: Status::Failed,
+            at: 300_001,
+            error: None,
+        };
+        assert!(db.phones_status(&dsp, phone, &failed).unwrap());
+        assert_eq!(
+            db.phones_retry(&dsp, &text.id, 300_002).unwrap().phone,
+            *phone
+        );
+    }
 }
 
 #[test]
@@ -156,7 +222,7 @@ fn a_text_goes_from_the_phone_that_last_texted_its_number_one_online_first() {
     let none = db.phones_send(&dsp, &outgoing("4255550199", vec![], &owner), 1_000);
     assert_eq!(none.unwrap_err().code.as_str(), "phones_none");
     let first = paired(&db, &dsp, "key-1", "2065550100");
-    db.phones_new_pairing(&dsp, &owner, "second", 3_000)
+    db.phones_new_pairing(&dsp, None, &owner, "second", 3_000)
         .unwrap();
     let pairing = Pairing {
         number: "2065550177",

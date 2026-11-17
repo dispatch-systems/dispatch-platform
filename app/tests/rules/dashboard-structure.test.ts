@@ -148,6 +148,8 @@ const entries = [
   'core/collection/frontend/live-collection.ts',
   // How a live reader reads, which Settings shows with the section that sets when it reads.
   'core/collection/frontend/live-reading.tsx',
+  // A line of Dispatch Phone's phones on DSP Connections, which another feature's line shows too.
+  'features/communications/frontend/texting/phone/PhonesCard.tsx',
 ];
 
 test('an owner reaches another only through a front door or public entry', () => {

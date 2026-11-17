@@ -5,7 +5,7 @@
 use crate::backend::{
     phone::{
         model::{Direction, Status},
-        storage::{DeviceStore, Pairing, Reported, StatusReport, TextStore},
+        storage::{DeviceStore, Line, Pairing, Reported, StatusReport, TextStore},
     },
     texts::filing,
 };
@@ -23,7 +23,7 @@ pub const NUMBER: &str = "+12065550100";
 /// Pairs the DSP's phone, as its app does with a code the DSP's owner made.
 pub(super) fn pair(db: &Store, dsp: &str) {
     let code = crypto::sha("phone-code");
-    db.phones_new_pairing(dsp, &testing::a_user(db), &code, now())
+    db.phones_new_pairing(dsp, None, &testing::a_user(db), &code, now())
         .unwrap();
     let pairing = Pairing {
         number: NUMBER,
@@ -33,10 +33,26 @@ pub(super) fn pair(db: &Store, dsp: &str) {
     let key = crypto::sha(crypto::random::<32>().unwrap());
     db.phones_pair(dsp, &code, &key, &pairing, now()).unwrap();
 }
+/// Pairs a phone to another feature's line, `line`, beside the DSP's own, as its app does with a
+/// code the DSP's owner made for that line: the phone's ID.
+pub fn pair_to(db: &Store, dsp: &str, line: Line, number: &str) -> String {
+    let code = crypto::sha(line.id);
+    db.phones_new_pairing(dsp, Some(line), &testing::a_user(db), &code, now())
+        .unwrap();
+    let pairing = Pairing {
+        number,
+        model: "Pixel 8a",
+        app_version: "1.0.0",
+    };
+    let key = crypto::sha(crypto::random::<32>().unwrap());
+    db.phones_pair(dsp, &code, &key, &pairing, now())
+        .unwrap()
+        .id
+}
 /// The DSP's phone, by its ID.
 fn phone(db: &Store, dsp: &str) -> Result<String> {
     Ok(db
-        .phones_devices(dsp)?
+        .phones_devices(dsp, None)?
         .into_iter()
         .next()
         .ok_or_else(|| Error::new("phones_none", 409))?
