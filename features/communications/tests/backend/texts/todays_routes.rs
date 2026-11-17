@@ -132,7 +132,7 @@ async fn todays_routes_lists_the_live_days_drivers_with_their_route_phone_and_te
         .iter()
         .map(|each| (each.with.name.as_str(), each.state))
         .collect();
-    assert_eq!(phones, [("Work phone 0103", Waiting)]);
+    assert_eq!(phones, [("(206) 555-0103", Waiting)]);
 
     // Once live route data holds no day, as after the stop, it lists nothing.
     phoned(&state, &dsp, None, Vec::new(), earlier).await;
