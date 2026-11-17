@@ -5,14 +5,13 @@ import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js'
 import type { ConductCategory } from '../../api/index.js';
 import { restoreCategory } from '../../api/client.js';
 import { TierBadge } from '../parts.js';
-import { tierShort } from '../tiers.js';
 import { useConduct } from '../useConduct.js';
 import { stepDownRule } from './StepDown.js';
 import { CategoryDialog } from './CategoryDialog.js';
 
 /**
  * The categories of writeup on Conduct's page of Settings: each in use, then those retired. One
- * in use opens from anywhere on its row; a phone says the tier it starts at and how it steps down
+ * in use opens from anywhere on its row; a phone puts the tier it starts at and how it steps down
  * in a line under its name.
  */
 export function CategoriesSection() {
@@ -35,7 +34,7 @@ export function CategoriesSection() {
           const count = (id: string) => overview.categoryCounts[id] ?? 0;
           return (
             <div className="table-wrap">
-              <table className="conduct-table conduct-category-table">
+              <table className="conduct-table conduct-stacked conduct-category-table">
                 <thead>
                   <tr>
                     <th>Category</th>
@@ -54,13 +53,7 @@ export function CategoriesSection() {
                       className={category.retired ? 'conduct-retired' : 'conduct-row'}
                       onClick={category.retired ? undefined : () => setOpen(category)}
                     >
-                      <td>
-                        {category.name}
-                        <div className="conduct-category-details">
-                          {category.retired ? 'Retired' : tierShort[category.startTier]}
-                          {` · ${stepDownRule(category.stepDown)}`}
-                        </div>
-                      </td>
+                      <td>{category.name}</td>
                       <td>
                         {category.retired ? (
                           <span className="muted">Retired</span>
