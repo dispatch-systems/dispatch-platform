@@ -14,7 +14,7 @@ import { DspBetaTab } from './DspBetaTab.js';
 import { DspFeaturesTab } from './DspFeaturesTab.js';
 import { dspState, stateLabels } from './status.js';
 
-export type DspAction = 'view' | 'code' | 'custom' | 'enable' | 'retry' | 'disable' | 'delete';
+export type DspAction = 'view' | 'code' | 'enable' | 'retry' | 'disable' | 'delete';
 
 // The chosen DSP across the page, a way back to them all and to another beside its name: who owns it
 // and its address, its features, its beta testers, its backups and what the platform may do to it.
@@ -60,11 +60,6 @@ export function DspDetail({
     [
       'code',
       dsp.code ? 'Change short code' : 'Set short code',
-      ['active', 'suspended'].includes(dsp.status),
-    ],
-    [
-      'custom',
-      dsp.customId ? 'Change custom ID' : 'Set custom ID',
       ['active', 'suspended'].includes(dsp.status),
     ],
     ['retry', 'Retry', dsp.status === 'failed'],

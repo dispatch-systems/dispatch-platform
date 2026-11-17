@@ -456,10 +456,18 @@ fn deleted_dsp_code(db: &Db) -> Result<()> {
     add_column(db, "dsp_deletions", "code", "TEXT")
 }
 // The ID each DSP's custom features are owned by, apart from its short code, so a feature's
-// folder never names the DSP: none until the platform owner gives it one. No two DSPs share one,
-// and a deletion keeps it until it finishes, as it keeps the code.
+// folder never names the DSP: a random one for each DSP, as each new DSP is given. No two DSPs
+// share one, and a deletion keeps it until it finishes, as it keeps the code.
 fn dsp_custom_ids(db: &Db) -> Result<()> {
     add_column(db, "dsps", "custom_id", "TEXT")?;
     db.0.execute_batch("CREATE UNIQUE INDEX IF NOT EXISTS dsps_custom_id ON dsps(custom_id)")?;
-    add_column(db, "dsp_deletions", "custom_id", "TEXT")
+    add_column(db, "dsp_deletions", "custom_id", "TEXT")?;
+    let dsps: Vec<(String,)> = db.query_as("SELECT id FROM dsps WHERE custom_id IS NULL", [])?;
+    for (dsp,) in dsps {
+        db.exec(
+            "UPDATE dsps SET custom_id=? WHERE id=?",
+            [crate::foundation::crypto::custom_id()?, dsp],
+        )?;
+    }
+    Ok(())
 }

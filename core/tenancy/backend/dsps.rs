@@ -26,8 +26,8 @@ use std::collections::HashMap;
 /// Marks a DSP's database as holding its people: set when it is made, and once theirs move
 /// into it.
 pub(crate) const DIRECTORY: &str = "accounts.directory";
-const INSERT_DSP: &str = "INSERT INTO dsps(id,name,environment,status,timezone,permanent,created_at) \
-    VALUES (?,?,?,'provisioning',?,?,?)";
+const INSERT_DSP: &str = "INSERT INTO dsps(id,name,environment,status,timezone,permanent,created_at,\
+    custom_id) VALUES (?,?,?,'provisioning',?,?,?,?)";
 // Who owns a DSP, from its directory: an active owner, else whoever holds the newest open
 // owner invitation.
 const OWNER_EMAIL: &str = "SELECT MIN(u.email) FROM memberships o JOIN users u ON u.id=o.user_id \
@@ -132,11 +132,18 @@ impl Store {
         self.set_profile(id, json!({"abbreviation": code.to_ascii_uppercase()}))?;
         Ok(code)
     }
-    /// Gives a DSP the custom ID `owner`, which owns the custom features in
-    /// `features/custom/<owner>/`: letters and digits, as a short code is, and free. Its short
-    /// code and name never appear in that folder. Refused as `custom_feature_transfer_required`
-    /// while a custom feature belongs to the ID it has, which would leave that feature's data.
+    /// Gives a DSP the custom ID `owner` in place of the random one it was made with, so it owns
+    /// the custom features in `features/custom/<owner>/`: letters and digits, as a short code
+    /// is, and free. Never in Production, where a DSP's ID stays the one it was made with; off
+    /// it, the demo DSPs and tests take known IDs, and a Dev DSP the ID of the Production DSP it
+    /// stands in for. Refused as `custom_feature_transfer_required` while a custom feature
+    /// belongs to the ID it has, which would leave that feature's data.
     pub fn set_custom_id(&self, id: &str, owner: &str) -> Result<String> {
+        ensure(
+            !self.config.environment.is_production(),
+            "custom_id_fixed",
+            403,
+        )?;
         let owner = owner.trim().to_ascii_lowercase();
         ensure(short_code(&owner), "invalid_custom_id", 400)?;
         self.ensure_not_deleting(id)?;
@@ -271,7 +278,8 @@ impl Store {
                 self.config.environment,
                 timezone,
                 permanent,
-                iso()
+                iso(),
+                crypto::custom_id()?
             ],
         )?;
         self.seed_features(&id)?;
@@ -763,3 +771,7 @@ pub fn ensure_listed(config: &Config, id: &str) -> Result<()> {
         404,
     )
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/dsps.rs"]
+mod tests;

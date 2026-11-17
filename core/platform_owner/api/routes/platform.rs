@@ -275,7 +275,8 @@ async fn set_code(state: Arc<State>, input: Input, access: PlatformOwner) -> Res
     .await
 }
 
-// Gives a DSP the custom ID its custom features are owned by, which names their folder.
+// Gives a DSP off Production a known custom ID in place of its random one: a demo or test DSP,
+// or a Dev DSP standing in for a Production one, so the custom features its folder holds show.
 async fn set_custom_id(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
     change_dsp(state, input, access, false, |db, dsp, owner, b| {
         v::fields(b, &["customId"])?;
