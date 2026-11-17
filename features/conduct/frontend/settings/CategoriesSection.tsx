@@ -12,8 +12,8 @@ import { CategoryDialog } from './CategoryDialog.js';
 
 /**
  * The categories of writeup on Conduct's page of Settings: each in use, then those retired. One
- * in use opens from anywhere on its row; a phone says where it starts and how it steps down in
- * a line under its name.
+ * in use opens from anywhere on its row; a phone says the tier it starts at and how it steps down
+ * in a line under its name.
  */
 export function CategoriesSection() {
   const { overview, error, refresh, take } = useConduct();
@@ -57,9 +57,7 @@ export function CategoriesSection() {
                       <td>
                         {category.name}
                         <div className="conduct-category-details">
-                          {category.retired
-                            ? 'Retired'
-                            : `Starts at ${tierShort[category.startTier]}`}
+                          {category.retired ? 'Retired' : tierShort[category.startTier]}
                           {` · ${stepDownRule(category.stepDown)}`}
                         </div>
                       </td>

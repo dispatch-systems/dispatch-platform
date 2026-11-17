@@ -911,6 +911,9 @@
   .conduct-category-table td:nth-child(3) {
     display: none;
   }
+  .conduct-category-table td:first-child {
+    width: 100%;
+  }
   .conduct-category-details {
     display: block;
     margin-top: 3px;
