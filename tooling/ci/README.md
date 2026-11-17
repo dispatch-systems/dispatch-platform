@@ -15,7 +15,7 @@ locally the whole suite in sequence:
 | core             | `core tests unit`                          | The Rust tests inside the crates, through nextest (`nextest.py`), and the doctests.       |
 | core-integration | `core tests integration`                   | The Rust tests in the crates' `[[test]]` programs, through nextest.                       |
 | debug            |                                            | The debug backend and worker, built once for api and the collectors.                      |
-| api ×2           | `api <n>/2`                                | The API tests, and in the first shard the Python tooling tests and the npm audit.         |
+| api ×2           | `api <n>/2`                                | The API tests, and in the first shard the Python tooling tests and `npm-audit.py`.        |
 | scaffold-lint    | `scaffold lint`                            | What every generator writes builds, lints and keeps the rules.                            |
 | scaffold         | `scaffold tests`                           | What every generator writes passes its Rust tests and its agent tools' tests.             |
 | collectors ×6    | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                                |
