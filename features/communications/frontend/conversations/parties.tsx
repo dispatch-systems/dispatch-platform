@@ -3,7 +3,7 @@ import { Phone, Smartphone } from 'lucide-react';
 import type { CommunicationsWorkspace, Conversation, RouteDriver, Today } from '../../api/index.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { SlackLogo } from '../../../slack/frontend/index.js';
-import { lastFour, numberBeside, roleText } from '../shared/format.js';
+import { numberBeside, roleText } from '../shared/format.js';
 import { NumberActions } from '../texting/NumberActions.js';
 import { PickDriver } from '../todays-routes/PickDriver.js';
 import { Reach, RouteCode } from '../todays-routes/RouteFacts.js';
@@ -140,7 +140,7 @@ export const PARTIES: { [P in Party]: PartyPane } = {
           picked={follow}
         />
       ),
-    whom: ({ conversation }) => lastFour(conversation.number ?? ''),
+    whom: named,
     workdays: false,
   },
 };

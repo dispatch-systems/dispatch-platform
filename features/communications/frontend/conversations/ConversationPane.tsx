@@ -10,7 +10,7 @@ import type {
 import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { lastFour } from '../shared/format.js';
+import { lastFour, numberBeside } from '../shared/format.js';
 import { PaneHead } from '../shared/PaneHead.js';
 import { ThreadPending } from '../shared/ThreadFrame.js';
 import { usePanel } from '../shared/usePanel.js';
@@ -278,7 +278,7 @@ export function ConversationPane({
           instead={unreachable && <NoWorkPhone elsewhere={elsewhere} go={go} />}
           limits={opened?.limits}
           attachments={KINDS[shown.conversation.kind].attachments}
-          to={about && number ? lastFour(number) : undefined}
+          to={person && numberBeside(person.name, number) ? lastFour(number) : undefined}
           send={async (text, photos, gif) => {
             const observed = read.version();
             sent(await sendMessage(id, text, photos, gif), observed);
