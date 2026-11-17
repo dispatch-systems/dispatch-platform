@@ -7,7 +7,17 @@ import { useConductHistory, type HistoryFilters } from '../../api/client.js';
 import { useListScroll } from '../useListScroll.js';
 import { useConductFilters } from '../useConductFilters.js';
 
-/** Every writeup, the newest first, with those awaiting signature marked signed in the row. */
+/** The signature states a phone's switch filters by. */
+const statuses = [
+  ['', 'All'],
+  ['waiting', 'Awaiting signature'],
+  ['signed', 'Signed'],
+] as const;
+
+/**
+ * Every writeup, the newest first, with those awaiting signature marked signed in the row. On a
+ * phone one switch filters by signature, in place of the menu and the button beside it.
+ */
 export function WriteupsTab({
   overview,
   openWriteup,
@@ -26,7 +36,22 @@ export function WriteupsTab({
     <>
       <div className="table-toolbar conduct-toolbar">
         {controls}
+        <div className="conduct-tiers conduct-status" role="radiogroup" aria-label="Status">
+          {statuses.map(([status, label]) => (
+            <button
+              key={status}
+              type="button"
+              role="radio"
+              aria-checked={filters.status === status}
+              className={filters.status === status ? 'selected' : undefined}
+              onClick={() => change({ ...filters, status })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <select
+          className="conduct-status-wide"
           aria-label="Status"
           value={filters.status}
           onChange={(e) => change({ ...filters, status: e.target.value })}
@@ -37,6 +62,7 @@ export function WriteupsTab({
         </select>
         <button
           type="button"
+          className="conduct-status-wide"
           aria-pressed={filters.status === 'waiting'}
           onClick={() =>
             change({ ...filters, status: filters.status === 'waiting' ? '' : 'waiting' })
@@ -73,7 +99,7 @@ function HistoryRows({
             <Empty title="No writeups" />
           ) : (
             <div className="table-wrap">
-              <table className="conduct-table">
+              <table className="conduct-table conduct-writeups">
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -139,7 +165,7 @@ export function useHistoryPages(filters: HistoryFilters, person?: string) {
 /** Going to the page before or after, either disabled where there's none. */
 export function Pager({ previous, next }: { previous?: () => void; next?: () => void }) {
   return (
-    <div className="form-actions">
+    <div className="form-actions conduct-pager">
       <button type="button" disabled={!previous} onClick={previous}>
         Previous
       </button>

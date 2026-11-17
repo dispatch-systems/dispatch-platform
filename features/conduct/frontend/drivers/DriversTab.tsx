@@ -10,7 +10,8 @@ import { useConductFilters } from '../useConductFilters.js';
 
 /**
  * Everyone who stands at a tier in some category, or has a writeup awaiting signature: their
- * tier in each category, the highest first, and the people with the highest tiers first.
+ * tier in each category, the highest first, and the people with the highest tiers first. On a
+ * phone their totals sit under their name, where the columns for them don't fit.
  */
 export function DriversTab({
   overview,
@@ -64,7 +65,7 @@ export function DriversTab({
         <Empty title="No drivers" />
       ) : (
         <div className="table-wrap">
-          <table className="conduct-table">
+          <table className="conduct-table conduct-drivers">
             <thead>
               <tr>
                 <th>Driver</th>
@@ -87,6 +88,10 @@ export function DriversTab({
                     <RowLink open={() => openDriver(row.person.code)}>
                       <Person person={row.person} />
                     </RowLink>
+                    <div className="conduct-row-details">
+                      {row.count} {row.count === 1 ? 'writeup' : 'writeups'}
+                      {row.last && ` · Last ${printedDay(row.last)}`}
+                    </div>
                   </td>
                   <td>
                     <div className="conduct-chips">
