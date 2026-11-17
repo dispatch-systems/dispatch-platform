@@ -20,7 +20,7 @@ locally the whole suite in sequence:
 | scaffold         | `scaffold tests`                           | What every generator writes passes its Rust tests and its agent tools' tests.             |
 | collectors ×6    | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                                |
 | collectors-host  | `npm run test:browseros -- --shard host`   | The Rust probe of that browser's isolation on the runner.                                 |
-| rust-advisories  |                                            | `cargo audit`, denying yanked crates but those `cargo-audit.py` allows.                   |
+| rust-advisories  |                                            | `cargo audit`, denying every warning but those `cargo-audit.py` allows.                   |
 | relay-dev        |                                            | Outside a PR, Dev's relay app, signed, for the build to pack (`relay.py`).                |
 | relay-production |                                            | In a release's run that names its app version, Production's relay app, signed.            |
 | changes          |                                            | Which suites the change can reach (`changes.py`).                                         |
