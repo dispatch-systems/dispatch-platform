@@ -47,8 +47,9 @@ import {
 
 export const usage = `Usage: dispatchdev new feature <name> [options]
 
-  --custom <id>                     belongs only to the DSP with this custom ID, which DSP
-                                    administration sets and shows; never its short code
+  --custom <id>                     belongs only to the DSP with this custom ID, the random
+                                    one it was made with, which its page in DSP
+                                    administration shows; never its short code
   --mandatory                       every DSP has it, with no switch to turn it off; needs
                                     a piece of its own, as --page, --api or --settings
   --api                             api/ with one endpoint behind the view permission
