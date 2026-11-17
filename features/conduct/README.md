@@ -51,7 +51,10 @@ with a photo of the paper if they like.
     starting at Verbal and reducing a tier every six months. A retired one stays for its
     writeups. Where everyone stands is worked out on every read, so a changed step down applies
     to everyone at once; writeups stay as they were written.
-  - `conduct_writeups`: each writeup as it prints. It names its person by their code in core's
+  - `conduct_writeups`: each writeup as it prints, with the day its person was last coached on
+    its subject, or that they never were: every writeup says one or the other, the day no later
+    than its own date (`conduct_coached_date`), and its notice ends its prior discussion with
+    it. One written before that was asked (migration 4) says neither. It names its person by their code in core's
     directory (`people::everyone`) and keeps their name as printed; the page shows whoever the
     code names now, a merged person's code finding whoever kept their IDs. Signed, it never
     changes again, and only a member who manages Conduct deletes it, for good: where its person
@@ -117,7 +120,8 @@ with a photo of the paper if they like.
   `wording.ts`; printing it alone; and in `fonts/`, the free fonts it falls back on where a
   computer lacks Arial Narrow, Arial or Snell Roundhand, each with its license.
 - `frontend/compose/`: the writeup form, searchable driver picker and directly editable
-  template blanks, with full-text editing and client-side section limits; `draft.ts` fills it as a person and a category are
+  template blanks, with full-text editing and client-side section limits, and when the person
+  was last coached, a date or a Not coached box; `draft.ts` fills it as a person and a category are
   chosen, keeping whatever someone changed.
 - `frontend/drivers/`, `frontend/writeups/`, `frontend/settings/`: each screen;
   `settings/StepDown.tsx` sets a category's step down.

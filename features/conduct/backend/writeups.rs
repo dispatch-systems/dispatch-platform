@@ -5,7 +5,7 @@ use crate::api::types::{ConductWriteup, ConductWriteupRow, WriteupInput};
 use dispatch_core::{
     Error, Result,
     accounts::Context,
-    db::{Db, Store, iso},
+    db::{Db, Store, iso, migrations::add_column},
     ensure,
     foundation::crypto,
 };
@@ -15,6 +15,19 @@ use rusqlite::params;
 pub(crate) struct Subject {
     pub code: String,
     pub name: String,
+}
+
+/// Migration 4: whether a writeup's person had been coached on its subject before it, and the
+/// day they last were, which its prior discussion ends with. A writeup written before this was
+/// asked says neither.
+pub(crate) fn coached(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "conduct_writeups",
+        "coached",
+        "INTEGER CHECK (coached IN (0, 1))",
+    )?;
+    add_column(db, "conduct_writeups", "coached_on", "TEXT")
 }
 
 /// What a writeup's row selects, with whether a photo of its signed paper is kept.
@@ -65,8 +78,8 @@ pub(crate) fn add(
         let at = iso();
         db.exec(
             "INSERT INTO conduct_writeups (id,person,person_name,category_id,tier,final_kind,\
-             suspension,written_on,supervisor_id,supervisor_name,statement,prior,plan,created_at,\
-             updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+             suspension,written_on,supervisor_id,supervisor_name,statement,prior,plan,coached,\
+             coached_on,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             params![
                 id,
                 subject.code,
@@ -81,6 +94,8 @@ pub(crate) fn add(
                 input.statement,
                 input.prior,
                 input.plan,
+                input.coached_on.is_some(),
+                input.coached_on,
                 at,
                 at
             ],
@@ -115,7 +130,8 @@ pub(crate) fn change(
         )?;
         db.exec(
             "UPDATE conduct_writeups SET person=?,person_name=?,category_id=?,tier=?,final_kind=?,\
-             suspension=?,written_on=?,statement=?,prior=?,plan=?,revision=revision+1,updated_at=? \
+             suspension=?,written_on=?,statement=?,prior=?,plan=?,coached=?,coached_on=?,\
+             revision=revision+1,updated_at=? \
              WHERE id=?",
             params![
                 subject.code,
@@ -128,6 +144,8 @@ pub(crate) fn change(
                 input.statement,
                 input.prior,
                 input.plan,
+                input.coached_on.is_some(),
+                input.coached_on,
                 iso(),
                 id
             ],

@@ -108,6 +108,7 @@ fn writing(category: &str, tier: ConductTier, revision: Option<i64>) -> WriteupI
         statement: "DA had excessive tardies on 10/30, 11/1 and 11/2.".into(),
         prior: "DA is aware of the start time.".into(),
         plan: "DA will arrive on time.".into(),
+        coached_on: None,
         revision,
     }
 }

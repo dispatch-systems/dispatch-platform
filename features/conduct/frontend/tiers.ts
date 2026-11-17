@@ -58,5 +58,24 @@ export function priorLine(categoryName: string, earlier: readonly ConductWriteup
   return `Previous writeups for ${categoryName}: ${each.join(', ')}.`;
 }
 
+/** The line a writeup's prior discussion ends with, on when its person was last coached: none
+ * for a writeup that doesn't say. */
+export function coachedLine(coached: boolean | null, coachedOn: string | null) {
+  if (coached === null) return '';
+  return coachedOn
+    ? `DA was last coached on ${printedDay(coachedOn)}.`
+    : 'DA has not been coached on this before.';
+}
+
+/** A writeup's prior discussion as it prints: its words, then when its person was last coached. */
+export function printedPrior(writeup: {
+  prior: string;
+  coached: boolean | null;
+  coachedOn: string | null;
+}) {
+  const line = coachedLine(writeup.coached, writeup.coachedOn);
+  return line ? `${writeup.prior}\n${line}` : writeup.prior;
+}
+
 /** The blanks a category's wording leaves to fill, as `[…]`. */
 export const blank = /\[[^\]\n]+\]/g;

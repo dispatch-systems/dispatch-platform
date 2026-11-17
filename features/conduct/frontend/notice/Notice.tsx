@@ -1,6 +1,6 @@
 import { Fragment, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import type { ConductFinalKind, ConductTier } from '../../api/index.js';
-import { blank, finalNote, tierName, tiers } from '../tiers.js';
+import { blank, finalNote, printedPrior, tierName, tiers } from '../tiers.js';
 import * as wording from './wording.js';
 
 /** What a notice prints: a writeup, saved or being written. */
@@ -14,6 +14,8 @@ export type NoticeContent = {
   statement: string;
   prior: string;
   plan: string;
+  coached: boolean | null;
+  coachedOn: string | null;
 };
 
 // The notice is laid out as the DSP's own form is: every place below is in points from the
@@ -204,7 +206,7 @@ function Answer({ top, text, marked }: { top: number; text: string; marked: bool
 export function Notice({ content, marked = false }: { content: NoticeContent; marked?: boolean }) {
   const note = content.tier === 'final' ? finalNote(content.finalKind, content.suspension) : '';
   const day = formDay(content.writtenOn);
-  const answers = [content.statement, content.prior, content.plan];
+  const answers = [content.statement, printedPrior(content), content.plan];
   const headings = [wording.sections.statement, wording.sections.prior, wording.sections.plan];
   return (
     <article className="conduct-notice" aria-label={wording.title}>

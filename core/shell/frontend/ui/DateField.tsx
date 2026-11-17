@@ -18,6 +18,7 @@ const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /**
  * A date that can be typed, or chosen from a calendar that opens from anywhere on the field.
  * Days are `YYYY-MM-DD`; `today` is the caller's idea of the current day, not the device's.
+ * No day chosen yet is an empty `value`: the calendar then opens on today.
  * The field is plain text: a browser's own date field adds icons and selects part of the
  * date on a press, neither of which can be styled away everywhere.
  */
@@ -27,6 +28,7 @@ export function DateField({
   min,
   max,
   today,
+  disabled = false,
   onChange,
 }: {
   label: string;
@@ -34,6 +36,7 @@ export function DateField({
   min: string;
   max: string;
   today: string;
+  disabled?: boolean;
   onChange: (day: string) => void;
 }) {
   const field = useRef<HTMLDivElement>(null);
@@ -48,7 +51,7 @@ export function DateField({
   const month = monthOf(active);
 
   const show = (enter: boolean) => {
-    setActive(clampDay(value, min, max));
+    setActive(clampDay(value || today, min, max));
     setEntered(enter);
     setOpen(true);
   };
@@ -141,7 +144,9 @@ export function DateField({
         aria-haspopup="dialog"
         // Until someone types, the field only shows the date: no text cursor and no selection.
         data-typing={draft === undefined ? undefined : ''}
-        value={draft ?? displayDay(value)}
+        placeholder="MM/DD/YYYY"
+        disabled={disabled}
+        value={draft ?? (value && displayDay(value))}
         onChange={(event) => setDraft(event.target.value)}
         onSelect={({ currentTarget: field }) => {
           if (draft === undefined && field.selectionStart !== field.selectionEnd)

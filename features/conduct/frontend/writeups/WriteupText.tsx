@@ -1,6 +1,6 @@
 import type { ConductWriteup } from '../../api/index.js';
 import { WriteupTier } from '../parts.js';
-import { printedDay } from '../tiers.js';
+import { printedDay, printedPrior } from '../tiers.js';
 
 /** A writeup's own words as text, for a phone, where the page it prints on is too small to read. */
 export function WriteupText({ writeup }: { writeup: ConductWriteup }) {
@@ -25,7 +25,7 @@ export function WriteupText({ writeup }: { writeup: ConductWriteup }) {
       {(
         [
           ['1. Statement of the problem', writeup.statement],
-          ['2. Prior discussion or warnings', writeup.prior],
+          ['2. Prior discussion or warnings', printedPrior(writeup)],
           ['3. Corrective action', writeup.plan],
         ] as const
       ).map(([label, text]) => (

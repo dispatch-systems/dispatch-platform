@@ -20,6 +20,9 @@ export type Draft = {
   statement: string;
   prior: string;
   plan: string;
+  /** The day the person was last coached on this: empty until chosen, and while they weren't. */
+  coachedOn: string;
+  notCoached: boolean;
 };
 
 /** What choosing a person and a category fills in. */
@@ -35,6 +38,8 @@ export const emptyDraft = (today: string, person = ''): Draft => ({
   statement: '',
   prior: '',
   plan: '',
+  coachedOn: '',
+  notCoached: false,
 });
 
 export const draftOf = (writeup: ConductWriteup): Draft => ({
@@ -47,6 +52,8 @@ export const draftOf = (writeup: ConductWriteup): Draft => ({
   statement: writeup.statement,
   prior: writeup.prior,
   plan: writeup.plan,
+  coachedOn: writeup.coachedOn ?? '',
+  notCoached: writeup.coached === false,
 });
 
 /**
@@ -116,6 +123,8 @@ export function missing(draft: Draft): string | undefined {
     return 'Each section can contain up to 4,000 characters.';
   if (sections.some((text) => !text.trim())) return 'Fill in every section.';
   if (sections.some((text) => text.match(blank))) return 'Fill in the blanks marked in yellow.';
+  if (!draft.notCoached && !draft.coachedOn) return 'Enter when they were last coached.';
+  if (draft.coachedOn > draft.writtenOn) return 'Last coached can’t be after the writeup’s date.';
   return undefined;
 }
 
@@ -132,6 +141,7 @@ export const inputOf = (draft: Draft, revision?: number): WriteupInput => {
     statement: draft.statement,
     prior: draft.prior,
     plan: draft.plan,
+    coachedOn: draft.notCoached ? null : draft.coachedOn,
     ...(revision === undefined ? {} : { revision }),
   };
 };

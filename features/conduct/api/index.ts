@@ -32,6 +32,8 @@ export interface WriteupInput {
   statement: string;
   prior: string;
   plan: string;
+  /** The day the person was last coached on this: null when they never were. */
+  coachedOn: string | null;
   revision?: number;
 }
 
