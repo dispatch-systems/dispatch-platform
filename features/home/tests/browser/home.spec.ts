@@ -43,12 +43,14 @@ test('a resize the pointer is taken from, as a menu takes it, is kept as the pag
   const width = async () => (await widget.boundingBox())!.width;
   const added = (await widget.boundingBox())!;
   // Its right edge dragged its own width further, then a second button pressed: the menu that
-  // opens takes the pointer, and the page hears of no release.
-  await page.mouse.move(added.x + added.width, added.y + added.height / 2);
+  // opens takes the pointer as it next moves, and the release never reaches the edge.
+  const [edge, middle] = [added.x + added.width, added.y + added.height / 2];
+  await page.mouse.move(edge, middle);
   await page.mouse.down();
-  await page.mouse.move(added.x + 2 * added.width, added.y + added.height / 2, { steps: 4 });
+  await page.mouse.move(edge + added.width, middle, { steps: 4 });
   await page.mouse.down({ button: 'right' });
   await page.mouse.up({ button: 'right' });
+  await page.mouse.move(edge + added.width + 30, middle, { steps: 3 });
   await page.mouse.up();
   await expect.poll(width).toBeGreaterThan(added.width * 1.5);
   const resized = await width();
