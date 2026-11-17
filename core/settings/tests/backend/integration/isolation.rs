@@ -440,12 +440,15 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
         view: String::new(),
         host: owner.host.clone(),
     };
+    // Each sees its own DSP's custom feature's sources, and so loads its page again once in.
     for who in [&owner, &foreign] {
         let session = server.send("GET", "/api/session", who, None).await;
         assert!(session.body.get("platformFrontend").is_none());
+        assert_eq!(session.body["customSources"], true);
     }
     let session = server.send("GET", "/api/session", &platform, None).await;
     assert_eq!(session.body["platformFrontend"], "/assets/owner-runtime.js");
+    assert_eq!(session.body["customSources"], true);
     // Both sessions are valid at their own host; metadata never includes the other's IDs,
     // even through a declared permission implication or parent.
     let off_view = server.open(&owner, &north).await;
@@ -626,6 +629,7 @@ async fn custom_assets_require_the_owner_session_before_head_or_etag_handling() 
     assert_eq!(gated["security"]["required"], true);
     assert_eq!(gated["security"]["verified"], false);
     assert!(gated.get("platformFrontend").is_none());
+    assert_eq!(gated["customSources"], false);
     assert_eq!(
         request(reqwest::Method::GET, "/assets/owner-runtime.js", &platform)
             .send()

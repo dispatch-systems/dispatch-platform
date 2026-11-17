@@ -135,6 +135,7 @@ export const sessionSchema = z
     csrf: filled,
     dsps: z.array(dspSummary),
     platformFrontend: z.optional(filled),
+    customSources: z.boolean(),
     development: z.boolean(),
     environment,
     release: text,
