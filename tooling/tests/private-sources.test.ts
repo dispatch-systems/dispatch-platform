@@ -36,10 +36,11 @@ test('standalone Vite protects custom source aliases and raw files with the real
     'app/frontend/entry.js',
     'export const value = 1; if (import.meta.hot) import.meta.hot.accept();',
   );
-  for (const code of ['nll', 'sum'])
+  // Owned by the demo DSPs' custom IDs, apart from their codes.
+  for (const owner of ['n1', 's2'])
     write(
-      `features/custom/${code}/probe/frontend/feature.ts`,
-      `export const feature = { name: '${code}_probe', label: '${code} private label' };`,
+      `features/custom/${owner}/probe/frontend/feature.ts`,
+      `export const feature = { name: '${owner}_probe', label: '${owner} private label' };`,
     );
   write('app/generated/features.json', '{"private":"all DSP identifiers"}');
   const outputs = [
@@ -64,7 +65,7 @@ test('standalone Vite protects custom source aliases and raw files with the real
             : 'private build metadata',
     );
   fs.symlinkSync(
-    path.join(root, 'features/custom/sum/probe/frontend/feature.ts'),
+    path.join(root, 'features/custom/s2/probe/frontend/feature.ts'),
     path.join(root, 'app/frontend/shortcut.ts'),
   );
   const app = await fixture();
@@ -101,9 +102,9 @@ test('standalone Vite protects custom source aliases and raw files with the real
     });
   const ownerHeaders = { ...platform.headers, host: `127.0.0.1:${app.env.PORT}` };
   const anonymous = { host: member.headers.host! };
-  const raw = (code: string) =>
-    `/@fs${fs.realpathSync(root)}/features/custom/${code}/probe/frontend/feature.ts`;
-  for (const url of [raw('nll'), '/custom/nll_probe.js', '/@id/__x00__dispatch-custom:nll_probe']) {
+  const raw = (owner: string) =>
+    `/@fs${fs.realpathSync(root)}/features/custom/${owner}/probe/frontend/feature.ts`;
+  for (const url of [raw('n1'), '/custom/n1_probe.js', '/@id/__x00__dispatch-custom:n1_probe']) {
     for (const method of ['GET', 'HEAD']) {
       assert.equal((await send(origin + url, { method, headers: anonymous })).status, 404, url);
       assert.equal(
@@ -115,10 +116,10 @@ test('standalone Vite protects custom source aliases and raw files with the real
     }
   }
   for (const url of [
-    raw('sum'),
+    raw('s2'),
     '/shortcut.ts',
-    '/custom/sum_probe.js',
-    '/@id/__x00__dispatch-custom:sum_probe',
+    '/custom/s2_probe.js',
+    '/@id/__x00__dispatch-custom:s2_probe',
     `/@fs${fs.realpathSync(root)}/app/generated/features.json`,
     ...outputs.map((file) => `/@fs${fs.realpathSync(root)}/${file}`),
     `/@fs${fs.realpathSync(root)}/core/platform_owner/api/generated/custom-labels.ts?raw`,
@@ -133,7 +134,7 @@ test('standalone Vite protects custom source aliases and raw files with the real
     assert.equal((await send(origin + url, { headers: ownerHeaders })).status, 200, url);
   }
   const channel = ui.environments.client!.hot;
-  const hidden = '/features/custom/sum/probe/frontend/feature.ts';
+  const hidden = '/features/custom/s2/probe/frontend/feature.ts';
   // Vite buffers errors/reloads without clients. A later connection must not replay them.
   channel.send({
     type: 'error',
@@ -219,6 +220,6 @@ test('standalone Vite protects custom source aliases and raw files with the real
   );
   const logout = await member.post('/api/auth/logout');
   assert.equal(logout.status, 200);
-  assert.equal((await send(origin + raw('nll'), { headers: member.headers })).status, 404);
+  assert.equal((await send(origin + raw('n1'), { headers: member.headers })).status, 404);
   assert.equal((await send(origin + '/')).status, 200);
 });

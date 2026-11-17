@@ -471,7 +471,7 @@ impl State {
             let work = |db: &db::Store| {
                 if let Some(owner) = owner {
                     crate::ensure(
-                        db.dsp_at(owner)?.is_some_and(|dsp| db.serves(&dsp)),
+                        db.dsp_owning(owner)?.is_some_and(|dsp| db.serves(&dsp)),
                         "not_found",
                         404,
                     )?;

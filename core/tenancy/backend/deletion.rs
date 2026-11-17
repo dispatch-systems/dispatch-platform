@@ -77,7 +77,8 @@ impl Store {
     /// (`finish`), and records who deleted it, by its name, as nothing else names it now.
     pub fn delete_dsp(&self, id: &str, name: &str, actor: &str) -> Result<()> {
         self.ensure_deletable(id, name)?;
-        let code = self.feature_code(id)?;
+        let owner = self.feature_owner(id)?;
+        let code = self.find_dsp(id)?.code;
         let own: Vec<(String,)> = self.dsp(id)?.query_as("SELECT id FROM users", [])?;
         let own: Vec<String> = own
             .into_iter()
@@ -95,7 +96,7 @@ impl Store {
             for forget in registry()
                 .features
                 .iter()
-                .filter(|f| f.belongs_to(code.as_deref()))
+                .filter(|f| f.belongs_to(owner.as_deref()))
                 .filter_map(|f| f.deleting.forget)
             {
                 forget(self, id)?;
@@ -105,8 +106,8 @@ impl Store {
                 .exec("DELETE FROM dsp_features WHERE dsp_id=?", [id])?;
             self.platform.exec("DELETE FROM dsps WHERE id=?", [id])?;
             self.platform.exec(
-                "INSERT INTO dsp_deletions(dsp_id,started_at,code) VALUES (?,?,?)",
-                rusqlite::params![id, iso(), code],
+                "INSERT INTO dsp_deletions(dsp_id,started_at,code,custom_id) VALUES (?,?,?,?)",
+                rusqlite::params![id, iso(), code, owner],
             )?;
             self.audit(Some(actor), None, "dsp.deleted", name)
         })
@@ -175,11 +176,11 @@ where
 /// declare, whether or not they're on there: best effort, each logging its own failures.
 pub async fn revoke(state: &Arc<State>, dsp: &str) -> Result<()> {
     let at = dsp.to_owned();
-    let code = state.read(move |db| db.feature_code(&at)).await?;
+    let owner = state.read(move |db| db.feature_owner(&at)).await?;
     for revoke in registry()
         .features
         .iter()
-        .filter(|f| f.belongs_to(code.as_deref()))
+        .filter(|f| f.belongs_to(owner.as_deref()))
         .filter_map(|f| f.deleting.revoke)
     {
         revoke(state.clone(), dsp.to_owned()).await;
@@ -254,7 +255,7 @@ async fn finish_one(state: &Arc<State>, dsp: &str) -> Result<()> {
 /// feature hold.
 pub async fn forget(state: &Arc<State>, dsp: &str) -> Result<()> {
     let at = dsp.to_owned();
-    let code = state.read(move |db| db.feature_code(&at)).await?;
+    let owner = state.read(move |db| db.feature_owner(&at)).await?;
     state.browsers.revoke(dsp).await;
     state.forget_dsp(dsp);
     if let Some(agents) = registry().agents {
@@ -263,7 +264,7 @@ pub async fn forget(state: &Arc<State>, dsp: &str) -> Result<()> {
     for forgotten in registry()
         .features
         .iter()
-        .filter(|f| f.belongs_to(code.as_deref()))
+        .filter(|f| f.belongs_to(owner.as_deref()))
         .filter_map(|f| f.deleting.forgotten)
     {
         forgotten(state, dsp);

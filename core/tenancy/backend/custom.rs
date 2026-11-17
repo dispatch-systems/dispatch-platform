@@ -11,16 +11,16 @@ use crate::{
 };
 
 pub(crate) fn view(db: &Store, state: &State, context: &Context) -> Result<Option<CustomFeatures>> {
-    let code = db.find_dsp(&context.dsp.id)?.code;
+    let owner = db.find_dsp(&context.dsp.id)?.custom_id;
     let owners: Vec<_> = registry()
         .features
         .iter()
-        .filter(|feature| feature.owner.is_some() && feature.belongs_to(code.as_deref()))
+        .filter(|feature| feature.owner.is_some() && feature.belongs_to(owner.as_deref()))
         .collect();
     if owners.is_empty() {
         return Ok(None);
     }
-    let catalog = catalog(code.as_deref());
+    let catalog = catalog(owner.as_deref());
     let mut declared: Vec<_> = owners
         .iter()
         .flat_map(|feature| {
@@ -39,11 +39,11 @@ pub(crate) fn view(db: &Store, state: &State, context: &Context) -> Result<Optio
             group: permission.group.map(str::to_owned),
             implied: roles::granting(&[permission.id.to_owned()])
                 .into_iter()
-                .filter(|id| id != permission.id && roles::belongs_to(id, code.as_deref()))
+                .filter(|id| id != permission.id && roles::belongs_to(id, owner.as_deref()))
                 .collect(),
             under: permission
                 .under
-                .filter(|id| roles::belongs_to(id, code.as_deref()))
+                .filter(|id| roles::belongs_to(id, owner.as_deref()))
                 .map(str::to_owned),
         })
         .collect();
@@ -68,11 +68,11 @@ pub(crate) fn view(db: &Store, state: &State, context: &Context) -> Result<Optio
     }))
 }
 
-/// The custom switches and parts belonging to one DSP code, including those switched off.
-pub(crate) fn catalog(code: Option<&str>) -> Vec<CustomFeature> {
+/// The custom switches and parts belonging to one DSP's custom ID, including those switched off.
+pub(crate) fn catalog(owner: Option<&str>) -> Vec<CustomFeature> {
     catalog::catalog()
         .iter()
-        .filter(|entry| entry.owner.is_some() && entry.owner == code)
+        .filter(|entry| entry.owner.is_some() && entry.owner == owner)
         .map(|entry| CustomFeature {
             id: entry.id.to_owned(),
             label: entry.label.to_owned(),

@@ -88,6 +88,7 @@ export function DspDetail({
           <small className="dsp-detail-meta">
             {dsp.profile.abbreviation && <span>{dsp.profile.abbreviation}</span>}
             {dsp.ownerEmail && <span className="dsp-detail-owner">{dsp.ownerEmail}</span>}
+            {dsp.customId && <span>Custom ID {dsp.customId}</span>}
             {dsp.code && (
               <span>
                 <a href={dspAddress(dsp.code)} target="_blank" rel="noopener noreferrer">

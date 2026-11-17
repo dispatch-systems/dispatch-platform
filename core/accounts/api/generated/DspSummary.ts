@@ -24,4 +24,9 @@ features: Array<string>, members: number, id: string, name: string, environment:
 /**
  * Its short code, which names its address, in lowercase: none until it is set up.
  */
-code: string | null, };
+code: string | null,
+/**
+ * The ID its custom features are owned by, which names their folder: none until the
+ * platform owner gives it one.
+ */
+customId: string | null, };

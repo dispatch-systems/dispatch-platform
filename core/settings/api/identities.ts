@@ -5,9 +5,9 @@ type Identity = Readonly<{ id: string; aliases: readonly string[]; owner: string
 /** A bundle's one local identity for the section, without changing tenant eligibility. */
 export const sectionResolver =
   (identities: readonly Identity[]) =>
-  (id: string, code?: string | null): string =>
+  (id: string, owner?: string | null): string =>
     identities.find(
-      (family) => (family.owner === null || family.owner === code) && family.aliases.includes(id),
+      (family) => (family.owner === null || family.owner === owner) && family.aliases.includes(id),
     )?.id ?? id;
 
 export const sectionId = sectionResolver(sectionIdentities);

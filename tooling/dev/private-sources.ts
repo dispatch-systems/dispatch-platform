@@ -188,7 +188,7 @@ export async function mayReadSource(
       | {
           user: { platformOwner: boolean };
           security: { required: boolean; verified: boolean };
-          dsps: { code: string | null; status: string }[];
+          dsps: { customId: string | null; status: string }[];
         }
       | undefined
     >((resolve) => {
@@ -226,7 +226,7 @@ export async function mayReadSource(
     return (
       session.user.platformOwner ||
       ('owner' in audience &&
-        session.dsps.some((dsp) => dsp.code === audience.owner && dsp.status === 'active'))
+        session.dsps.some((dsp) => dsp.customId === audience.owner && dsp.status === 'active'))
     );
   } catch {
     return false;

@@ -87,7 +87,7 @@ impl Grant for Public {
     fn authorize(self, db: &Store, input: &Input) -> Result<()> {
         if let Some(owner) = input.owner {
             ensure(
-                db.dsp_at(owner)?.is_some_and(|dsp| db.serves(&dsp)),
+                db.dsp_owning(owner)?.is_some_and(|dsp| db.serves(&dsp)),
                 "not_found",
                 404,
             )?;
@@ -181,7 +181,7 @@ impl Grant for Dsp {
         ensure(
             input
                 .owner
-                .is_none_or(|owner| context.dsp.code.as_deref() == Some(owner)),
+                .is_none_or(|owner| context.dsp.custom_id.as_deref() == Some(owner)),
             "not_found",
             404,
         )?;
@@ -671,16 +671,24 @@ impl Route {
             let dsp_route = matches!(self.access, Access::Dsp(_));
             let admin = matches!(input.site, Site::Admin);
             ensure(
-                matches!(&input.site, Site::Dsp(code) if code == owner) || (admin && dsp_route),
+                matches!(&input.site, Site::Dsp(_)) || (admin && dsp_route),
                 "not_found",
                 404,
             )?;
             state
                 .read(move |db| {
+                    // Only at the address of the DSP whose custom ID owns it, or the admin's.
                     let own = db
-                        .dsp_at(owner)?
+                        .dsp_owning(owner)?
                         .filter(|dsp| db.serves(dsp))
                         .ok_or_else(|| Error::new("not_found", 404))?;
+                    ensure(
+                        admin
+                            || matches!(&input.site, Site::Dsp(code)
+                                if own.code.as_deref() == Some(code.as_str())),
+                        "not_found",
+                        404,
+                    )?;
                     if dsp_route {
                         let auth = Session.authorize(db, &input)?;
                         ensure(!admin || auth.user.platform_owner, "not_found", 404)?;

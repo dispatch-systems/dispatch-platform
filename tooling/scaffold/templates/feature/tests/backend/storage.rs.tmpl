@@ -7,7 +7,7 @@ fn keeps_what_it_adds_for_each_dsp() {
     testing::install(&[{{testCollectors}}], &[&crate::FEATURE]);
     let (_root, store, dsp) = testing::bootstrapped();
 {{#owner}}
-    store.set_code(&dsp, "{{owner}}").unwrap();
+    store.set_custom_id(&dsp, "{{owner}}").unwrap();
     store.set_feature(&dsp, "{{name}}", true, &testing::a_user(&store)).unwrap();
 {{/owner}}
     let owner = testing::a_user(&store);

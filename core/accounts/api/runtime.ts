@@ -49,6 +49,7 @@ const dsp = z.object({
   revision: count,
   createdAt: text,
   code: z.nullable(text),
+  customId: z.nullable(text),
 }) satisfies z.ZodMiniType<Dsp>;
 const profile = z.object({
   abbreviation: text,
@@ -59,10 +60,12 @@ const profile = z.object({
 }) satisfies z.ZodMiniType<DspProfile>;
 const publicFeatures = new Set<string>(features);
 const publicPermissions = new Set<string>(permissions);
-const customId = (id: string, code: string | null) =>
+/** Whether `id` is one of the custom features or permissions of the DSP whose custom ID is
+ * `owner`. */
+const ownedBy = (id: string, owner: string | null) =>
   Boolean(
-    code &&
-    id.startsWith(`${code}_`) &&
+    owner &&
+    id.startsWith(`${owner}_`) &&
     /^[a-z0-9]+_[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/.test(id),
   );
 const dspSummary = z
@@ -83,7 +86,7 @@ const dspSummary = z
     z.refine((summary) => {
       const custom = summary.customFeatures ?? [];
       return (
-        custom.every((id) => customId(id, summary.code)) &&
+        custom.every((id) => ownedBy(id, summary.customId)) &&
         summary.features.every((id) => publicFeatures.has(id) || custom.includes(id))
       );
     }),
@@ -207,8 +210,8 @@ const viewSchema = z
       ]);
       const asset = (url: string, extension: string) =>
         Boolean(
-          view.dsp.code &&
-          url.startsWith(`/assets/custom-${view.dsp.code}-`) &&
+          view.dsp.customId &&
+          url.startsWith(`/assets/custom-${view.dsp.customId}-`) &&
           new RegExp(`^/assets/[A-Za-z0-9_.-]+\\.${extension}$`).test(url),
         );
       return (
@@ -216,7 +219,7 @@ const viewSchema = z
         new Set(declared.map((permission) => permission.id)).size === declared.length &&
         catalog.every(
           (feature) =>
-            customId(feature.id, view.dsp.code) &&
+            ownedBy(feature.id, view.dsp.customId) &&
             !publicFeatures.has(feature.id) &&
             feature.permissions.every((permission) => grants.has(permission)) &&
             (feature.kind === 'page'
@@ -229,7 +232,7 @@ const viewSchema = z
         ) &&
         declared.every(
           (permission) =>
-            customId(permission.id, view.dsp.code) &&
+            ownedBy(permission.id, view.dsp.customId) &&
             !publicPermissions.has(permission.id) &&
             permission.implied.every((id) => grants.has(id)) &&
             (!permission.under || grants.has(permission.under)),

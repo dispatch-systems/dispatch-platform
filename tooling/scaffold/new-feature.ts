@@ -1,4 +1,4 @@
-import { featureDirectory, featureLocations, validDspCode } from '../shared/features.js';
+import { featureDirectory, featureLocations, validCustomId } from '../shared/features.js';
 import path from 'node:path';
 import {
   UsageError,
@@ -47,7 +47,9 @@ import {
 
 export const usage = `Usage: dispatchdev new feature <name> [options]
 
-  --custom <code>                   belongs only to the DSP with this address code
+  --custom <id>                     belongs only to the DSP with this custom ID, the random
+                                    one it was made with, which its page in DSP
+                                    administration shows; never its short code
   --mandatory                       every DSP has it, with no switch to turn it off; needs
                                     a piece of its own, as --page, --api or --settings
   --api                             api/ with one endpoint behind the view permission
@@ -164,8 +166,8 @@ function featureValues(root: string, argv: string[], adding = false) {
     ? featureLocations(root).find((feature) => feature.name === supplied)
     : undefined;
   const owner = args.options.get('custom') ?? existing?.owner;
-  if (owner && !validDspCode(owner))
-    throw new UsageError('--custom needs a DSP code: 2 to 16 lowercase letters or digits');
+  if (owner && !validCustomId(owner))
+    throw new UsageError('--custom needs a custom ID: 2 to 16 lowercase letters or digits');
   if (owner && (args.flags.has('mandatory') || args.options.has('contract')))
     throw new UsageError('Custom features must be optional and cannot expose contracts');
   const folder = existing ? existing.dir.split('/').at(-1)! : supplied;
@@ -704,8 +706,8 @@ export const settingsNote = (name: string, slug: string) =>
 
 /**
  * The commands that show what the feature shows on the dev server, as the fixtures' Dev DSP has
- * it, once `npm run dev` restarts on the backend the feature changed. Only a DSP with a custom
- * feature's code has it, so its note finds or makes that DSP and switches the feature on first.
+ * it, once `npm run dev` restarts on the backend the feature changed. Only the DSP with a custom
+ * feature's custom ID has it, so its note gives one that ID and switches the feature on first.
  */
 function devServerNote(values: Values) {
   const { name, owner, slug, hostPage, hostLabel } = values;
@@ -729,9 +731,9 @@ function devServerNote(values: Values) {
   if (!owner) return `${restart}; then ${shown}.`;
   const post = '`dispatchdev api POST /api/platform/dsps/<id>';
   return (
-    `${restart}. Only a DSP with the code ${owner} has it, and \`dispatchdev api GET ` +
-    `/api/session\` lists the demo DSPs with their ids and codes. Unless one has the code, give ` +
-    `it to one: ${post}/code --data '{"code":"${owner}"}'\`. Switch the feature on for that DSP: ` +
+    `${restart}. Only the DSP with the custom ID ${owner} has it, and \`dispatchdev api GET ` +
+    `/api/session\` lists the demo DSPs with their ids and custom IDs. Unless one has it, give ` +
+    `it to one: ${post}/custom-id --data '{"customId":"${owner}"}'\`. Switch the feature on for that DSP: ` +
     `${post}/features --data '{"feature":"${name}","enabled":true}'\`. Then ${shown}.`
   );
 }

@@ -146,6 +146,7 @@ const phrases: AuditPhrases = {
     strong(e.target ?? 'a ticket'),
   ],
   'dsp.code_changed': (e) => ['gave ', dsp(e), ' the short code ', strong(e.detail.toUpperCase())],
+  'dsp.custom_id_changed': (e) => ['gave ', dsp(e), ' the custom ID ', strong(e.detail)],
   'dsp.settings_updated': () => ['updated DSP settings'],
   // A section of a DSP's Settings, by its label; its changes say what each field became.
   'settings.changed': (e) => ['changed ', strong(e.target ?? (e.detail || 'settings'))],
@@ -277,6 +278,7 @@ const spoken = new Set([
   'dsp.owner_view_opened',
   'dsp.support_visibility_changed',
   'dsp.code_changed',
+  'dsp.custom_id_changed',
   'dsp.feature_enabled',
   'dsp.feature_disabled',
   'dsp.feature_hidden',

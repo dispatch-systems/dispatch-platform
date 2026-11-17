@@ -13,19 +13,19 @@ fn every_connection_reads_its_people_from_a_new_dsp() {
     let actor = common::platform_owner(&db);
     let mut owners = std::collections::BTreeMap::new();
     for feature in registry().features {
-        if let Some(code) = feature.owner
-            && !owners.contains_key(code)
+        if let Some(owner) = feature.owner
+            && !owners.contains_key(owner)
         {
             let dsp = db.new_dsp("People schema", "UTC", &actor, false).unwrap();
-            db.set_code(&dsp.id, code).unwrap();
+            db.set_custom_id(&dsp.id, owner).unwrap();
             db.enable_all_features(&dsp.id).unwrap();
-            owners.insert(code, dsp.id);
+            owners.insert(owner, dsp.id);
         }
     }
     for feature in registry().features {
         let id = feature
             .owner
-            .and_then(|code| owners.get(code))
+            .and_then(|owner| owners.get(owner))
             .unwrap_or(&id);
         for people in feature.people {
             let kind = people.kind.id;

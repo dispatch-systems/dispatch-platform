@@ -42,7 +42,7 @@ pub fn shown(c: &Context) -> impl Iterator<Item = &'static Preference> {
         .preferences()
         .filter(|(feature, _)| {
             feature.is_none_or(|feature| {
-                feature.belongs_to(c.dsp.code.as_deref()) && c.has(feature.switch.id)
+                feature.belongs_to(c.dsp.custom_id.as_deref()) && c.has(feature.switch.id)
             })
         })
         .map(|(_, preference)| preference)

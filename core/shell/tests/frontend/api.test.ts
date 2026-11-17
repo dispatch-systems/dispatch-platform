@@ -57,7 +57,7 @@ test("an error a proxy answers with a page of its own reads as a refused request
 
 test('Settings aliases normalize before raw prefetch and repeated save cache replacement', async (t) => {
   t.after(() => credentials(''));
-  credentials('fixture-csrf', 'fixture-view', { id: 'fixture-dsp', code: 'nll' });
+  credentials('fixture-csrf', 'fixture-view', { id: 'fixture-dsp', customId: 'n1' });
   const section = {
     id: 'dispatch_phone.display',
     page: 'display',
@@ -114,25 +114,25 @@ test('Settings aliases normalize before raw prefetch and repeated save cache rep
 test('section identity families preserve orientation and tenant eligibility', () => {
   const bridge = sectionResolver([
     { id: 'old.display', aliases: ['new.display'], owner: null },
-    { id: 'nll_old.display', aliases: ['nll_new.display'], owner: 'nll' },
+    { id: 'n1_old.display', aliases: ['n1_new.display'], owner: 'n1' },
   ]);
   const future = sectionResolver([
     { id: 'new.display', aliases: ['old.display'], owner: null },
-    { id: 'nll_new.display', aliases: ['nll_old.display'], owner: 'nll' },
+    { id: 'n1_new.display', aliases: ['n1_old.display'], owner: 'n1' },
   ]);
-  for (const code of ['nll', 'sum', null, undefined]) {
+  for (const owner of ['n1', 's2', null, undefined]) {
     for (const id of ['old.display', 'new.display']) {
-      assert.equal(bridge(future(id, code), code), 'old.display');
-      assert.equal(future(bridge(id, code), code), 'new.display');
+      assert.equal(bridge(future(id, owner), owner), 'old.display');
+      assert.equal(future(bridge(id, owner), owner), 'new.display');
     }
     assert.equal(
-      bridge('nll_new.display', code),
-      code === 'nll' ? 'nll_old.display' : 'nll_new.display',
+      bridge('n1_new.display', owner),
+      owner === 'n1' ? 'n1_old.display' : 'n1_new.display',
     );
     assert.equal(
-      future('nll_old.display', code),
-      code === 'nll' ? 'nll_new.display' : 'nll_old.display',
+      future('n1_old.display', owner),
+      owner === 'n1' ? 'n1_new.display' : 'n1_old.display',
     );
   }
-  assert.equal(bridge('unrecognized.display', 'nll'), 'unrecognized.display');
+  assert.equal(bridge('unrecognized.display', 'n1'), 'unrecognized.display');
 });

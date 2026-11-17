@@ -75,6 +75,9 @@ pub fn seed(db: &Store) -> Result<()> {
     // Each DSP but Dev's has an address of its own, as a DSP has once it is set up.
     db.set_code(&north.id, "nll")?;
     db.set_code(&summit.id, "sum")?;
+    // Each owns the custom features under a custom ID of its own, apart from its code.
+    db.set_custom_id(&north.id, "n1")?;
+    db.set_custom_id(&summit.id, "s2")?;
     // Northline's member, in its own directory.
     let member = db.create_user(
         Some(&north.id),
@@ -110,11 +113,11 @@ pub fn seed(db: &Store) -> Result<()> {
 /// Fills a new DSP with every feature's demo data, given its timezone, and gives its default
 /// roles what they hold in a demo.
 pub fn demo(db: &Store, dsp: &str, timezone: &str) -> Result<()> {
-    let code = db.feature_code(dsp)?;
+    let owner = db.feature_owner(dsp)?;
     for demo in registry()
         .features
         .iter()
-        .filter(|f| f.belongs_to(code.as_deref()))
+        .filter(|f| f.belongs_to(owner.as_deref()))
         .filter_map(|f| f.demo)
     {
         demo(db, dsp, timezone)?;

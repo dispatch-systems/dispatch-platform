@@ -342,9 +342,9 @@ impl Store {
             .ok_or_else(|| Error::new("role_not_found", 404))
     }
     fn scope_role(&self, dsp: &str, mut role: Role) -> Result<Role> {
-        let code = self.feature_code(dsp)?;
+        let owner = self.feature_owner(dsp)?;
         role.permissions
-            .retain(|id| belongs_to(id, code.as_deref()));
+            .retain(|id| belongs_to(id, owner.as_deref()));
         Ok(role)
     }
     pub fn roles(&self, dsp: &str) -> Result<Vec<Role>> {

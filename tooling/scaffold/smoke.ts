@@ -72,17 +72,7 @@ const MADE: [string, ...string[]][] = [
   ['slot', 'smoke_shortcuts', '--description', 'Its shortcuts on a page.'],
   // A feature the pieces below are added to, with a table.
   ['feature', 'smoke_rows', '--tables', 'dsp'],
-  [
-    'feature',
-    'smoke_custom',
-    '--custom',
-    'nll',
-    '--page',
-    '--api',
-    '--tables',
-    'dsp',
-    '--settings',
-  ],
+  ['feature', 'smoke_custom', '--custom', 'n1', '--page', '--api', '--tables', 'dsp', '--settings'],
   ['collector', 'smoke_custom_site'],
   [
     'feature',
@@ -96,7 +86,7 @@ const MADE: [string, ...string[]][] = [
     '--people',
     'own',
   ],
-  ['integration', 'smoke_custom_notes', '--to', 'nll_smoke_custom'],
+  ['integration', 'smoke_custom_notes', '--to', 'n1_smoke_custom'],
 ];
 
 /**

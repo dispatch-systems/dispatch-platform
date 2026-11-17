@@ -29,6 +29,21 @@ pub fn is_hex(value: &str, length: usize) -> bool {
 pub fn id(prefix: &str) -> Result<String> {
     Ok(format!("{prefix}_{}", hex(&random::<16>()?)))
 }
+/// A DSP's custom ID: eight lowercase letters and digits, the first a letter, with no `l`, `o`,
+/// `0` or `1` to misread.
+pub fn custom_id() -> Result<String> {
+    const LETTERS: &[u8; 24] = b"abcdefghijkmnpqrstuvwxyz";
+    const ALPHABET: &[u8; 32] = b"abcdefghijkmnpqrstuvwxyz23456789";
+    let random = random::<8>()?;
+    Ok(random
+        .into_iter()
+        .enumerate()
+        .map(|(index, byte)| match index {
+            0 => LETTERS[usize::from(byte) % LETTERS.len()],
+            _ => ALPHABET[usize::from(byte & 31)],
+        } as char)
+        .collect())
+}
 pub fn token() -> Result<String> {
     Ok(B64.encode(random::<32>()?))
 }

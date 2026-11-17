@@ -54,7 +54,7 @@ test('generated platform contracts validate real responses', async (t) => {
     );
   const dsp = owner.session.dsps.find((d: DspSummary) => d.name === 'Northline Logistics');
   const view = await owner.select(dsp.id);
-  const id = `${view.dsp.code}_probe`;
+  const id = `${view.dsp.customId}_probe`;
   const permission = `${id}.view`;
   const customView = {
     ...view,
@@ -79,8 +79,8 @@ test('generated platform contracts validate real responses', async (t) => {
         {
           name: id,
           place: 50,
-          url: `/assets/custom-${view.dsp.code}-probe-12345678.js`,
-          styles: [`/assets/custom-${view.dsp.code}-probe-12345678.css`],
+          url: `/assets/custom-${view.dsp.customId}-probe-12345678.js`,
+          styles: [`/assets/custom-${view.dsp.customId}-probe-12345678.css`],
         },
       ],
     },

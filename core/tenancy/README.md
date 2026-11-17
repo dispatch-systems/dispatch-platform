@@ -49,6 +49,19 @@ chooses it on the invite page; after that only the platform owner changes it, wh
 DSP to the new address. A DSP set up before short codes takes its abbreviation as its code at
 startup, when that is one and is free; any other waits for the platform owner to give it one.
 
+A DSP's custom ID owns its custom features: the features in `features/custom/<id>/`, whose
+switches, permissions, routes, tables, settings and code it alone has. It is apart from the short
+code, so the public repository never names the DSP: 8 random lowercase letters and digits, the
+first a letter, given to each DSP as it is made (and to each DSP there was when IDs came in), kept
+in `dsps`, and no two DSPs share one. In Production it never changes, and nobody sets it; the
+DSP's page shows it. Off Production a DSP may take a known one (`set_custom_id`, also
+`POST /api/platform/dsps/{id}/custom-id` with no screen of its own): the demo DSPs and tests do,
+and a Dev DSP takes the ID of the Production DSP it stands in for, so its custom features show
+there. A custom feature answers only at the address of the DSP whose custom ID owns it, and its
+code reaches only that DSP's members. While a custom feature belongs to the ID a DSP has, it isn't
+changed (`custom_feature_transfer_required`); its short code may change freely. A deletion keeps
+it until it ends, as it keeps the code.
+
 The platform owner deletes a disabled DSP for good, never the permanent one, by typing its name
 (`deletion`). The DSP is held for its delete from the first check that it can go until the
 delete ends, so it isn't enabled meanwhile (`dsp_deleting`), and one that stops short of its rows

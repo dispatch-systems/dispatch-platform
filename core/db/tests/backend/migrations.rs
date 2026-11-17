@@ -559,6 +559,28 @@ fn dsps_from_before_features_defaulted_off_keep_what_they_had() {
 }
 
 #[test]
+fn each_dsp_there_was_is_given_a_random_custom_id_of_its_own() {
+    crate::testing::install(&[], &[]);
+    let root = private();
+    let db = Db::create(&root.path().join("platform.sqlite"), Kind::PLATFORM, "").unwrap();
+    // The release before custom IDs, with two DSPs.
+    db.0.execute_batch(
+        "DELETE FROM schema_migrations WHERE id=29; \
+         INSERT INTO dsps(id,name,environment,status,timezone,created_at) VALUES \
+         ('dsp_a','A','preview','active','UTC','2026-01-01'),\
+         ('dsp_b','B','preview','active','UTC','2026-01-01');",
+    )
+    .unwrap();
+    migrate(&db, Kind::PLATFORM).unwrap();
+    let ids: Vec<(String,)> = db
+        .query_as("SELECT custom_id FROM dsps ORDER BY id", [])
+        .unwrap();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1]);
+    assert!(ids.iter().all(|(id,)| id.len() == 8), "{ids:?}");
+}
+
+#[test]
 fn the_scorecard_switch_starts_on_wherever_the_timecard_was() {
     crate::testing::install(&[], &[]);
     let root = private();

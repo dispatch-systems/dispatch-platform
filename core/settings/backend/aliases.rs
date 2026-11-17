@@ -16,19 +16,19 @@ pub(super) fn applicable<'a>(
     id: &str,
     aliases: &'a [&'static str],
 ) -> Result<&'a [&'static str]> {
-    if !aliases.is_empty() && !in_scope(id, db.feature_code(dsp)?.as_deref()) {
+    if !aliases.is_empty() && !in_scope(id, db.feature_owner(dsp)?.as_deref()) {
         return Ok(&[]);
     }
     Ok(aliases)
 }
 
-pub(super) fn in_scope(id: &str, code: Option<&str>) -> bool {
-    let owner = id.split_once('.').map(|(owner, _)| owner);
+pub(super) fn in_scope(id: &str, owner: Option<&str>) -> bool {
+    let name = id.split_once('.').map(|(name, _)| name);
     registry()
         .features
         .iter()
-        .find(|f| Some(f.name) == owner)
-        .is_none_or(|feature| feature.belongs_to(code))
+        .find(|f| Some(f.name) == name)
+        .is_none_or(|feature| feature.belongs_to(owner))
 }
 
 pub(super) fn keys(id: &str, aliases: &[&str]) -> Vec<String> {
@@ -86,13 +86,13 @@ pub fn write_key(db: &Store, dsp: &str, key: &StoredKey, value: &Value) -> Resul
 /// Before carry-over or owner callbacks, every member and DSP record uses this binary's
 /// canonical key. The whole DSP rolls back on a conflict; JSON bytes stay unchanged.
 pub(crate) fn prepare(db: &Store, dsp: &str) -> Result<()> {
-    let code = db.feature_code(dsp)?;
+    let owner = db.feature_owner(dsp)?;
     let data = db.dsp(dsp)?;
     data.transaction(|| {
         for feature in registry()
             .features
             .iter()
-            .filter(|f| f.belongs_to(code.as_deref()))
+            .filter(|f| f.belongs_to(owner.as_deref()))
         {
             for key in feature
                 .settings_keys

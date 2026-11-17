@@ -137,11 +137,11 @@ fn new_databases_match_the_recorded_schema() {
         migrate(db, kind).unwrap();
         assert_eq!(dump(db), before);
     }
-    // A shared DSP and one of each custom owner exercise provisioning as it runs, before
-    // any second migration pass can repair missing work.
+    // A shared DSP and one with each custom owner's custom ID exercise provisioning as it runs,
+    // before any second migration pass can repair missing work.
     for code in codes() {
         let id = dispatch_core::foundation::crypto::id("dsp").unwrap();
-        store.platform.exec("INSERT INTO dsps(id,name,environment,status,timezone,created_at,code) VALUES (?,'Schema','preview','provisioning','UTC',?,?)", rusqlite::params![id, dispatch_core::db::iso(), code]).unwrap();
+        store.platform.exec("INSERT INTO dsps(id,name,environment,status,timezone,created_at,custom_id) VALUES (?,'Schema','preview','provisioning','UTC',?,?)", rusqlite::params![id, dispatch_core::db::iso(), code]).unwrap();
         store.provision(&id).unwrap();
         let mut leases = vec![(Kind::DSP, store.dsp(&id).unwrap())];
         for provider in Provider::all() {

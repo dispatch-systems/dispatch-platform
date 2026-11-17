@@ -26,8 +26,8 @@ use std::collections::HashMap;
 /// Marks a DSP's database as holding its people: set when it is made, and once theirs move
 /// into it.
 pub(crate) const DIRECTORY: &str = "accounts.directory";
-const INSERT_DSP: &str = "INSERT INTO dsps(id,name,environment,status,timezone,permanent,created_at) \
-    VALUES (?,?,?,'provisioning',?,?,?)";
+const INSERT_DSP: &str = "INSERT INTO dsps(id,name,environment,status,timezone,permanent,created_at,\
+    custom_id) VALUES (?,?,?,'provisioning',?,?,?,?)";
 // Who owns a DSP, from its directory: an active owner, else whoever holds the newest open
 // owner invitation.
 const OWNER_EMAIL: &str = "SELECT MIN(u.email) FROM memberships o JOIN users u ON u.id=o.user_id \
@@ -102,22 +102,20 @@ impl Store {
             params![code.to_ascii_lowercase(), self.config.environment],
         )
     }
+    /// The DSP of this environment whose custom ID is `owner`, which owns the custom features
+    /// in `features/custom/<owner>/`.
+    pub fn dsp_owning(&self, owner: &str) -> Result<Option<Dsp>> {
+        self.platform.one_as(
+            "SELECT * FROM dsps WHERE custom_id=? AND environment=?",
+            params![owner, self.config.environment],
+        )
+    }
     /// Gives a DSP the short code `code`, which then names its address: letters and digits,
     /// free, and not kept for the platform's own addresses. Its abbreviation is the code.
     pub fn set_code(&self, id: &str, code: &str) -> Result<String> {
         let code = code.trim().to_ascii_lowercase();
         ensure(short_code(&code), "invalid_short_code", 400)?;
         self.ensure_not_deleting(id)?;
-        let before = self.find_dsp(id)?.code;
-        ensure(
-            before.as_deref() == Some(code.as_str())
-                || !registry()
-                    .features
-                    .iter()
-                    .any(|feature| feature.owner.is_some() && feature.owner == before.as_deref()),
-            "custom_feature_transfer_required",
-            409,
-        )?;
         ensure(
             !self.config.reserved_code(&code)
                 && self.platform.count(
@@ -131,16 +129,54 @@ impl Store {
             "UPDATE dsps SET code=?,revision=revision+1 WHERE id=?",
             [code.as_str(), id],
         )?;
-        if crate::manifest::registry()
-            .features
-            .iter()
-            .any(|f| f.owner == Some(code.as_str()))
-        {
+        self.set_profile(id, json!({"abbreviation": code.to_ascii_uppercase()}))?;
+        Ok(code)
+    }
+    /// Gives a DSP the custom ID `owner` in place of the random one it was made with, so it owns
+    /// the custom features in `features/custom/<owner>/`: letters and digits, as a short code
+    /// is, and free. Never in Production, where a DSP's ID stays the one it was made with; off
+    /// it, the demo DSPs and tests take known IDs, and a Dev DSP the ID of the Production DSP it
+    /// stands in for. Refused as `custom_feature_transfer_required` while a custom feature
+    /// belongs to the ID it has, which would leave that feature's data.
+    pub fn set_custom_id(&self, id: &str, owner: &str) -> Result<String> {
+        ensure(
+            !self.config.environment.is_production(),
+            "custom_id_fixed",
+            403,
+        )?;
+        let owner = owner.trim().to_ascii_lowercase();
+        ensure(short_code(&owner), "invalid_custom_id", 400)?;
+        self.ensure_not_deleting(id)?;
+        let before = self.find_dsp(id)?.custom_id;
+        let owns = |owner: Option<&str>| {
+            registry()
+                .features
+                .iter()
+                .any(|feature| feature.owner.is_some() && feature.owner == owner)
+        };
+        ensure(
+            before.as_deref() == Some(owner.as_str()) || !owns(before.as_deref()),
+            "custom_feature_transfer_required",
+            409,
+        )?;
+        ensure(
+            self.platform.count(
+                "SELECT count(*) FROM dsps WHERE custom_id=? AND id<>?",
+                [owner.as_str(), id],
+            )? == 0,
+            "custom_id_taken",
+            409,
+        )?;
+        self.platform.exec(
+            "UPDATE dsps SET custom_id=?,revision=revision+1 WHERE id=?",
+            [owner.as_str(), id],
+        )?;
+        // Its custom features' tables and collectors, which it has from now on.
+        if owns(Some(owner.as_str())) {
             self.migrate_dsp(id)?;
             self.open_collectors(id)?;
         }
-        self.set_profile(id, json!({"abbreviation": code.to_ascii_uppercase()}))?;
-        Ok(code)
+        Ok(owner)
     }
     /// Whether `code` is free for a DSP to take as its short code.
     pub fn code_available(&self, code: &str) -> Result<bool> {
@@ -242,7 +278,8 @@ impl Store {
                 self.config.environment,
                 timezone,
                 permanent,
-                iso()
+                iso(),
+                crypto::custom_id()?
             ],
         )?;
         self.seed_features(&id)?;
@@ -330,7 +367,9 @@ impl Store {
             };
             let private: Vec<_> = crate::tenancy::catalog::catalog()
                 .iter()
-                .filter(|feature| feature.owner.is_some() && feature.owner == dsp.code.as_deref())
+                .filter(|feature| {
+                    feature.owner.is_some() && feature.owner == dsp.custom_id.as_deref()
+                })
                 .map(|feature| feature.id.to_owned())
                 .collect();
             let mut summary = DspSummary {
@@ -364,11 +403,11 @@ impl Store {
                     }
                 }
                 // The latest collection any keeper knows of.
-                let code = self.feature_code(id)?;
+                let owner = self.feature_owner(id)?;
                 for keeper in registry()
                     .features
                     .iter()
-                    .filter(|feature| feature.belongs_to(code.as_deref()))
+                    .filter(|feature| feature.belongs_to(owner.as_deref()))
                     .flat_map(|feature| feature.keeps)
                 {
                     let collected = keeper.last_collected(self, id)?;
@@ -732,3 +771,7 @@ pub fn ensure_listed(config: &Config, id: &str) -> Result<()> {
         404,
     )
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/dsps.rs"]
+mod tests;

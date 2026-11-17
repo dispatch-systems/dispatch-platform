@@ -11,7 +11,7 @@ export const replies: Replies = (route, method, context) => {
 
   const section = z.looseObject({
     id: text.check((parsed) => {
-      parsed.value = sectionId(parsed.value, context?.dsp?.code);
+      parsed.value = sectionId(parsed.value, context?.dsp?.customId);
     }),
     page: text,
   });
