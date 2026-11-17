@@ -950,6 +950,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "dispatch-cjf87gqd-hr-line",
+ "dispatch-cjf87gqd-legacy-tracker",
  "dispatch-communications",
  "dispatch-conduct",
  "dispatch-core",
@@ -991,6 +992,17 @@ version = "0.0.0"
 dependencies = [
  "dispatch-communications",
  "dispatch-core",
+]
+
+[[package]]
+name = "dispatch-cjf87gqd-legacy-tracker"
+version = "0.0.0"
+dependencies = [
+ "dispatch-conduct",
+ "dispatch-core",
+ "serde",
+ "serde_json",
+ "ts-rs",
 ]
 
 [[package]]

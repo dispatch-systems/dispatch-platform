@@ -6,6 +6,8 @@ use dispatch_core::manifest::Feature;
 pub const FEATURES: &[&Feature] = &[
     #[cfg(feature = "cjf87gqd_hr_line")]
     &dispatch_cjf87gqd_hr_line::FEATURE.registered(Some("cjf87gqd"), "cjf87gqd_hr_line"),
+    #[cfg(feature = "cjf87gqd_legacy_tracker")]
+    &dispatch_cjf87gqd_legacy_tracker::FEATURE.registered(Some("cjf87gqd"), "cjf87gqd_legacy_tracker"),
     #[cfg(feature = "communications")]
     &dispatch_communications::FEATURE.registered(None, "communications"),
     #[cfg(feature = "conduct")]
@@ -49,6 +51,8 @@ pub const FEATURES: &[&Feature] = &[
 pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     #[allow(unused_mut)]
     let mut all = dispatch_core::Typescript::new();
+    #[cfg(feature = "cjf87gqd_legacy_tracker")]
+    all.extend(dispatch_cjf87gqd_legacy_tracker::typescript(cfg));
     #[cfg(feature = "communications")]
     all.extend(dispatch_communications::typescript(cfg));
     #[cfg(feature = "conduct")]
