@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
-import { ImagePlus, RotateCw } from 'lucide-react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { Camera, ImagePlus, RotateCw } from 'lucide-react';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 
 export type PickedPhoto = { file: File; turns: number };
+
+/**
+ * The photo of a signed paper: chosen from the device's files, which a phone or tablet offers
+ * its camera beside, or on a phone taken with the camera at once.
+ */
 export function PhotoPicker({
   photo,
   change,
@@ -12,7 +17,13 @@ export function PhotoPicker({
   change: (photo: PickedPhoto | undefined) => void;
   disabled?: boolean;
 }) {
-  const input = useRef<HTMLInputElement>(null);
+  /** The input a photo was last picked through, which Retake opens again. */
+  const input = useRef<HTMLInputElement | null>(null);
+  const pick = (event: ChangeEvent<HTMLInputElement>) => {
+    input.current = event.target;
+    const file = event.target.files?.[0];
+    if (file) change({ file, turns: 0 });
+  };
   const [preview, setPreview] = useState<{ file: File; src: string }>();
   const [error, setError] = useState('');
   const file = photo?.file;
@@ -28,26 +39,38 @@ export function PhotoPicker({
   }, [file]);
   return (
     <div className="conduct-field">
-      <label className="conduct-photo">
-        <span className="conduct-label">
-          Signed copy <span className="muted">(optional)</span>
-        </span>
-        <span className="conduct-photo-pick">
-          <ImagePlus size={20} />
-          {photo ? photo.file.name : 'Take a photo or choose a file'}
-        </span>
-        <input
-          ref={input}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          disabled={disabled}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) change({ file, turns: 0 });
-          }}
-        />
-      </label>
+      <div className="conduct-photo-picks">
+        <label className="conduct-photo">
+          <span className="conduct-label">
+            Signed copy <span className="muted">(optional)</span>
+          </span>
+          <span className="conduct-photo-pick">
+            <ImagePlus size={20} />
+            {photo ? (
+              photo.file.name
+            ) : (
+              <>
+                <span className="conduct-photo-wide">Take a photo or choose a file</span>
+                <span className="conduct-photo-phone">Choose photo</span>
+              </>
+            )}
+          </span>
+          <input ref={input} type="file" accept="image/*" disabled={disabled} onChange={pick} />
+        </label>
+        <label className="conduct-photo conduct-photo-take">
+          <span className="conduct-photo-pick">
+            <Camera size={20} />
+            Take photo
+          </span>
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            disabled={disabled}
+            onChange={pick}
+          />
+        </label>
+      </div>
       {photo && preview?.file === photo.file && (
         <>
           <div className="conduct-photo-preview">

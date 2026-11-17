@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { DateField, ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
@@ -16,7 +17,8 @@ const earliest = (today: string) => `${Number(today.slice(0, 4)) - 2}-01-01`;
 
 /**
  * Writing up someone, or changing a writeup not yet signed: who, the category, the date and the
- * tier, with the category's wording to edit, beside the notice as it will print.
+ * tier, with the category's wording to edit, beside the notice as it will print. A phone shows
+ * one of the two at a time, by a switch, and keeps the ways to save at the foot of the screen.
  */
 export function WriteupForm({
   overview,
@@ -39,6 +41,7 @@ export function WriteupForm({
   const [revision] = useState(editing?.revision);
   const { draft } = state;
   const [problem, setProblem] = useState('');
+  const [showing, setShowing] = useState<'write' | 'preview'>('write');
   const fields = useRef<HTMLFieldSetElement>(null);
   const category = overview.categories.find((c) => c.id === draft.category);
   const context = useConductContext(draft.person, draft.category, draft.writtenOn, editing?.id);
@@ -96,6 +99,8 @@ export function WriteupForm({
     const why = missing(draft);
     if (why) {
       setProblem(why);
+      // The field to fix is focused below, so a phone showing the preview shows the form first.
+      flushSync(() => setShowing('write'));
       const invalid =
         (!draft.person
           ? fields.current?.querySelector<HTMLElement>('[role="combobox"]')
@@ -162,22 +167,24 @@ export function WriteupForm({
           <button type="button" disabled={save.busy} onClick={() => leave(cancel)}>
             Cancel
           </button>
-          <button
-            type="button"
-            disabled={save.busy || (!missing(draft) && !context.data)}
-            onClick={() => void attempt(false)}
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            className="primary"
-            disabled={save.busy || (!missing(draft) && !context.data)}
-            onClick={() => void attempt(true)}
-          >
-            <Printer size={16} />
-            Save and print
-          </button>
+          <div className="conduct-actions-main">
+            <button
+              type="button"
+              disabled={save.busy || (!missing(draft) && !context.data)}
+              onClick={() => void attempt(false)}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={save.busy || (!missing(draft) && !context.data)}
+              onClick={() => void attempt(true)}
+            >
+              <Printer size={16} />
+              Save and print
+            </button>
+          </div>
         </div>
       </div>
       <ErrorBox message={problem || save.error || context.error} />
@@ -186,7 +193,21 @@ export function WriteupForm({
           Retry loading
         </button>
       )}
-      <div className="conduct-compose">
+      <div className="conduct-tiers conduct-compose-switch" role="radiogroup" aria-label="Show">
+        {(['write', 'preview'] as const).map((side) => (
+          <button
+            key={side}
+            type="button"
+            role="radio"
+            aria-checked={showing === side}
+            className={showing === side ? 'selected' : undefined}
+            onClick={() => setShowing(side)}
+          >
+            {side === 'write' ? 'Write' : 'Preview'}
+          </button>
+        ))}
+      </div>
+      <div className="conduct-compose" data-showing={showing}>
         <fieldset ref={fields} className="conduct-fields" disabled={save.busy}>
           <div className="conduct-pair">
             <label className="conduct-field">
