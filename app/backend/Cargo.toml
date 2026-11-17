@@ -24,6 +24,7 @@ test = false
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
 default = [
     "cjf87gqd_hr_line",
+    "cjf87gqd_legacy_tracker",
     "communications",
     "conduct",
     "daily_performance",
@@ -43,6 +44,7 @@ default = [
     "weekly_scorecard",
 ]
 cjf87gqd_hr_line = ["dep:dispatch-cjf87gqd-hr-line", "communications"]
+cjf87gqd_legacy_tracker = ["dep:dispatch-cjf87gqd-legacy-tracker", "conduct"]
 communications = ["dep:dispatch-communications", "slack"]
 conduct = ["dep:dispatch-conduct"]
 daily_performance = ["dep:dispatch-daily-performance"]
@@ -73,6 +75,7 @@ dispatch-mcp = { path = "../../mcp", default-features = false }
 dispatch-paycom = { path = "../../collectors/paycom" }
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
 dispatch-cjf87gqd-hr-line = { path = "../../features/custom/cjf87gqd/hr_line", optional = true }
+dispatch-cjf87gqd-legacy-tracker = { path = "../../features/custom/cjf87gqd/legacy_tracker", optional = true }
 dispatch-communications = { path = "../../features/communications", optional = true }
 dispatch-conduct = { path = "../../features/conduct", optional = true }
 dispatch-daily-performance = { path = "../../features/daily_performance", optional = true }
@@ -105,6 +108,7 @@ dispatch-core = { path = "../../core", features = ["testing", "ts"] }
 dispatch-mcp = { path = "../../mcp", default-features = false, features = ["testing", "ts"] }
 dispatch-paycom = { path = "../../collectors/paycom", features = ["ts"] }
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
+dispatch-cjf87gqd-legacy-tracker = { path = "../../features/custom/cjf87gqd/legacy_tracker", features = ["ts"] }
 dispatch-communications = { path = "../../features/communications", features = ["ts"] }
 dispatch-conduct = { path = "../../features/conduct", features = ["ts"] }
 dispatch-daily-performance = { path = "../../features/daily_performance", features = ["ts"] }

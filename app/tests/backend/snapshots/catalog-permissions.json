@@ -33,7 +33,8 @@
     ["phones.manage", "Manage Phones"],
     ["conduct.use", "Use Conduct"],
     ["conduct.manage", "Manage Conduct"],
-    ["cjf87gqd_hr_line.phones", "Manage HR Line Phones"]
+    ["cjf87gqd_hr_line.phones", "Manage HR Line Phones"],
+    ["cjf87gqd_legacy_tracker.manage", "Manage Legacy Tracker"]
   ],
   "implied": [
     ["timecard.manage", "timecard.view"],

@@ -149,13 +149,20 @@ function filled(manifest: string, file: string, marker: string, lists: Record<st
   return out.join('\n');
 }
 
+/** The longest line rustfmt leaves whole. */
+const RUSTFMT_WIDTH = 100;
+
 /** The registry's list of features, each while the app's Cargo feature of its name is on. */
 export function wiredList(features: Crate[]) {
   const ident = (crate: string) => crate.replaceAll('-', '_');
-  const entries = features.map(
-    ({ name, crate, owner }) =>
-      `    #[cfg(feature = "${name}")]\n    &${ident(crate)}::FEATURE${`.registered(${owner ? `Some("${owner}")` : 'None'}, "${name}")`},\n`,
-  );
+  const entries = features.map(({ name, crate, owner }) => {
+    const feature = `    &${ident(crate)}::FEATURE`;
+    const registered = `.registered(${owner ? `Some("${owner}")` : 'None'}, "${name}")`;
+    // Broken where rustfmt breaks a line too long for its width.
+    const fits = `${feature}${registered},`.length <= RUSTFMT_WIDTH;
+    const entry = fits ? `${feature}${registered}` : `${feature}\n        ${registered}`;
+    return `    #[cfg(feature = "${name}")]\n${entry},\n`;
+  });
   // Each feature that writes its API types to TypeScript lists them itself.
   const typescript = features
     .filter(({ ts }) => ts)

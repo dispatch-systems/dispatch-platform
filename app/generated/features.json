@@ -48,6 +48,48 @@
     "tables": {},
     "subfeatures": []
   },
+  "cjf87gqd_legacy_tracker": {
+    "directory": "features/custom/cjf87gqd/legacy_tracker",
+    "owner": "cjf87gqd",
+    "collectors": [],
+    "depends_on": [
+      "conduct"
+    ],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "cjf87gqd_legacy_tracker.manage"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "integrations": [],
+      "live": [],
+      "maintenance": [],
+      "on": [],
+      "people": [],
+      "routes": [
+        "GET /api/dsp/cjf87gqd-legacy-tracker"
+      ],
+      "exposes": [],
+      "env": [],
+      "settings": [
+        "cjf87gqd_legacy_tracker.general"
+      ]
+    },
+    "switch": "cjf87gqd_legacy_tracker",
+    "mandatory": false,
+    "tables": {},
+    "subfeatures": []
+  },
   "communications": {
     "directory": "features/communications",
     "owner": null,

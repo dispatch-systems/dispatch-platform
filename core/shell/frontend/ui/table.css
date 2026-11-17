@@ -27,6 +27,8 @@
 .restored-tabs > a {
   display: flex;
   align-items: center;
+  /* A button's own line height, so a link's label sits level with the tabs'. */
+  line-height: 1.4;
   text-decoration: none;
 }
 .restored-tabs button[aria-selected='true'] {

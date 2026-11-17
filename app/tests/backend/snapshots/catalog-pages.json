@@ -151,6 +151,14 @@
       "requires": [],
       "default": false,
       "mandatory": false
+    },
+    {
+      "id": "cjf87gqd_legacy_tracker",
+      "label": "Legacy Tracker",
+      "permissions": ["cjf87gqd_legacy_tracker.manage"],
+      "requires": [],
+      "default": false,
+      "mandatory": false
     }
   ],
   "subfeatures": [
@@ -234,6 +242,7 @@
     "live_route_data",
     "conduct",
     "cjf87gqd_hr_line",
+    "cjf87gqd_legacy_tracker",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",
