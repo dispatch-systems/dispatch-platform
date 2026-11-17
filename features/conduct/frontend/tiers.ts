@@ -58,5 +58,9 @@ export function priorLine(categoryName: string, earlier: readonly ConductWriteup
   return `Previous writeups for ${categoryName}: ${each.join(', ')}.`;
 }
 
+/** The line someone adds to a writeup's prior discussion on when its person was last coached,
+ * its date a blank to fill. */
+export const coachedLine = 'DA was last coached on [date].';
+
 /** The blanks a category's wording leaves to fill, as `[…]`. */
 export const blank = /\[[^\]\n]+\]/g;

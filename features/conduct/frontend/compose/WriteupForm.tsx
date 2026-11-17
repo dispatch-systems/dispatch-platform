@@ -10,7 +10,16 @@ import { useSaveChanges } from '../useSaveChanges.js';
 import { DriverPicker } from './DriverPicker.js';
 import { TemplateSection } from './TemplateSection.js';
 import { TierPicker } from './TierPicker.js';
-import { type Draft, filled, filledOf, inputOf, missing, refill } from './draft.js';
+import {
+  type Draft,
+  filled,
+  filledOf,
+  inputOf,
+  missing,
+  refill,
+  saysCoached,
+  withCoached,
+} from './draft.js';
 
 /** The earliest a writeup may be dated: the start of the year before last. */
 const earliest = (today: string) => `${Number(today.slice(0, 4)) - 2}-01-01`;
@@ -82,6 +91,18 @@ export function WriteupForm({
   const edit = (next: Partial<Draft>) => {
     setProblem('');
     setState((current) => ({ ...current, draft: { ...current.draft, ...next } }));
+  };
+  // Its line joins what the section was filled with too, so wording nobody typed over still
+  // follows the category.
+  const coach = (include: boolean) => {
+    setProblem('');
+    setState(({ draft, before }) => {
+      const prior = withCoached(draft.prior, include);
+      return {
+        draft: { ...draft, prior },
+        before: draft.prior === before.prior ? { ...before, prior } : before,
+      };
+    });
   };
   const save = useAction(
     async (andPrint: boolean) => {
@@ -267,7 +288,16 @@ export function WriteupForm({
             label="2. Prior discussion or warnings"
             value={draft.prior}
             change={(prior) => edit({ prior })}
-          />
+          >
+            <label className="conduct-coached">
+              <input
+                type="checkbox"
+                checked={saysCoached(draft.prior)}
+                onChange={(e) => coach(e.target.checked)}
+              />
+              Last coached
+            </label>
+          </TemplateSection>
           <TemplateSection
             label="3. Corrective action"
             value={draft.plan}

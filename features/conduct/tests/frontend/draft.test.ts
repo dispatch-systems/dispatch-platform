@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ConductWriteupRow, ConductContext } from '../../api/index.js';
-import { emptyDraft, filled, filledOf, missing, refill } from '../../frontend/compose/draft.js';
+import {
+  emptyDraft,
+  filled,
+  filledOf,
+  missing,
+  refill,
+  saysCoached,
+  withCoached,
+} from '../../frontend/compose/draft.js';
 
 const writeup = (
   id: string,
@@ -120,4 +128,23 @@ test('a section above the server limit is rejected before saving', () => {
   };
   assert.equal(missing(draft), 'Each section can contain up to 4,000 characters.');
   assert.equal(missing({ ...draft, statement: 'x'.repeat(4000) }), undefined);
+});
+
+test('Last coached adds its line with the date to fill, and takes it out once filled', () => {
+  const added = withCoached('Discussed at stand up.', true);
+  assert.equal(added, 'Discussed at stand up.\nDA was last coached on [date].');
+  assert.equal(withCoached(added, true), added);
+  const draft = {
+    ...emptyDraft('2026-11-08', 'ana'),
+    category: 'tardies',
+    statement: 'DA was late.',
+    prior: added,
+    plan: 'Arrive on time.',
+  };
+  assert.equal(missing(draft), 'Fill in the blanks marked in yellow.');
+  const dated = added.replace('[date]', '11/1/2026');
+  assert.equal(missing({ ...draft, prior: dated }), undefined);
+  assert(saysCoached(dated));
+  assert.equal(withCoached(dated, false), 'Discussed at stand up.');
+  assert(!saysCoached('Discussed at stand up.'));
 });

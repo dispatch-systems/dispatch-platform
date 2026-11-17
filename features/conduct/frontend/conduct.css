@@ -630,6 +630,18 @@
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
+.conduct-coached {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  margin-top: 2px;
+  font-size: 13.5px;
+}
+.conduct-coached input {
+  accent-color: var(--primary);
+}
 .conduct-tiers {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
