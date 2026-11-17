@@ -9,7 +9,11 @@ import { useConduct } from '../useConduct.js';
 import { stepDownRule } from './StepDown.js';
 import { CategoryDialog } from './CategoryDialog.js';
 
-/** The categories of writeup on Conduct's page of Settings: each in use, then those retired. */
+/**
+ * The categories of writeup on Conduct's page of Settings: each in use, then those retired. One
+ * in use opens from anywhere on its row; a phone puts the tier it starts at and how it steps down
+ * in a line under its name.
+ */
 export function CategoriesSection() {
   const { overview, error, refresh, take } = useConduct();
   const [open, setOpen] = useState<ConductCategory | 'new'>();
@@ -30,7 +34,7 @@ export function CategoriesSection() {
           const count = (id: string) => overview.categoryCounts[id] ?? 0;
           return (
             <div className="table-wrap">
-              <table className="conduct-table conduct-category-table">
+              <table className="conduct-table conduct-stacked conduct-category-table">
                 <thead>
                   <tr>
                     <th>Category</th>
@@ -46,19 +50,10 @@ export function CategoriesSection() {
                   {overview.categories.map((category) => (
                     <tr
                       key={category.id}
-                      className={category.retired ? 'conduct-retired' : undefined}
+                      className={category.retired ? 'conduct-retired' : 'conduct-row'}
+                      onClick={category.retired ? undefined : () => setOpen(category)}
                     >
-                      <td>
-                        {category.name}
-                        <div className="conduct-category-details">
-                          {category.retired ? (
-                            <span className="muted">Retired</span>
-                          ) : (
-                            <TierBadge tier={category.startTier} />
-                          )}
-                          <span className="conduct-note">{stepDownRule(category.stepDown)}</span>
-                        </div>
-                      </td>
+                      <td>{category.name}</td>
                       <td>
                         {category.retired ? (
                           <span className="muted">Retired</span>
