@@ -59,6 +59,10 @@ class PipelineTests(unittest.TestCase):
         advisories = {("RUSTSEC-2026-0367", "zip", "8.6.0"): "why"}
         listed = ("RUSTSEC-2026-0367", "zip", "8.6.0")
         self.assertEqual(audit.problems(audit_report(vulnerabilities=[listed]), {}, advisories), [])
+        # A warning's advisory is allowed the same way, as an unmaintained crate's.
+        warned = {("RUSTSEC-2026-0001", "zip", "8.6.0"): "why"}
+        self.assertEqual(audit.problems(audit_report(("unmaintained", "zip", "8.6.0")), {}, warned), [])
+        self.assertEqual(len(audit.problems(audit_report(("unmaintained", "zip", "9.0.4")), {}, warned)), 2)
         # The same advisory on another version, another advisory on that version, and a
         # warning still fail it.
         for report in [
