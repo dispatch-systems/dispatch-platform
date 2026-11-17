@@ -76,28 +76,28 @@
     font-size: 13px;
     white-space: nowrap;
   }
-  .conduct-table,
-  .conduct-table tbody {
+  .conduct-stacked,
+  .conduct-stacked tbody {
     display: block;
   }
-  .conduct-table thead {
+  .conduct-stacked thead {
     position: absolute;
     width: 1px;
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
   }
-  .conduct-table tbody tr {
+  .conduct-stacked tbody tr {
     display: grid;
     align-items: center;
     column-gap: 10px;
     padding: 14px 0;
   }
-  .conduct-table td:nth-child(n) {
+  .conduct-stacked td:nth-child(n) {
     padding: 0;
   }
-  .conduct-table td:empty,
-  .conduct-table td:has(> .conduct-chips:empty) {
+  .conduct-stacked td:empty,
+  .conduct-stacked td:has(> .conduct-chips:empty) {
     display: none;
   }
   .conduct-writeups tbody tr {

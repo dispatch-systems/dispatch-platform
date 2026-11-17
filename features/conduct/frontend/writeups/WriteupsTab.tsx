@@ -99,7 +99,7 @@ function HistoryRows({
             <Empty title="No writeups" />
           ) : (
             <div className="table-wrap">
-              <table className="conduct-table conduct-writeups">
+              <table className="conduct-table conduct-stacked conduct-writeups">
                 <thead>
                   <tr>
                     <th>Date</th>

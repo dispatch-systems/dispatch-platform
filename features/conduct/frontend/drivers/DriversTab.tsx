@@ -65,7 +65,7 @@ export function DriversTab({
         <Empty title="No drivers" />
       ) : (
         <div className="table-wrap">
-          <table className="conduct-table conduct-drivers">
+          <table className="conduct-table conduct-stacked conduct-drivers">
             <thead>
               <tr>
                 <th>Driver</th>
