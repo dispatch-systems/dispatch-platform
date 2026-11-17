@@ -36,6 +36,27 @@ type Held = {
 /** Where the widget held would land. */
 const landing = (held: Held) => held.layout.find((each) => each.id === held.id)!;
 
+/**
+ * Follows the pointer `event` pressed on its element: `move` as it goes, and `end` once the
+ * element no longer has it, however that came: let go, cancelled, or taken by a menu or another
+ * window, which sends no release.
+ */
+function follow(
+  event: PointerEvent<HTMLElement>,
+  move: (moved: globalThis.PointerEvent) => void,
+  end: () => void,
+) {
+  const element = event.currentTarget;
+  const lost = () => {
+    element.removeEventListener('pointermove', move);
+    element.removeEventListener('lostpointercapture', lost);
+    end();
+  };
+  element.addEventListener('pointermove', move);
+  element.addEventListener('lostpointercapture', lost);
+  element.setPointerCapture(event.pointerId);
+}
+
 /** The size of the space the board is drawn in, as the window gives it, once it has one. */
 function useSize() {
   const area = useRef<HTMLDivElement>(null);
@@ -134,8 +155,6 @@ export function HomeEditor({
   const pickUp = (event: PointerEvent<HTMLElement>, at: PlacedWidget) => {
     if (event.button !== 0 || (event.target as Element).closest('.home-remove, .home-handle'))
       return;
-    const cell = event.currentTarget;
-    cell.setPointerCapture(event.pointerId);
     const [startX, startY] = [event.clientX, event.clientY];
     let now: Held | undefined;
     let tried: { x: number; y: number } | undefined;
@@ -163,9 +182,6 @@ export function HomeEditor({
       setHeld(now);
     };
     const end = () => {
-      cell.removeEventListener('pointermove', move);
-      cell.removeEventListener('pointerup', end);
-      cell.removeEventListener('pointercancel', end);
       if (now) {
         const target = landing(now);
         if (target.x !== at.x || target.y !== at.y) drop(at.id, now.to);
@@ -173,9 +189,7 @@ export function HomeEditor({
       }
       setHeld(undefined);
     };
-    cell.addEventListener('pointermove', move);
-    cell.addEventListener('pointerup', end);
-    cell.addEventListener('pointercancel', end);
+    follow(event, move, end);
   };
 
   // Follows the pointer from the handle it pressed, the widget taking the size of its own nearest
@@ -188,8 +202,6 @@ export function HomeEditor({
   ) => {
     event.preventDefault();
     event.stopPropagation();
-    const handle = event.currentTarget;
-    handle.setPointerCapture(event.pointerId);
     const [startX, startY] = [event.clientX, event.clientY];
     const others = origin.filter((each) => each.id !== at.id);
     let last = at;
@@ -206,15 +218,10 @@ export function HomeEditor({
       setResizing(next);
     };
     const end = () => {
-      handle.removeEventListener('pointermove', move);
-      handle.removeEventListener('pointerup', end);
-      handle.removeEventListener('pointercancel', end);
       if (last !== at) keepSize(last);
       setResizing(undefined);
     };
-    handle.addEventListener('pointermove', move);
-    handle.addEventListener('pointerup', end);
-    handle.addEventListener('pointercancel', end);
+    follow(event, move, end);
   };
 
   const unplaced = available.filter(
