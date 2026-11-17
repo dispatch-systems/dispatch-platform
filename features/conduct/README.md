@@ -117,7 +117,8 @@ with a photo of the paper if they like.
   `wording.ts`; printing it alone; and in `fonts/`, the free fonts it falls back on where a
   computer lacks Arial Narrow, Arial or Snell Roundhand, each with its license.
 - `frontend/compose/`: the writeup form, searchable driver picker and directly editable
-  template blanks, with full-text editing and client-side section limits; `draft.ts` fills it as a person and a category are
+  template blanks, with full-text editing and client-side section limits, and a Last coached box
+  that adds a line with the date to fill to the prior discussion, or takes it out; `draft.ts` fills it as a person and a category are
   chosen, keeping whatever someone changed.
 - `frontend/drivers/`, `frontend/writeups/`, `frontend/settings/`: each screen;
   `settings/StepDown.tsx` sets a category's step down.

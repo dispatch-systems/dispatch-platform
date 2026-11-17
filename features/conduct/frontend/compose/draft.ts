@@ -5,7 +5,7 @@ import type {
   ConductWriteup,
   WriteupInput,
 } from '../../api/index.js';
-import { blank, priorLine, suggestedTier } from '../tiers.js';
+import { blank, coachedLine, priorLine, suggestedTier } from '../tiers.js';
 import type { FinalChoice } from './TierPicker.js';
 
 // A writeup as it's being written, and how choosing who it's for and its category fills it.
@@ -103,6 +103,19 @@ export function refill(
       plan: base('plan'),
     },
   };
+}
+
+/** The line on when the person was last coached, its date filled or still a blank. */
+const coached = new RegExp(`(^|\\n)${coachedLine.slice(0, coachedLine.indexOf('['))}[^\\n]*`);
+
+/** Whether `prior` says when its person was last coached. */
+export const saysCoached = (prior: string) => coached.test(prior);
+
+/** `prior` ending with the line on when its person was last coached, or without it. */
+export function withCoached(prior: string, include: boolean) {
+  const without = prior.replace(coached, '').replace(/^\n/, '');
+  if (!include) return without;
+  return without ? `${without}\n${coachedLine}` : coachedLine;
 }
 
 /** Why `draft` can't be saved yet, if it can't. */

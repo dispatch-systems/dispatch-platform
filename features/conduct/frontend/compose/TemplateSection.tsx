@@ -1,18 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { blank } from '../tiers.js';
 
 /**
  * One section of the notice. Wording that leaves blanks is edited in place around them: each
- * blank is its own box, so no edit to the wording can remove it.
+ * blank is its own box, so no edit to the wording can remove it. `children` sit below it.
  */
 export function TemplateSection({
   label,
   value,
   change,
+  children,
 }: {
   label: string;
   value: string;
   change: (value: string) => void;
+  children?: ReactNode;
 }) {
   // The wording as it last arrived from outside; what's typed here is `emitted`, not a new one.
   const [template, setTemplate] = useState({ text: value, arrival: 0 });
@@ -40,6 +42,7 @@ export function TemplateSection({
           onChange={(e) => emit(e.target.value)}
         />
       )}
+      {children}
     </div>
   );
 }
