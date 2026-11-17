@@ -42,6 +42,124 @@
   padding: 4px 10px;
   font-size: 12.5px;
 }
+.conduct-toolbar .conduct-status,
+.conduct-row-details {
+  display: none;
+}
+/* On a phone each row stacks what its columns held, so no list scrolls sideways: its headings
+   stay for a screen reader alone. */
+@media (max-width: 600px) {
+  .conduct-toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .conduct-toolbar .search,
+  .conduct-toolbar .conduct-status {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .conduct-toolbar .conduct-status {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+  }
+  .conduct-toolbar select {
+    order: 1;
+    width: 100%;
+    min-width: 0;
+  }
+  .conduct-toolbar .conduct-status-wide {
+    display: none;
+  }
+  .conduct-status button {
+    padding: 0 12px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .conduct-stacked,
+  .conduct-stacked tbody {
+    display: block;
+  }
+  .conduct-stacked thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .conduct-stacked tbody tr {
+    display: grid;
+    align-items: center;
+    column-gap: 10px;
+    padding: 14px 0;
+  }
+  .conduct-stacked td:nth-child(n) {
+    padding: 0;
+  }
+  .conduct-stacked td:empty,
+  .conduct-stacked td:has(> .conduct-chips:empty) {
+    display: none;
+  }
+  .conduct-writeups tbody tr {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'person date'
+      'category date'
+      'tier status';
+  }
+  .conduct-writeups td:nth-child(1) {
+    grid-area: date;
+    align-self: start;
+    text-align: right;
+    font-size: 12.5px;
+    line-height: 30px;
+    color: var(--muted-foreground);
+  }
+  .conduct-writeups td:nth-child(2) {
+    grid-area: person;
+  }
+  .conduct-writeups td:nth-child(3) {
+    grid-area: category;
+    padding-left: 40px;
+    font-size: 12.5px;
+    color: var(--muted-foreground);
+  }
+  .conduct-writeups td:nth-child(4) {
+    grid-area: tier;
+    margin-top: 10px;
+    padding-left: 40px;
+  }
+  .conduct-writeups td:nth-child(5) {
+    display: none;
+  }
+  .conduct-writeups td:nth-child(6) {
+    grid-area: status;
+    justify-self: end;
+    margin-top: 10px;
+  }
+  .conduct-drivers tbody tr {
+    row-gap: 8px;
+  }
+  .conduct-drivers td:nth-child(2),
+  .conduct-drivers td:nth-child(5),
+  .conduct-row-details {
+    padding-left: 40px;
+  }
+  .conduct-drivers td:nth-child(3),
+  .conduct-drivers td:nth-child(4) {
+    display: none;
+  }
+  .conduct-row-details {
+    display: block;
+    font-size: 12.5px;
+    color: var(--muted-foreground);
+  }
+  .conduct-pager {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 14px;
+  }
+}
 
 /* A tier, colored by how far up it is */
 .conduct-tier,
@@ -318,13 +436,92 @@
     flex-basis: auto;
   }
 }
+/* On a phone the driver's photo and name share a line above their totals, two by two, and each
+   writeup in a category is a row of its own: its date over its supervisor, its tier, and its
+   signature. */
 @media (max-width: 600px) {
-  .conduct-category table {
-    min-width: 540px;
-    table-layout: auto;
+  .conduct-driver-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 16px 14px;
+    padding: 0;
+    border: 0;
+    text-align: left;
   }
-  .conduct-category th:nth-child(n) {
-    width: auto;
+  .conduct-driver-card .conduct-avatar-large {
+    width: 56px;
+    height: 56px;
+    font-size: 19px;
+  }
+  .conduct-driver-card h1 {
+    font-size: 23px;
+  }
+  .conduct-driver-card .primary {
+    grid-column: 1 / -1;
+    order: 1;
+    min-height: 46px;
+  }
+  .conduct-driver-card .detail-list {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--border);
+  }
+  .conduct-driver-card .detail-list > div:nth-child(n) {
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: flex-start;
+    gap: 3px;
+    padding: 11px 14px;
+    border: 0;
+    background: var(--card);
+  }
+  .conduct-driver-card .detail-list > div:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+  .conduct-driver-card dd {
+    text-align: left;
+  }
+  .conduct-category > header {
+    padding: 16px;
+  }
+  .conduct-category tbody {
+    border-top: 1px solid var(--border);
+  }
+  .conduct-category tbody tr {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'date tier status'
+      'supervisor tier status';
+    padding: 12px 16px;
+  }
+  .conduct-category tr + tr td {
+    border-top: 0;
+  }
+  .conduct-category td:nth-child(1) {
+    grid-area: date;
+    padding-left: 0;
+    font-weight: 500;
+  }
+  .conduct-category td:nth-child(2) {
+    grid-area: tier;
+  }
+  .conduct-category td:nth-child(3) {
+    grid-area: supervisor;
+    font-size: 12.5px;
+    color: var(--muted-foreground);
+  }
+  .conduct-category td:nth-child(4) {
+    grid-area: status;
+  }
+  .conduct-category > .conduct-pager {
+    padding: 12px 16px;
   }
 }
 

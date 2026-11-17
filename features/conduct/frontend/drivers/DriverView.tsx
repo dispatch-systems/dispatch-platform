@@ -140,7 +140,7 @@ function CategoryHistory({
       <DataState data={read.data} error={read.error} retry={read.refresh}>
         {({ writeups }) => (
           <div className="table-wrap">
-            <table className="conduct-table">
+            <table className="conduct-table conduct-stacked">
               <thead>
                 <tr>
                   <th>Date</th>
