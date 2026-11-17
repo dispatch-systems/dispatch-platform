@@ -6,6 +6,7 @@ import type { ConductOverview, ConductSaved, ConductWriteup } from '../api/index
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { LeaveGuards, type Guards } from '../../../core/shell/frontend/runtime/leave.js';
+import { HostedTab, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
 import { usePrintNotice } from './notice/usePrintNotice.js';
 import { type HistoryFilters, useWriteup } from '../api/client.js';
 import { useConductAddress, type ConductAddress } from './address.js';
@@ -31,7 +32,10 @@ function EditWriteup({
   );
 }
 
-/** The drivers and the writeups, in tabs, with a writeup marked signed from its row. */
+/**
+ * The drivers and the writeups, in tabs, with a writeup marked signed from its row, and the
+ * tabs other features add to the page after them.
+ */
 function Lists({
   overview,
   tab,
@@ -50,6 +54,10 @@ function Lists({
   write: () => void;
 }) {
   const { markSigned, dialog } = useMarkSigned(overview, take);
+  const tabs = usePageTabs('conduct', [
+    ['writeups', 'Writeups'],
+    ['drivers', 'Drivers'],
+  ]);
   return (
     <>
       <Header title="Conduct">
@@ -60,19 +68,22 @@ function Lists({
       </Header>
       <Tabs
         label="Conduct"
-        value={tab}
-        items={[
-          ['writeups', 'Writeups'],
-          ['drivers', 'Drivers'],
-        ]}
+        value={tabs.open?.id ?? tab}
+        items={tabs.items}
+        links={tabs.links}
+        onIntent={tabs.warm}
         onChange={(id) =>
-          open(
-            { view: 'list', tab: id === 'drivers' ? 'drivers' : 'writeups', filters },
-            { replace: true },
+          tabs.change(id, (own) =>
+            open(
+              { view: 'list', tab: own === 'drivers' ? 'drivers' : 'writeups', filters },
+              { replace: true },
+            ),
           )
         }
       />
-      {tab === 'drivers' ? (
+      {tabs.open ? (
+        <HostedTab tab={tabs.open} />
+      ) : tab === 'drivers' ? (
         <DriversTab
           overview={overview}
           filters={filters}

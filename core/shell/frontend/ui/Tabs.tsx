@@ -6,6 +6,7 @@ export function Tabs({
   items,
   label,
   onIntent,
+  links,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -14,9 +15,11 @@ export function Tabs({
   label: string;
   /** Optional code/data warming for a deliberate next-tab selection. */
   onIntent?: (value: string) => void;
+  /** Links drawn in the strip after its tabs, outside the tab list they are no part of. */
+  links?: ReactNode;
 }) {
-  return (
-    <div className="restored-tabs" role="tablist" aria-label={label}>
+  const list = (className: string) => (
+    <div className={className} role="tablist" aria-label={label}>
       {items.map(([id, text], index) => (
         <button
           key={id}
@@ -48,5 +51,13 @@ export function Tabs({
         </button>
       ))}
     </div>
+  );
+  return links ? (
+    <div className="restored-tabs">
+      {list('restored-tabs-list')}
+      {links}
+    </div>
+  ) : (
+    list('restored-tabs')
   );
 }

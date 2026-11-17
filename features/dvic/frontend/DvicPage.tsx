@@ -118,6 +118,7 @@ export function DvicPage({ view }: { view: DspView }) {
         onChange={(id) => dvic.tabs.change(id, (own) => dvic.setTab(own as 'day' | 'week'))}
         onIntent={dvic.tabs.warm}
         items={dvic.tabs.items}
+        links={dvic.tabs.links}
       />
       {dvic.tabs.open ? (
         <HostedTab tab={dvic.tabs.open} />

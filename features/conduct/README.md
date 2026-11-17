@@ -24,7 +24,8 @@ with a photo of the paper if they like.
   category) and Writeups (every writeup), a driver's own page (each category's tier and when it
   next steps down), a writeup's, and the form that
   writes or changes one beside its notice. Its search, category, tier and signature filters are in the address (`frontend/address.ts`),
-  so Back and links restore them; page cursors and scroll return with the list.
+  so Back and links restore them; page cursors and scroll return with the list. The tabs other
+  features add to the page follow its own.
 - **API** (`api/routes.rs`): `GET /api/dsp/conduct` reads compact categories, people, current standings,
   driver totals and category counts. It uses the shared read cache, evicted by Conduct, DSP
   and directory changes, with the DSP-local date in its key. The page consumes prefetched
