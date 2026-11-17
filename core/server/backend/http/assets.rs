@@ -67,10 +67,12 @@ pub(crate) async fn audience(
     state: &std::sync::Arc<State>,
     parts: &axum::http::request::Parts,
 ) -> Audience {
+    // Only a custom feature's own files, and the outside sources its pages load, depend on who
+    // asks: any other request answers alike for everyone, with no turn at the database, so
+    // health and the dashboard's own files never wait on a write.
     if !crate::manifest::registry()
-        .features
-        .iter()
-        .any(|feature| feature.owner.is_some())
+        .page_sources()
+        .any(|(feature, _)| feature.owner.is_some())
         && !state
             .assets
             .get(parts.uri.path())
