@@ -5,11 +5,16 @@ import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js'
 import type { ConductCategory } from '../../api/index.js';
 import { restoreCategory } from '../../api/client.js';
 import { TierBadge } from '../parts.js';
+import { tierShort } from '../tiers.js';
 import { useConduct } from '../useConduct.js';
 import { stepDownRule } from './StepDown.js';
 import { CategoryDialog } from './CategoryDialog.js';
 
-/** The categories of writeup on Conduct's page of Settings: each in use, then those retired. */
+/**
+ * The categories of writeup on Conduct's page of Settings: each in use, then those retired. One
+ * in use opens from anywhere on its row; a phone says where it starts and how it steps down in
+ * a line under its name.
+ */
 export function CategoriesSection() {
   const { overview, error, refresh, take } = useConduct();
   const [open, setOpen] = useState<ConductCategory | 'new'>();
@@ -46,17 +51,16 @@ export function CategoriesSection() {
                   {overview.categories.map((category) => (
                     <tr
                       key={category.id}
-                      className={category.retired ? 'conduct-retired' : undefined}
+                      className={category.retired ? 'conduct-retired' : 'conduct-row'}
+                      onClick={category.retired ? undefined : () => setOpen(category)}
                     >
                       <td>
                         {category.name}
                         <div className="conduct-category-details">
-                          {category.retired ? (
-                            <span className="muted">Retired</span>
-                          ) : (
-                            <TierBadge tier={category.startTier} />
-                          )}
-                          <span className="conduct-note">{stepDownRule(category.stepDown)}</span>
+                          {category.retired
+                            ? 'Retired'
+                            : `Starts at ${tierShort[category.startTier]}`}
+                          {` · ${stepDownRule(category.stepDown)}`}
                         </div>
                       </td>
                       <td>
