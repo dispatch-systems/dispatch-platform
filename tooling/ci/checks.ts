@@ -260,7 +260,7 @@ async function api() {
   const python = (async () => {
     if (apiFirst) for (const command of pythonCommands) await execute(command);
   })();
-  const audit = apiFirst ? run('dependency audit', 'npm', ['audit', '--audit-level=high']) : true;
+  const audit = apiFirst ? run('dependency audit', 'python3', ['tooling/ci/npm-audit.py']) : true;
   if (await run('debug build', 'tooling/cli/dispatchdev', ['build'])) {
     await execute(coreCommand);
   }

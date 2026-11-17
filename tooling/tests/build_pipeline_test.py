@@ -20,6 +20,7 @@ def module(name, path):
 
 collectors = module("browseros_check", "tooling/ci/browseros-check.py")
 audit = module("cargo_audit", "tooling/ci/cargo-audit.py")
+npm_audit = module("npm_audit", "tooling/ci/npm-audit.py")
 
 
 def audit_report(*warnings, vulnerabilities=()):
@@ -38,7 +39,54 @@ def audit_report(*warnings, vulnerabilities=()):
             "warnings": grouped}
 
 
+def npm_report(*advisories, dependents=()):
+    """npm audit's JSON report with `(id, package, severity)` advisories, each installed at
+    node_modules/<package>, and the `dependents` named only for depending on one."""
+    listed = {
+        name: {"via": [{"name": name, "severity": severity,
+                        "url": f"https://github.com/advisories/{id}"}],
+               "nodes": [f"node_modules/{name}"]}
+        for id, name, severity in advisories
+    }
+    for name, on in dependents:
+        listed[name] = {"via": [on], "nodes": [f"node_modules/{name}"]}
+    return {"vulnerabilities": listed}
+
+
 class PipelineTests(unittest.TestCase):
+    def test_the_npm_audit_allows_only_the_listed_advisories_on_their_versions_and_drops_stale_ones(self):
+        advisories = {("GHSA-aaaa", "glob", "4.0.7"): "why"}
+        versions = {"node_modules/glob": "4.0.7", "node_modules/build": "8.0.0",
+                    "node_modules/other": "1.0.0"}
+        listed = ("GHSA-aaaa", "glob", "high")
+        # What only depends on the allowed package adds nothing of its own.
+        report = npm_report(listed, dependents=[("build", "glob")])
+        self.assertEqual(npm_audit.problems(report, versions, advisories), [])
+        # The same advisory on another version, another advisory on that version and one on
+        # another package still fail it; one below high does not.
+        self.assertEqual(
+            npm_audit.problems(npm_report(listed), {**versions, "node_modules/glob": "4.0.8"}, advisories),
+            ["GHSA-aaaa: glob 4.0.8",
+             "GHSA-aaaa on glob 4.0.7 is allowed but no longer found: remove it from ALLOWED_ADVISORIES"],
+        )
+        report = npm_report(listed)
+        report["vulnerabilities"]["glob"]["via"].append(
+            {"name": "glob", "severity": "critical", "url": "https://github.com/advisories/GHSA-bbbb"})
+        self.assertEqual(npm_audit.problems(report, versions, advisories), ["GHSA-bbbb: glob 4.0.7"])
+        self.assertEqual(
+            npm_audit.problems(npm_report(listed, ("GHSA-cccc", "other", "high")), versions, advisories),
+            ["GHSA-cccc: other 1.0.0"],
+        )
+        self.assertEqual(
+            npm_audit.problems(npm_report(listed, ("GHSA-cccc", "other", "moderate")), versions, advisories),
+            [],
+        )
+        # Once the lockfile moves on, its entry has to go with it.
+        self.assertEqual(
+            npm_audit.problems(npm_report(), versions, advisories),
+            ["GHSA-aaaa on glob 4.0.7 is allowed but no longer found: remove it from ALLOWED_ADVISORIES"],
+        )
+
     def test_the_audit_allows_only_the_listed_yanked_versions_and_drops_stale_ones(self):
         allowed = {("zip", "8.6.0"): "why"}
         self.assertEqual(audit.problems(audit_report(("yanked", "zip", "8.6.0")), allowed, {}), [])
