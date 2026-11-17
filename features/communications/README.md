@@ -227,7 +227,7 @@ next day's drivers fill it as its live reads start.
 - **Who:** each driver its routes name today, with their route as last read live (of several
   itineraries, the one with the most stops), and their work conversation once they have one;
   each driver gone from the day's list, once their conversation was written in today; and each
-  work phone nobody had that texted today, as itself (Work phone 5521).
+  work phone nobody had that texted today, by its number, (206) 555-5521.
 - **The list:** the drivers by name, A to Z, waiting or not; then the work phones nobody had (No
   driver), the latest written in first. Each row as a conversation's in the other sections, and
   under it the driver's route code, the work phone they have now by its last four digits, a bar
