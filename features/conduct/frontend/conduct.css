@@ -42,7 +42,7 @@
   padding: 4px 10px;
   font-size: 12.5px;
 }
-.conduct-status,
+.conduct-toolbar .conduct-status,
 .conduct-row-details {
   display: none;
 }
