@@ -89,9 +89,13 @@ export function privateFeatures(directory: string): Plugin {
               },
               assetFileNames(asset) {
                 const audience = audienceOf(asset.originalFileNames);
-                return audience?.owner
-                  ? `assets/custom-${audience.owner}-[name]-[hash][extname]`
-                  : 'assets/[name]-[hash][extname]';
+                if (audience?.owner)
+                  return `assets/custom-${audience.owner}-[name]-[hash][extname]`;
+                // A public stylesheet a custom feature imports too can be named after it, as a
+                // chunk can.
+                if (asset.names.some((name) => name.includes('custom-')))
+                  return 'assets/shared-[hash][extname]';
+                return 'assets/[name]-[hash][extname]';
               },
             },
           },
