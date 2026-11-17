@@ -29,6 +29,7 @@ export const feature: FrontendFeature = {
       label: 'Conduct',
       icon: FileWarning,
       nav: true,
+      tabs: true,
       feature: 'conduct',
       permission: ({ view }) => can(view, 'conduct.use'),
       preload: load,

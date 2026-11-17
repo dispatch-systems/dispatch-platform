@@ -69,8 +69,8 @@ export type {
   ListedIntegration,
 } from './slots/integrations.js';
 export { connectionIntegrations } from './slots/integrations.js';
-export type { PageTab } from './slots/page-tabs.js';
-export { pageTabs } from './slots/page-tabs.js';
+export type { DrawnTab, LinkTab, PageTab } from './slots/page-tabs.js';
+export { isLinkTab, pageTabs } from './slots/page-tabs.js';
 export type { AccountAction } from './slots/account.js';
 export { accountActions } from './slots/account.js';
 export type { CacheRules } from './slots/api.js';

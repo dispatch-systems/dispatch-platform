@@ -109,6 +109,7 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
         onChange={(id) => tabs.change(id, setTab)}
         onIntent={tabs.warm}
         items={tabs.items}
+        links={tabs.links}
         label="Team"
       />
       {tabs.open && <HostedTab tab={tabs.open} />}

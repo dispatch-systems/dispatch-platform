@@ -181,6 +181,7 @@ export function PaycomPage({ view }: { view: DspView }) {
           })
         }
         items={hosting.items}
+        links={hosting.links}
         label="Timecard"
       />
       {canCollect && syncUnavailable && (
