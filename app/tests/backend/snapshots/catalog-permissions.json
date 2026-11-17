@@ -33,7 +33,7 @@
     ["phones.manage", "Manage Phones"],
     ["conduct.use", "Use Conduct"],
     ["conduct.manage", "Manage Conduct"],
-    ["pendingid_hr_line.phones", "Manage HR Line Phones"]
+    ["cjf87gqd_hr_line.phones", "Manage HR Line Phones"]
   ],
   "implied": [
     ["timecard.manage", "timecard.view"],

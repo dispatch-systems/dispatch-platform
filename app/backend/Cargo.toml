@@ -23,6 +23,7 @@ test = false
 # it. A test that needs the whole product asks for `default`. A feature's own lists the features its crate uses.
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
 default = [
+    "cjf87gqd_hr_line",
     "communications",
     "conduct",
     "daily_performance",
@@ -32,7 +33,6 @@ default = [
     "dvic",
     "home",
     "live_route_data",
-    "pendingid_hr_line",
     "routes",
     "settings",
     "slack",
@@ -42,6 +42,7 @@ default = [
     "vans",
     "weekly_scorecard",
 ]
+cjf87gqd_hr_line = ["dep:dispatch-cjf87gqd-hr-line", "communications"]
 communications = ["dep:dispatch-communications", "slack"]
 conduct = ["dep:dispatch-conduct"]
 daily_performance = ["dep:dispatch-daily-performance"]
@@ -51,7 +52,6 @@ driver_profiles = ["dep:dispatch-driver-profiles"]
 dvic = ["dep:dispatch-dvic", "dispatch-mcp/dvic"]
 home = ["dep:dispatch-home"]
 live_route_data = ["dep:dispatch-live-route-data", "routes"]
-pendingid_hr_line = ["dep:dispatch-pendingid-hr-line", "communications"]
 routes = ["dep:dispatch-routes"]
 settings = ["dep:dispatch-settings"]
 slack = ["dep:dispatch-slack"]
@@ -72,6 +72,7 @@ dispatch-host = { path = "../../ops/host-manager" }
 dispatch-mcp = { path = "../../mcp", default-features = false }
 dispatch-paycom = { path = "../../collectors/paycom" }
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
+dispatch-cjf87gqd-hr-line = { path = "../../features/custom/cjf87gqd/hr_line", optional = true }
 dispatch-communications = { path = "../../features/communications", optional = true }
 dispatch-conduct = { path = "../../features/conduct", optional = true }
 dispatch-daily-performance = { path = "../../features/daily_performance", optional = true }
@@ -81,7 +82,6 @@ dispatch-driver-profiles = { path = "../../features/driver_profiles", optional =
 dispatch-dvic = { path = "../../features/dvic", optional = true }
 dispatch-home = { path = "../../features/home", optional = true }
 dispatch-live-route-data = { path = "../../features/live_route_data", optional = true }
-dispatch-pendingid-hr-line = { path = "../../features/custom/pendingid/hr_line", optional = true }
 dispatch-routes = { path = "../../features/routes", optional = true }
 dispatch-settings = { path = "../../features/settings", optional = true }
 dispatch-slack = { path = "../../features/slack", optional = true }

@@ -1,8 +1,0 @@
-# Every route pendingid_hr_line registers: its method and path, who may call it, the
-# database access its work runs under, and whether it wakes the scheduler.
-# Each changes with this file, so a reviewer sees who can reach what.
-GET /api/dsp/pendingid-hr-line/phones Dsp("connections.manage|pendingid_hr_line.phones") Read
-GET /api/dsp/pendingid-hr-line/phones/pairing/{id} Dsp("connections.manage|pendingid_hr_line.phones") Read
-POST /api/dsp/pendingid-hr-line/phones/pairing Dsp("connections.manage|pendingid_hr_line.phones") Write
-POST /api/dsp/pendingid-hr-line/phones/{id}/remove Dsp("connections.manage|pendingid_hr_line.phones") Async
-POST /api/dsp/pendingid-hr-line/phones/{id}/rename Dsp("connections.manage|pendingid_hr_line.phones") Write

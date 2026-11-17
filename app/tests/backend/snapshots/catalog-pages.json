@@ -145,9 +145,9 @@
       "mandatory": false
     },
     {
-      "id": "pendingid_hr_line",
+      "id": "cjf87gqd_hr_line",
       "label": "HR Line",
-      "permissions": ["pendingid_hr_line.phones"],
+      "permissions": ["cjf87gqd_hr_line.phones"],
       "requires": [],
       "default": false,
       "mandatory": false
@@ -233,7 +233,7 @@
     "vans",
     "live_route_data",
     "conduct",
-    "pendingid_hr_line",
+    "cjf87gqd_hr_line",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

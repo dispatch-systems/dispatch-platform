@@ -6,7 +6,7 @@ import { fixture } from '../../../../../../core/shell/tests/support/support.js';
 // its own: neither line sees or changes the other's, a code of one never replaces the other's, and
 // every other DSP has no HR Line.
 
-const hr = '/api/dsp/pendingid-hr-line/phones';
+const hr = '/api/dsp/cjf87gqd-hr-line/phones';
 const dispatch = '/api/dsp/dispatch-phone/phones';
 
 test("HR Line's phones and Dispatch Phone's are each managed only on their own card", async (t) => {
@@ -15,12 +15,11 @@ test("HR Line's phones and Dispatch Phone's are each managed only on their own c
   const owner = await f.client();
   const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
   assert.equal(
-    (await owner.post(`/api/platform/dsps/${north.id}/custom-id`, { customId: 'pendingid' }))
-      .status,
+    (await owner.post(`/api/platform/dsps/${north.id}/custom-id`, { customId: 'cjf87gqd' })).status,
     200,
   );
   const on = await owner.post(`/api/platform/dsps/${north.id}/features`, {
-    feature: 'pendingid_hr_line',
+    feature: 'cjf87gqd_hr_line',
     enabled: true,
   });
   assert.equal(on.status, 200, on.body);

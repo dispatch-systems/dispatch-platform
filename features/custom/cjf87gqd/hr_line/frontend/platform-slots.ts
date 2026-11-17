@@ -9,18 +9,18 @@ import type {
 // number.
 
 const phrases: AuditPhrases = {
-  'pendingid_hr_line.phones.paired': (e, { strong }) => ['paired HR Line phone ', strong(e.detail)],
-  'pendingid_hr_line.phones.renamed': (e, { strong }) => [
+  'cjf87gqd_hr_line.phones.paired': (e, { strong }) => ['paired HR Line phone ', strong(e.detail)],
+  'cjf87gqd_hr_line.phones.renamed': (e, { strong }) => [
     'renamed HR Line phone ',
     strong(e.detail),
   ],
-  'pendingid_hr_line.phones.removed': (e, { strong }) => [
+  'cjf87gqd_hr_line.phones.removed': (e, { strong }) => [
     'removed HR Line phone ',
     strong(e.detail),
   ],
 };
 
 export const slots: PlatformSlots = {
-  switch: { id: 'pendingid_hr_line', icon: Phone },
+  switch: { id: 'cjf87gqd_hr_line', icon: Phone },
   auditWording: { phrases, spoken: Object.keys(phrases) },
 };

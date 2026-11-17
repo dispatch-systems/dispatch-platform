@@ -10,13 +10,13 @@ use dispatch_core::{
 
 pub const FEATURE: Feature = Feature {
     place: 160,
-    switch: custom("pendingid_hr_line", "HR Line", &[]),
+    switch: custom("cjf87gqd_hr_line", "HR Line", &[]),
     // Its phones are a line of Dispatch Phone's, which relays their texts by its phones' address.
     depends_on: &["communications"],
     // Pairing, renaming and removing its phones, as those who manage the DSP's connections may
     // too.
     permissions: &[perm(
-        "pendingid_hr_line.phones",
+        "cjf87gqd_hr_line.phones",
         "Manage HR Line Phones",
         170,
     )],
@@ -24,10 +24,10 @@ pub const FEATURE: Feature = Feature {
     // Its phones are the DSP's own, managed on DSP Connections.
     dsp_connection: true,
     audit: Audit {
-        areas: &[("pendingid_hr_line.phones.", Connections)],
+        areas: &[("cjf87gqd_hr_line.phones.", Connections)],
         ..Audit::NONE
     },
-    ..feature("pendingid_hr_line")
+    ..feature("cjf87gqd_hr_line")
 };
 
 /// Its line of the DSP's phones: theirs alone, named HR Line, then HR Line 2 and so on, as they
