@@ -22,8 +22,19 @@ const EDGES: readonly Edge[] = ['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw'];
 /** How far the pointer goes before a press becomes a drag, in pixels. */
 const SLOP = 4;
 
-/** A widget held: where it is under the pointer, and the page as it would be dropped. */
-type Held = { id: string; left: number; top: number; target: PlacedWidget; layout: PlacedWidget[] };
+/**
+ * A widget held: where it is under the pointer, and the page as it would be dropped, worked out
+ * for the cells `to`.
+ */
+type Held = {
+  id: string;
+  left: number;
+  top: number;
+  to: { x: number; y: number };
+  layout: PlacedWidget[];
+};
+/** Where the widget held would land. */
+const landing = (held: Held) => held.layout.find((each) => each.id === held.id)!;
 
 /** The size of the space the board is drawn in, as the window gives it, once it has one. */
 function useSize() {
@@ -44,9 +55,10 @@ function useSize() {
 
 /**
  * The page while its member arranges it: each widget picked up and dropped anywhere on the
- * grid, those where it would land moving aside while it's held there and back once it moves on;
- * resized from any side, snapping to its nearest size as the pointer goes; or removed; others added from the list of those that fit. Every change shows at once and is
- * kept behind it.
+ * grid, those it mostly covers moving aside while it's held there and back once it moves on, and
+ * landing beside those it covers less; resized from any side, snapping to its nearest size that
+ * has room as the pointer goes; or removed; others added from the list of those that fit. Every
+ * change shows at once and is kept behind it.
  */
 export function HomeEditor({
   view,
@@ -70,6 +82,8 @@ export function HomeEditor({
   const [listing, setListing] = useState(open);
   const [resetting, setResetting] = useState(false);
   const [held, setHeld] = useState<Held>();
+  // The widget last dropped, which stays above the others as they glide into place.
+  const [dropped, setDropped] = useState<string>();
   const [resizing, setResizing] = useState<PlacedWidget>();
   const [added, setAdded] = useState<string>();
   const origin = placed.map(({ at }) => at);
@@ -124,6 +138,7 @@ export function HomeEditor({
     cell.setPointerCapture(event.pointerId);
     const [startX, startY] = [event.clientX, event.clientY];
     let now: Held | undefined;
+    let tried: { x: number; y: number } | undefined;
     const move = (moved: globalThis.PointerEvent) => {
       const [dx, dy] = [moved.clientX - startX, moved.clientY - startY];
       if (!now && Math.hypot(dx, dy) < SLOP) return;
@@ -134,13 +149,15 @@ export function HomeEditor({
         x: Math.min(Math.max(Math.round(left / across), 0), COLUMNS - at.w),
         y: Math.min(Math.max(Math.round(top / down), 0), ROWS - at.h),
       };
-      const stays = now && now.target.x === to.x && now.target.y === to.y;
-      const layout = stays ? undefined : moving(origin, at.id, to);
+      // Worked out again only as the pointer reaches other cells; where the page has no room for
+      // it there, it would land where it last could.
+      const layout = tried?.x === to.x && tried.y === to.y ? undefined : moving(origin, at.id, to);
+      tried = to;
       now = {
         id: at.id,
         left,
         top,
-        target: layout ? { ...at, ...to } : (now?.target ?? at),
+        to: layout ? to : (now?.to ?? at),
         layout: layout ?? now?.layout ?? origin,
       };
       setHeld(now);
@@ -149,7 +166,11 @@ export function HomeEditor({
       cell.removeEventListener('pointermove', move);
       cell.removeEventListener('pointerup', end);
       cell.removeEventListener('pointercancel', end);
-      if (now && (now.target.x !== at.x || now.target.y !== at.y)) drop(at.id, now.target);
+      if (now) {
+        const target = landing(now);
+        if (target.x !== at.x || target.y !== at.y) drop(at.id, now.to);
+        setDropped(at.id);
+      }
       setHeld(undefined);
     };
     cell.addEventListener('pointermove', move);
@@ -216,7 +237,7 @@ export function HomeEditor({
       </Header>
       <div ref={area} className="home-area">
         <div className={held ? 'home-board home-holding' : 'home-board'}>
-          {size && held && <div className="home-drop" style={box(held.target)} />}
+          {size && held && <div className="home-drop" style={box(landing(held))} />}
           {size &&
             placed.map(({ widget, at }, index) => {
               const lifted = held?.id === widget.id;
@@ -225,6 +246,7 @@ export function HomeEditor({
               const classes = [
                 'home-cell',
                 lifted && 'home-lifted',
+                !held && widget.id === dropped && 'home-dropped',
                 widget.id === added && 'home-added',
               ];
               return (

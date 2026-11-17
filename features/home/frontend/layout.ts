@@ -1,6 +1,6 @@
 import type { PlacedWidget } from '../api/index.js';
 import { COLUMNS, ROWS } from './grid.js';
-import type { Widget } from '../../../core/shell/frontend/runtime/slots.js';
+import type { Widget, WidgetCells } from '../../../core/shell/frontend/runtime/slots.js';
 
 // Where each widget sits on a member's Home page, in cells of its grid, which the page fills
 // without scrolling. What a member keeps is every widget they placed, those of features they
@@ -21,17 +21,26 @@ const fits = (placed: readonly Cells[], cells: Cells) =>
   cells.y + cells.h <= ROWS &&
   !placed.some((each) => overlaps(each, cells));
 
+/** How many cells `a` and `b` share. */
+const shared = (a: Cells, b: Cells) =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
+  Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+
 /**
- * The free spot for `cells` nearest where they are, beside `placed`, the first row by row from
- * the top left among those as near; none where the grid has none.
+ * The free spot for `cells` nearest where they are, beside `placed`: among those as near, one on
+ * the cells `left` free, then the first row by row from the top left; none where the grid has
+ * none.
  */
-function nearest(placed: readonly Cells[], cells: Cells) {
+function nearest(placed: readonly Cells[], cells: Cells, left?: Cells) {
   let best: { x: number; y: number } | undefined;
   let off = Infinity;
   for (let y = 0; y + cells.h <= ROWS; y++)
     for (let x = 0; x + cells.w <= COLUMNS; x++) {
-      const distance = Math.abs(x - cells.x) + Math.abs(y - cells.y);
-      if (distance < off && fits(placed, { ...cells, x, y })) [best, off] = [{ x, y }, distance];
+      const spot = { ...cells, x, y };
+      // Half a cell nearer than another as far, so never nearer than one a cell closer.
+      const distance =
+        Math.abs(x - cells.x) + Math.abs(y - cells.y) - (left && overlaps(spot, left) ? 0.5 : 0);
+      if (distance < off && fits(placed, spot)) [best, off] = [{ x, y }, distance];
     }
   return best;
 }
@@ -97,9 +106,11 @@ export const setting = (placed: readonly PlacedWidget[], at: PlacedWidget) =>
     : undefined;
 
 /**
- * `placed` with `id` moved to `to`, each widget it would cover moved to the free spot nearest its
- * own; none where one has nowhere to go. Worked out from where every widget was as the drag
- * began, so moving on puts each back.
+ * `placed` with `id` moved to `to`. A widget makes way once more than half of it, or of the one
+ * moved where that is the smaller, is covered: to the free spot nearest its own, the cells the
+ * moved one left first among those as near. One covered less stays, and the moved one lands on
+ * the free cells nearest `to`, beside it. None where a widget has nowhere to go. Worked out from
+ * where every widget was as the drag began, so moving on puts each back.
  */
 export function moving(
   placed: readonly PlacedWidget[],
@@ -108,14 +119,19 @@ export function moving(
 ): PlacedWidget[] | undefined {
   const held = placed.find((each) => each.id === id);
   if (!held) return undefined;
-  const at = { ...held, ...to };
-  if (!fits([], at)) return undefined;
-  const covered = (each: PlacedWidget) => each.id !== id && overlaps(each, at);
-  const settled = [at, ...placed.filter((each) => each.id !== id && !covered(each))];
-  for (const each of placed.filter(covered)) {
-    const spot = nearest(settled, each);
-    if (!spot) return undefined;
-    settled.push({ ...each, ...spot });
+  const over = { ...held, ...to };
+  if (!fits([], over)) return undefined;
+  const others = placed.filter((each) => each.id !== id);
+  const makesWay = (each: PlacedWidget) =>
+    shared(each, over) * 2 > Math.min(each.w * each.h, held.w * held.h);
+  const staying = others.filter((each) => !makesWay(each));
+  const spot = nearest(staying, over);
+  if (!spot) return undefined;
+  const settled = [{ ...held, ...spot }, ...staying];
+  for (const each of others.filter(makesWay)) {
+    const free = nearest(settled, each, held);
+    if (!free) return undefined;
+    settled.push({ ...each, ...free });
   }
   return placed.map((each) => settled.find((other) => other.id === each.id)!);
 }
@@ -123,17 +139,23 @@ export function moving(
 /** The sides of a widget a resize handle moves: an edge, or the two of a corner. */
 export type Edge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
+/** The size of `sizes` nearest `w` by `h` cells, the first of those as near; none of none. */
+const nearestOf = (sizes: readonly WidgetCells[], w: number, h: number) => {
+  const off = (each: WidgetCells) => Math.abs(each.columns - w) + Math.abs(each.rows - h);
+  return sizes.reduce<WidgetCells | undefined>(
+    (best, size) => (best && off(best) <= off(size) ? best : size),
+    undefined,
+  );
+};
+
 /** `widget`'s size nearest `w` by `h` cells, the first of those as near. */
-export const sizeNearest = (widget: Widget, w: number, h: number) =>
-  widget.sizes.reduce((best, size) => {
-    const off = (each: typeof size) => Math.abs(each.columns - w) + Math.abs(each.rows - h);
-    return off(size) < off(best) ? size : best;
-  });
+export const sizeNearest = (widget: Widget, w: number, h: number) => nearestOf(widget.sizes, w, h)!;
 
 /**
- * `at` with `edge` dragged `columns` across and `rows` down, in cells and parts of one, at the
- * size of `widget`'s nearest that, its other sides where they were; none where that would leave
- * the grid or cover any of `others`.
+ * `at` with `edge` dragged `columns` across and `rows` down, in cells and parts of one, its other
+ * sides where they were: at the size nearest that among `widget`'s that stay on the grid and
+ * cover none of `others`, so it grows as far as it has room however far the pointer goes; none
+ * where no size of its fits.
  */
 export function resized(
   widget: Widget,
@@ -144,13 +166,17 @@ export function resized(
 ): PlacedWidget | undefined {
   const w = at.w + (edge.includes('e') ? columns : edge.includes('w') ? -columns : 0);
   const h = at.h + (edge.includes('s') ? rows : edge.includes('n') ? -rows : 0);
-  const size = sizeNearest(widget, w, h);
-  const next = {
+  const sized = (size: WidgetCells): PlacedWidget => ({
     ...at,
     x: edge.includes('w') ? at.x + at.w - size.columns : at.x,
     y: edge.includes('n') ? at.y + at.h - size.rows : at.y,
     w: size.columns,
     h: size.rows,
-  };
-  return fits(others, next) ? next : undefined;
+  });
+  const size = nearestOf(
+    widget.sizes.filter((each) => fits(others, sized(each))),
+    w,
+    h,
+  );
+  return size && sized(size);
 }

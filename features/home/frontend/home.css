@@ -148,6 +148,10 @@
   transition: none;
   will-change: transform;
 }
+/* The one just dropped stays above the others while they glide to their cells. */
+.home-board .home-cell.home-dropped {
+  z-index: 1;
+}
 .home-holding,
 .home-holding .home-cell {
   cursor: grabbing;
