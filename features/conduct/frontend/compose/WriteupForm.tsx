@@ -112,8 +112,7 @@ export function WriteupForm({
         fields.current?.querySelector<HTMLElement>('[data-conduct-blank][data-empty]') ??
         [...(fields.current?.querySelectorAll<HTMLTextAreaElement>('textarea') ?? [])].find(
           (field) => !field.value.trim() || [...field.value].length > 4000,
-        ) ??
-        fields.current?.querySelector<HTMLElement>('[aria-label="Last coached"]');
+        );
       (
         invalid ??
         fields.current?.querySelector<HTMLElement>(!draft.person ? '[role="combobox"]' : 'select')
@@ -150,8 +149,6 @@ export function WriteupForm({
     statement: draft.statement,
     prior: draft.prior,
     plan: draft.plan,
-    coached: draft.notCoached ? false : draft.coachedOn ? true : null,
-    coachedOn: draft.coachedOn || null,
   };
   return (
     <>
@@ -271,30 +268,6 @@ export function WriteupForm({
             value={draft.prior}
             change={(prior) => edit({ prior })}
           />
-          <div className="conduct-field">
-            <span className="conduct-label" aria-hidden="true">
-              Last coached
-            </span>
-            <div className="conduct-pair conduct-coached">
-              <DateField
-                label="Last coached"
-                value={draft.coachedOn}
-                min={earliest(overview.today)}
-                max={draft.writtenOn}
-                today={overview.today}
-                disabled={draft.notCoached}
-                onChange={(coachedOn) => edit({ coachedOn })}
-              />
-              <label>
-                <input
-                  type="checkbox"
-                  checked={draft.notCoached}
-                  onChange={(e) => edit({ notCoached: e.target.checked, coachedOn: '' })}
-                />
-                Not coached
-              </label>
-            </div>
-          </div>
           <TemplateSection
             label="3. Corrective action"
             value={draft.plan}

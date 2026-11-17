@@ -42,7 +42,6 @@ fn add(store: &Store, c: &Context, person: &str, date: &str, tier: ConductTier) 
             statement: "Arrived late.".into(),
             prior: "Start time discussed.".into(),
             plan: "Arrive on time.".into(),
-            coached_on: None,
             revision: None,
         },
         "2026-11-08",

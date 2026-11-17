@@ -28,7 +28,6 @@ async function complete(page: Page) {
     .getByRole('textbox', { name: /Statement of the problem: missing item/ })
     .fill('a safety vest');
   await page.getByRole('textbox', { name: /Statement of the problem: date/ }).fill('11/08/2026');
-  await page.getByRole('checkbox', { name: 'Not coached' }).check();
 }
 
 test('a driver is written up from the page, then marked signed and locked', async ({ page }) => {
@@ -38,21 +37,10 @@ test('a driver is written up from the page, then marked signed and locked', asyn
   await expect(
     page.getByRole('textbox', { name: /Statement of the problem: missing item/ }),
   ).toBeFocused();
-  await page
-    .getByRole('textbox', { name: /Statement of the problem: missing item/ })
-    .fill('a safety vest');
-  await page.getByRole('textbox', { name: /Statement of the problem: date/ }).fill('11/08/2026');
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText('Enter when they were last coached.');
-  await expect(page.getByRole('textbox', { name: 'Last coached' })).toBeFocused();
-  await page.getByRole('checkbox', { name: 'Not coached' }).check();
+  await complete(page);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
-  await expect(page.locator('.conduct-paper .conduct-notice-answer').nth(1)).toContainText(
-    'DA has not been coached on this before.',
-  );
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
-  await expect(page.getByRole('checkbox', { name: 'Not coached' })).toBeChecked();
   const revised = 'DA arrived without a safety vest and was issued a replacement.';
   await text(page, '1. Statement of the problem', revised);
   const detail = /\/api\/dsp\/conduct\/writeups\/[^/?]+$/;
@@ -210,7 +198,6 @@ test('a long writeup still prints on one letter page, its sections shrunk to fit
   const entries = Array.from({ length: 5 }, (_, n) => `Incident ${n + 1}: late arrival discussed.`);
   await text(page, '2. Prior discussion or warnings', entries.join('\n'));
   await text(page, '3. Corrective action', long);
-  await page.getByRole('checkbox', { name: 'Not coached' }).check();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Awaiting signature', { exact: true })).toBeVisible();
   await page.evaluate(() => {

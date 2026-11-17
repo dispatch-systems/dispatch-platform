@@ -7,15 +7,6 @@ import type { ConductTier } from "./ConductTier";
  */
 export type ConductWriteup = { statement: string, prior: string, plan: string,
 /**
- * Whether its person had been coached on its subject before it: none for a writeup
- * written before that was asked.
- */
-coached: boolean | null,
-/**
- * The day they last were, YYYY-MM-DD.
- */
-coachedOn: string | null,
-/**
  * Who marked it signed.
  */
 signedByName: string | null, id: string,

@@ -33,7 +33,6 @@ const errors: Readonly<Record<string, string>> = {
     'The backed-up copy couldn’t be removed, so nothing was deleted. Try again.',
   conduct_date_ahead: 'A writeup can’t be dated after today.',
   conduct_signed_date: 'The signed date must be between the writeup’s date and today.',
-  conduct_coached_date: 'Last coached can’t be after the writeup’s date.',
   conduct_suspension_required: 'Enter how long the suspension is.',
   conduct_section_required: 'Fill in every section.',
   conduct_copy_not_picture: 'Choose a photo of the signed paper.',

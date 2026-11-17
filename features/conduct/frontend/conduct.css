@@ -630,22 +630,6 @@
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
-.conduct-coached {
-  align-items: center;
-}
-.conduct-coached label {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-}
-.conduct-coached input[type='checkbox'] {
-  accent-color: var(--primary);
-}
-.conduct-coached input:disabled {
-  opacity: 0.5;
-}
 .conduct-tiers {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -754,8 +738,7 @@
   .conduct-pair {
     grid-template-columns: 1fr;
   }
-  .conduct-fields > .conduct-pair + .conduct-pair,
-  .conduct-fields .conduct-coached {
+  .conduct-fields > .conduct-pair + .conduct-pair {
     grid-template-columns: 1fr 1fr;
   }
   .conduct-tiers.conduct-compose-switch {

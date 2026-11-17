@@ -59,14 +59,12 @@ test('a writeup is written up for someone, suggests the next tier, and locks onc
     statement: 'DA was late on three days.',
     prior: tardies.prior,
     plan: tardies.plan,
-    coachedOn: overview.today,
   };
 
   const written = await owner.post(`${route}/writeups`, input);
   assert.equal(written.status, 201, written.body);
   const saved: ConductSaved = written.value;
   assert.equal(saved.writeup.personName, person.name);
-  assert.deepEqual([saved.writeup.coached, saved.writeup.coachedOn], [true, overview.today]);
   assert.equal(
     saved.writeup.supervisorName,
     `${owner.session.user.firstName} ${owner.session.user.lastName}`,
@@ -84,12 +82,8 @@ test('a writeup is written up for someone, suggests the next tier, and locks onc
     ((await owner.get(route)).value as ConductOverview).standings[0]!.stepsDownOn! > overview.today,
   );
 
-  // A suspension is only a final's, and a final with one says how long. Every writeup says when
-  // its person was last coached, no later than its own date, or that they never were.
-  const { coachedOn: _, ...unsaid } = input;
+  // A suspension is only a final's, and a final with one says how long.
   for (const bad of [
-    unsaid,
-    { ...input, writtenOn: '2026-01-05', coachedOn: '2026-01-06' },
     { ...input, finalKind: 'suspension', suspension: '1 day' },
     { ...input, tier: 'final', finalKind: 'suspension', suspension: null },
     { ...input, person: 'nobody' },
@@ -113,14 +107,8 @@ test('a writeup is written up for someone, suggests the next tier, and locks onc
   assert.equal(changed.value.error, 'conduct_writeup_signed');
 
   // Their totals count what waits to be signed, and name their categories in the DSP's order.
-  const safety = await owner.post(`${route}/writeups`, {
-    ...input,
-    category: 'safety',
-    coachedOn: null,
-  });
+  const safety = await owner.post(`${route}/writeups`, { ...input, category: 'safety' });
   assert.equal(safety.status, 201, safety.body);
-  const never = (safety.value as ConductSaved).writeup;
-  assert.deepEqual([never.coached, never.coachedOn], [false, null]);
   const driver = ((await owner.get(route)).value as ConductOverview).drivers.find(
     (d) => d.person === person.code,
   );

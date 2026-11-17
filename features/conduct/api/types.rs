@@ -267,11 +267,6 @@ pub struct ConductWriteup {
     pub statement: String,
     pub prior: String,
     pub plan: String,
-    /// Whether its person had been coached on its subject before it: none for a writeup
-    /// written before that was asked.
-    pub coached: Option<bool>,
-    /// The day they last were, YYYY-MM-DD.
-    pub coached_on: Option<String>,
     /// Who marked it signed.
     pub signed_by_name: Option<String>,
 }
@@ -282,8 +277,6 @@ impl FromRow for ConductWriteup {
             statement: row.get("statement")?,
             prior: row.get("prior")?,
             plan: row.get("plan")?,
-            coached: row.get("coached")?,
-            coached_on: row.get("coached_on")?,
             signed_by_name: row.get("signed_by_name")?,
         })
     }
@@ -333,8 +326,6 @@ pub struct WriteupInput {
     pub statement: String,
     pub prior: String,
     pub plan: String,
-    /// The day its person was last coached on its subject: none when they never were.
-    pub coached_on: Option<String>,
     /// The revision it was read at, for an edit.
     pub revision: Option<i64>,
 }
@@ -350,7 +341,6 @@ impl WriteupInput {
             "statement",
             "prior",
             "plan",
-            "coachedOn",
         ];
         if edit {
             fields.push("revision");
@@ -385,17 +375,6 @@ impl WriteupInput {
         )?;
         let written_on = v::text(body, "writtenOn", 10, 10)?.to_owned();
         v::date(&written_on)?;
-        // Always said, one way or the other: a day, or null for never coached.
-        let coached_on = match body.get("coachedOn") {
-            None => return Err(dispatch_core::Error::new("invalid_input", 400)),
-            Some(Value::Null) => None,
-            Some(_) => {
-                let day = v::text(body, "coachedOn", 10, 10)?.to_owned();
-                v::date(&day)?;
-                ensure(day <= written_on, "conduct_coached_date", 400)?;
-                Some(day)
-            }
-        };
         Ok(Self {
             person: v::text(body, "person", 1, 128)?.to_owned(),
             category: v::text(body, "category", 1, 64)?.to_owned(),
@@ -406,7 +385,6 @@ impl WriteupInput {
             statement: section(body, "statement")?,
             prior: section(body, "prior")?,
             plan: section(body, "plan")?,
-            coached_on,
             revision: if edit {
                 Some(v::integer(body, "revision", 1, i64::MAX)?)
             } else {

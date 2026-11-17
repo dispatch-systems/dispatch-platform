@@ -12,7 +12,7 @@ pub use api::types::{
 };
 
 use dispatch_core::{
-    db::{Kind, Migration, OwnMigrations, migrations::Apply::{Code, Sql}},
+    db::{Kind, Migration, OwnMigrations, migrations::Apply::Sql},
     manifest::{Audit, Feature, feature, optional, perm},
 };
 
@@ -55,11 +55,6 @@ pub const FEATURE: Feature = Feature {
                 id: 3,
                 name: "conduct_requests",
                 apply: Sql(include_str!("migrations/dsp/0003_conduct_requests.sql")),
-            },
-            Migration {
-                id: 4,
-                name: "conduct_coached",
-                apply: Code(backend::writeups::coached),
             },
         ],
     }],

@@ -117,7 +117,6 @@ test('a section above the server limit is rejected before saving', () => {
     statement: 'x'.repeat(4001),
     prior: 'Discussed.',
     plan: 'Arrive on time.',
-    notCoached: true,
   };
   assert.equal(missing(draft), 'Each section can contain up to 4,000 characters.');
   assert.equal(missing({ ...draft, statement: 'x'.repeat(4000) }), undefined);
