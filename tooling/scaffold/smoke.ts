@@ -76,7 +76,7 @@ const MADE: [string, ...string[]][] = [
     'feature',
     'smoke_custom',
     '--custom',
-    'nll',
+    'n1',
     '--page',
     '--api',
     '--tables',
@@ -96,7 +96,7 @@ const MADE: [string, ...string[]][] = [
     '--people',
     'own',
   ],
-  ['integration', 'smoke_custom_notes', '--to', 'nll_smoke_custom'],
+  ['integration', 'smoke_custom_notes', '--to', 'n1_smoke_custom'],
 ];
 
 /**
