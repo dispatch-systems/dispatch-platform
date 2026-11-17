@@ -7,7 +7,8 @@ pub const FEATURES: &[&Feature] = &[
     #[cfg(feature = "cjf87gqd_hr_line")]
     &dispatch_cjf87gqd_hr_line::FEATURE.registered(Some("cjf87gqd"), "cjf87gqd_hr_line"),
     #[cfg(feature = "cjf87gqd_legacy_tracker")]
-    &dispatch_cjf87gqd_legacy_tracker::FEATURE.registered(Some("cjf87gqd"), "cjf87gqd_legacy_tracker"),
+    &dispatch_cjf87gqd_legacy_tracker::FEATURE
+        .registered(Some("cjf87gqd"), "cjf87gqd_legacy_tracker"),
     #[cfg(feature = "communications")]
     &dispatch_communications::FEATURE.registered(None, "communications"),
     #[cfg(feature = "conduct")]
