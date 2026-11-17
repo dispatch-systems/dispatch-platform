@@ -723,7 +723,7 @@ jobs:
       - uses: ./.github/actions/setup-browseros
       - name: Host isolation probe
         run: npm run test:browseros -- --shard host
-  # `cargo audit`, denying every warning but the yanked versions `cargo-audit.py` allows, each
+  # `cargo audit`, denying every warning but the yanked versions and advisories `cargo-audit.py` allows, each
   # with its reason. A release's run that names main's audits again: advisories come out by the
   # day, not by the commit.
   rust-advisories:
