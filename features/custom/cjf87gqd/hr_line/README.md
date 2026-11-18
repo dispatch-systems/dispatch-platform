@@ -36,8 +36,9 @@ does HR Line see or change Dispatch Phone's own. Someone who texts both has a co
   own Display section's Sound and Notifications, each titled "HR Line · " and who wrote, opening
   its conversation on HR Line's page, and of its phones as each goes down; and
   `cjf87gqd_hr_line.phones`, a banner atop every page while one of its phones is down (HR Line
-  phone offline for 25 min, or by its name while it has several), linking to its card for those
-  who manage it. Each is Dispatch Phone's (`MessageAlerts`, `PhonesDown`) for HR Line's line.
+  phone offline for 25 min, or while it has several, by its name, after HR Line's unless it says
+  it: HR Line · Pixel offline for 25 min), linking to its card for those who manage it. Its page
+  opens none of Dispatch Phone's groups, whatever its address names. Each is Dispatch Phone's (`MessageAlerts`, `PhonesDown`) for HR Line's line.
 - **Pushed:** with Dispatch closed, or on a phone, each new text goes to each browser kept for HR
   Line, of a member who may use it with its Notifications on, titled "HR Line · " and who wrote,
   opening HR Line's page (`PUSHED`, through `lines::pushing`, every minute from
