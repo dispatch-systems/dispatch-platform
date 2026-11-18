@@ -6,6 +6,7 @@ use crate::{
     Result, Runner,
     change::{Clone, Repository, valid_name},
     ci::{self, Landed, Outcome},
+    github,
     merge::short,
     preview,
     status::{self, Whose},
@@ -227,10 +228,10 @@ fn pull(
     branch: &str,
     runner: &dyn Runner,
 ) -> Result<(Option<Pr>, Option<String>)> {
-    let listed: Vec<Listed> = serde_json::from_str(&workspace::text(
+    let listed: Vec<Listed> = serde_json::from_str(&github::call(
         runner,
+        root,
         &[
-            "gh",
             "pr",
             "list",
             "--repo",
@@ -242,7 +243,6 @@ fn pull(
             "--json",
             "number,url,state,headRefName,isCrossRepository,mergeCommit",
         ],
-        Some(root),
     )?)?;
     let mut own: Vec<Listed> = listed
         .into_iter()

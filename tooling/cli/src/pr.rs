@@ -6,7 +6,8 @@
 //! tree, without pushing. The agent docs' PR opens the same way, without that check: they hold
 //! nothing it checks.
 use crate::{
-    Result, Runner, build::Environment, change::Repository, check, preview, require, workspace,
+    Result, Runner, build::Environment, change::Repository, check, github, preview, require,
+    workspace,
 };
 use std::{io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
@@ -349,25 +350,25 @@ pub fn publish(
     if repository == Repository::Platform {
         checked(root, env, runner)?;
     }
-    let gh = |args: &[&str]| {
-        let mut command = vec!["gh"];
-        command.extend_from_slice(args);
-        workspace::text(runner, &command, Some(root))
+    let gh = |args: &[&str]| github::call(runner, root, args);
+    // The branch's open PR, as its number and address.
+    let listed = || {
+        gh(&[
+            "pr",
+            "list",
+            "--repo",
+            repository.name(),
+            "--head",
+            &branch,
+            "--state",
+            "open",
+            "--json",
+            "number,url",
+            "--jq",
+            ".[0] | select(.) | \"\\(.number) \\(.url)\"",
+        ])
     };
-    let open = gh(&[
-        "pr",
-        "list",
-        "--repo",
-        repository.name(),
-        "--head",
-        &branch,
-        "--state",
-        "open",
-        "--json",
-        "number,url",
-        "--jq",
-        ".[0] | select(.) | \"\\(.number) \\(.url)\"",
-    ])?;
+    let open = listed()?;
     let approval = preview::approval(root, runner)?;
     // A change to what a page shows opens its PR only once the user approved how it looks.
     if open.is_empty() {
@@ -410,6 +411,7 @@ pub fn publish(
     }
     git(&["push", "-q", "--force-with-lease", "-u", "origin", &branch])?;
     let url = match open.split_once(' ') {
+        // Setting the title and body is the same however often it's done.
         Some((number, url)) => {
             gh(&[
                 "pr",
@@ -425,21 +427,30 @@ pub fn publish(
             println!("Updated #{number}: {url}");
             url.to_owned()
         }
+        // A try whose answer was lost may have opened it: GitHub is asked before another.
         None => {
-            let url = gh(&[
-                "pr",
-                "create",
-                "--repo",
-                repository.name(),
-                "--base",
-                "main",
-                "--head",
-                &branch,
-                "--title",
-                title,
-                "--body",
-                text,
-            ])?;
+            let opened = || -> Result<Option<String>> {
+                Ok(listed()?.split_once(' ').map(|(_, url)| url.to_owned()))
+            };
+            let url = github::once(
+                runner,
+                root,
+                &[
+                    "pr",
+                    "create",
+                    "--repo",
+                    repository.name(),
+                    "--base",
+                    "main",
+                    "--head",
+                    &branch,
+                    "--title",
+                    title,
+                    "--body",
+                    text,
+                ],
+                &opened,
+            )?;
             println!("Opened {url}");
             url
         }

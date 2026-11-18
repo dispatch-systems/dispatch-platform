@@ -70,6 +70,8 @@ struct Machine {
     prs: BTreeMap<String, String>,
 }
 impl Runner for Machine {
+    // GitHub's retries go by at once.
+    fn pause(&self, _: std::time::Duration) {}
     fn command(&self, args: &[&str], cwd: Option<&Path>, _: u64) -> Result<Vec<u8>> {
         let cwd = cwd.unwrap_or(&self.home);
         let docs = cwd.starts_with(self.home.join("dispatch-agents"))
@@ -190,7 +192,10 @@ fn each_change_in_either_clone_is_told_on_its_own() {
     let next: Vec<&str> = owed.iter().map(|owed| owed.next.as_str()).collect();
     assert!(next[0].starts_with("`dispatchdev landed`"), "{next:?}");
     assert!(next[1].contains("`dispatchdev finish "), "{next:?}");
-    assert_eq!(next[2], "error connecting to api.github.com");
+    assert_eq!(
+        next[2],
+        "`gh pr list` failed on all 3 tries: error connecting to api.github.com"
+    );
     assert!(next[3].ends_with(" --abandon`"), "{next:?}");
     assert_eq!(owed[3].path, closed);
     // Only the changes named.

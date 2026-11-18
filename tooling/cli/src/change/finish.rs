@@ -1,5 +1,5 @@
 use super::{Clone, Repository, valid_name};
-use crate::{Result, Runner, dev, preview, require, review, workspace};
+use crate::{Result, Runner, dev, github, preview, require, review, workspace};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -113,10 +113,10 @@ pub fn finish_plan(
             "Origin must name Dispatch's GitHub repository, the platform's or the agent docs', \
              to fetch from and to push to; inspect both URLs before cleanup.",
         )?;
-    let pulls: Vec<Pull> = serde_json::from_str(&workspace::text(
+    let pulls: Vec<Pull> = serde_json::from_str(&github::call(
         runner,
+        &clone.root,
         &[
-            "gh",
             "pr",
             "list",
             "--repo",
@@ -128,7 +128,6 @@ pub fn finish_plan(
             "--json",
             "number,state,headRefOid,headRefName,isCrossRepository",
         ],
-        Some(&clone.root),
     )?)?;
     let pull = pulls
         .into_iter()
