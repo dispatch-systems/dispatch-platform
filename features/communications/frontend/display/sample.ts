@@ -12,7 +12,8 @@ import type {
 } from '../../api/index.js';
 
 // What Message display's preview shows: a made-up morning at the DSP, never its own
-// conversations. Its times run up to `now`.
+// conversations, in Slack, or by text for another feature's line, whose are all by text. Its times
+// run up to `now`.
 
 const team = 'T_PREVIEW';
 const workspace: CommunicationsWorkspace = {
@@ -42,8 +43,9 @@ const keisha = teammate('U_KEISHA', 'Keisha Brown');
 const devon = teammate('U_DEVON', 'Devon Carter');
 const jamal = person('U_JAMAL', 'Jamal Williams', 'driver');
 
-/** The list, the conversation open in it, its messages and what's known of whom it's with. */
-export function sample(now: number) {
+/** The list, the conversation open in it, its messages and what's known of whom it's with: in
+ * Slack, or by `texts`. */
+export function sample(now: number, texts = false) {
   const ago = (minutes: number) => now - minutes * 60_000;
   const message = (id: string, text: string, minutes: number, sender?: Sender): Message => ({
     id,
@@ -70,6 +72,7 @@ export function sample(now: number) {
     message('m5', 'Don’t take 208 out. Swap to 214, keys are at the desk', 16, devon),
     message('m6', '214 is good. Leaving the station now', 10),
   ];
+  let numbered = 0;
   const conversation = (
     id: string,
     who: Correspondent,
@@ -77,9 +80,9 @@ export function sample(now: number) {
     waiting: boolean,
   ): Conversation => ({
     id,
-    kind: 'slack',
-    teamId: team,
-    number: null,
+    kind: texts ? 'number' : 'slack',
+    teamId: texts ? null : team,
+    number: texts ? `+1206555${String(140 + ++numbered).padStart(4, '0')}` : null,
     driverId: null,
     contact: false,
     added: false,
@@ -140,8 +143,8 @@ export function sample(now: number) {
     more: false,
     moreTexts: false,
     moreWork: false,
-    workspaces: [workspace],
-    texting: false,
+    workspaces: texts ? [] : [workspace],
+    texting: texts,
     routes: false,
     phones: [],
     typing: { version: 0, writing: [] },

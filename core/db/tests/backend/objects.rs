@@ -146,6 +146,7 @@ async fn deleting_a_dsp_lets_go_of_every_page_of_its_own_and_nothing_else() {
     assert_eq!(fake.keys(), [format!("dsps/{two}/phones/{DOOR}")]);
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test]
 async fn an_upload_goes_on_past_the_wait_for_an_answer_while_it_sends() {
     let fake = Fake::start().await;
@@ -165,6 +166,7 @@ async fn an_upload_goes_on_past_the_wait_for_an_answer_while_it_sends() {
     assert_eq!(fake.object(&key).unwrap(), b"dock");
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test]
 async fn a_download_goes_on_however_long_its_reader_waits_between_reads() {
     let fake = Fake::start().await;
@@ -184,6 +186,7 @@ async fn a_download_goes_on_however_long_its_reader_waits_between_reads() {
     assert_eq!(rest, b"or");
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test]
 async fn a_download_is_given_up_once_r2_stops_sending() {
     let fake = Fake::start().await;
@@ -199,6 +202,7 @@ async fn a_download_is_given_up_once_r2_stops_sending() {
     assert_eq!(stalled.kind(), std::io::ErrorKind::TimedOut);
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test]
 async fn a_download_is_given_up_once_r2_stops_answering() {
     let fake = Fake::start().await;

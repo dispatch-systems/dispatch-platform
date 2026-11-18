@@ -4,20 +4,21 @@ import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import type { MessageDisplay } from '../../api/index.js';
-import { ownDisplay, section } from './display.js';
+import { ownDisplay } from './display.js';
 import { autosave } from './saving.js';
 
 /** How long after a choice it's saved, so a slider dragged saves once. */
 const SAVE_MS = 400;
 
 /**
- * The member's choices as they make them, saved by `autosave` through the page's action, which says
- * why a save failed at the top of the page until one succeeds; one refused because another session
- * saved first reads Settings again, and what it holds replaces the choices made.
+ * The member's choices of a line's Display section, `section`, as they make them, saved by
+ * `autosave` through the page's action, which says why a save failed at the top of the page until
+ * one succeeds; one refused because another session saved first reads Settings again, and what it
+ * holds replaces the choices made.
  */
-export function useDisplayChoices(refresh: () => void) {
+export function useDisplayChoices(section: string, refresh: () => void) {
   const { data: settings } = useSettings();
-  const saved = ownDisplay(settings);
+  const saved = ownDisplay(settings, section);
   const held = settings?.sections.find((each) => each.id === section);
   const [draft, setDraft] = useState<MessageDisplay>();
   const action = useAction((work: () => Promise<void>) => work());

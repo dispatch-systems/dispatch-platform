@@ -20,6 +20,7 @@ import { GifPicker } from '../gifs/GifPicker.js';
 import { shareGif, shownAt } from '../gifs/klipy.js';
 import { EmojiPicker, finePointer } from './EmojiPicker.js';
 import { QuickReplies } from '../replies/QuickReplies.js';
+import { own, useLine } from '../line.js';
 import './composer.css';
 
 // Text editing, typing and reply acknowledgement, with composer-local photo ownership.
@@ -81,6 +82,8 @@ export function Composer({
     () => drafts.text(draft),
   );
   const { enter_sends: enterSends } = useContext(Shown);
+  // The DSP's quick replies are Dispatch Phone's own line's.
+  const replies = own(useLine());
   const {
     photos,
     add,
@@ -297,7 +300,7 @@ export function Composer({
           />
         )}
         <EmojiPicker disabled={!open} pick={put} />
-        <QuickReplies disabled={!open} pick={put} />
+        {replies && <QuickReplies disabled={!open} pick={put} />}
         <textarea
           ref={field}
           rows={1}

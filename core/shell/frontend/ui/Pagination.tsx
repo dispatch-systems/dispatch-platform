@@ -1,3 +1,5 @@
+import './pagination.css';
+
 export function Pagination({
   page,
   pageSize,

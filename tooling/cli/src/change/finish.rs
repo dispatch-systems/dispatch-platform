@@ -1,5 +1,5 @@
 use super::{Clone, Repository, valid_name};
-use crate::{Result, Runner, dev, require, review, workspace};
+use crate::{Result, Runner, dev, github, preview, require, review, workspace};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -32,7 +32,8 @@ pub struct FinishPlan {
     pub remote_head: Option<String>,
     pub worktree_present: bool,
     pub ignored: Vec<String>,
-    /// The worktree's running dev server, which `finish` stops first.
+    /// The worktree's running dev server, which `finish` stops first: the session `preview`
+    /// started, else one started by hand.
     pub dev_server: Option<i32>,
     pub scratch_entries: Vec<String>,
     pub blockers: Vec<String>,
@@ -112,10 +113,10 @@ pub fn finish_plan(
             "Origin must name Dispatch's GitHub repository, the platform's or the agent docs', \
              to fetch from and to push to; inspect both URLs before cleanup.",
         )?;
-    let pulls: Vec<Pull> = serde_json::from_str(&workspace::text(
+    let pulls: Vec<Pull> = serde_json::from_str(&github::call(
         runner,
+        &clone.root,
         &[
-            "gh",
             "pr",
             "list",
             "--repo",
@@ -127,7 +128,6 @@ pub fn finish_plan(
             "--json",
             "number,state,headRefOid,headRefName,isCrossRepository",
         ],
-        Some(&clone.root),
     )?)?;
     let pull = pulls
         .into_iter()
@@ -146,7 +146,7 @@ pub fn finish_plan(
         (reference == branch).then(|| head.to_owned())
     });
     let worktree = clone.worktrees.join(name);
-    let scratch = workspace::scratch(name);
+    let scratch = workspace::current_scratch(name)?;
     let mut plan = FinishPlan {
         name: name.to_owned(),
         root: clone.root.clone(),
@@ -211,10 +211,14 @@ pub fn finish_plan(
                     if !status.is_empty() { plan.blockers.push("The worktree holds uncommitted changes: commit or drop them first.".into()); }
                     let ignored = workspace::text(runner, &["git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"], Some(&real))?;
                     plan.ignored = ignored.split('\0').filter(|name| !name.is_empty()).map(str::to_owned).collect();
-                    plan.dev_server = dev::status(&real, runner)
-                        .ok()
-                        .filter(|status| status.running)
-                        .and_then(|status| status.process.map(|process| process.pid));
+                    plan.dev_server = preview::server(&plan.scratch, runner)
+                        .map(|server| server.pid)
+                        .or_else(|| {
+                            dev::status(&real, runner)
+                                .ok()
+                                .filter(|status| status.running)
+                                .and_then(|status| status.process.map(|process| process.pid))
+                        });
                 }
                 _ => plan.blockers.push("The directory is not this branch's registered worktree: inspect it before cleanup.".into()),
             }
@@ -269,7 +273,7 @@ pub fn finish(from: &Path, name: &str, abandon: bool, runner: &dyn Runner) -> Re
         )?;
     }
     if plan.dev_server.is_some() {
-        dev::stop(&plan.worktree, runner)?;
+        preview::stop(&plan.worktree, &plan.scratch, runner)?;
     }
     if plan.worktree_present {
         clone.git(
@@ -295,6 +299,7 @@ pub fn finish(from: &Path, name: &str, abandon: bool, runner: &dyn Runner) -> Re
         review::discard(&clone.root, &plan.scratch, runner)?;
         fs::remove_dir_all(&plan.scratch)?;
     }
+    workspace::forget_left_in_tmp(name, &plan.scratch)?;
     println!(
         "Finished {name}: its worktree, branches and scratch folder are gone{}.",
         if abandon { ", unmerged" } else { "" }

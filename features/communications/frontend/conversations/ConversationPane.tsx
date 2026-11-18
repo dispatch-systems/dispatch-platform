@@ -7,7 +7,6 @@ import type {
   SentMessage,
   Writing,
 } from '../../api/index.js';
-import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { lastFour, numberBeside } from '../shared/format.js';
@@ -30,6 +29,7 @@ import { useReplied } from './replied.js';
 import type { ConversationReads, WriteVersion } from './reads.js';
 import type { Drafts } from './drafts.js';
 import { useConversation } from './useConversation.js';
+import { useLine } from '../line.js';
 
 // The conversation open: who it's with, the workspace it's in while there are several, the number
 // it texts, or a driver's route today and the work phone they hold, and, while it waits, how long
@@ -109,6 +109,7 @@ export function ConversationPane({
   /** Whether a GIF of KLIPY's may be chosen for a message, as the DSP has GIFs. */
   gifs: boolean;
 }) {
+  const line = useLine();
   const {
     opened,
     error,
@@ -165,7 +166,7 @@ export function ConversationPane({
   // Done shows it done in the list at once, and as the server had it once that's saved. One that
   // fails has the page read the list afresh, as the server has it, in turn with every update.
   const marking = useAction(async (seen: Message | null | undefined) => {
-    const after = await markDone(id, seen);
+    const after = await line.texting.markDone(id, seen);
     read.show(after);
     show(after);
   });
@@ -185,7 +186,8 @@ export function ConversationPane({
   };
   const retry = useAction(async (failed: Message) => {
     const observed = read.version();
-    if (conversation) read.show(conversation, await retryText(id, failed.id), observed);
+    if (conversation)
+      read.show(conversation, await line.texting.retryText(id, failed.id), observed);
   });
   const writing = typing.filter((writer) => writer.conversationId === id);
   // Its latest read's messages, and its last as the latest update brings it, which may be newer:
@@ -277,14 +279,14 @@ export function ConversationPane({
           writable={party.writable(shown) && !unreachable}
           instead={unreachable && <NoWorkPhone elsewhere={elsewhere} go={go} />}
           limits={opened?.limits}
-          attachments={KINDS[shown.conversation.kind].attachments}
+          attachments={KINDS[shown.conversation.kind].attachments(line.texting)}
           to={person && numberBeside(person.name, number) ? lastFour(number) : undefined}
           send={async (text, photos, gif) => {
             const observed = read.version();
-            sent(await sendMessage(id, text, photos, gif), observed);
+            sent(await line.texting.sendMessage(id, text, photos, gif), observed);
           }}
           gifs={gifs}
-          typing={() => void sayTyping(id).catch(() => undefined)}
+          typing={() => void line.texting.sayTyping(id).catch(() => undefined)}
           above={<TypingLine writing={writing} />}
           replied={{
             check: replied.check,

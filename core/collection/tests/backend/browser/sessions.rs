@@ -43,6 +43,7 @@ fn leased(session: &Session) -> bool {
     session.credential_lease.lock().unwrap().is_some()
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test(start_paused = true)]
 async fn a_readers_browser_still_starting_holds_up_no_other_dsps_close() {
     testing::install(&[], &[]);

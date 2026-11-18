@@ -133,9 +133,30 @@ def project_git(root, destination):
             str(target / "objects"), "--ro-bind", str(pointer), str(root / ".git")]
 
 
+def private_dir(path):
+    # A folder itself, this user's, that no one else can open: /tmp is shared.
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return False
+    return stat.S_ISDIR(metadata.st_mode) and metadata.st_uid == os.getuid() and not metadata.st_mode & 0o077
+
+
+def assigned_scratch(root):
+    # The branch's scratch folder as the CLI keeps a change's, by its real path, made private:
+    # the one it kept in /tmp until the CLI moves it, which making the new one would strand.
+    folders = (Path.home() / "dispatch-platform/scratch").resolve()
+    scratch = folders / root.name
+    old = Path(f"/tmp/dispatch-{root.name}")
+    if not scratch.exists() and private_dir(old):
+        return old.resolve()
+    folders.mkdir(parents=True, exist_ok=True, mode=0o700)
+    scratch.mkdir(exist_ok=True, mode=0o700)
+    return scratch
+
+
 def build(root, node, command):
-    scratch = Path(f"/tmp/dispatch-{root.name}")
-    scratch.mkdir(parents=True, exist_ok=True, mode=0o700)
+    scratch = assigned_scratch(root)
     home = Path.home()
     args = runtime() + ["--bind", str(root), str(root), "--chdir", str(root)]
     args += project_git(root, scratch / "build-git")
@@ -156,9 +177,16 @@ def build(root, node, command):
     return subprocess.call(args)
 
 
+def bridge_address(bridge):
+    # A Unix socket's address holds 108 bytes, which the scratch folder's path can pass: the host
+    # connects through a descriptor held on the bridge, which leaves nothing behind however the
+    # preview ends.
+    descriptor = os.open(bridge, os.O_RDONLY | os.O_DIRECTORY)
+    return descriptor, f"/proc/self/fd/{descriptor}/application.sock"
+
+
 def preview(root, state):
-    scratch = Path(f"/tmp/dispatch-{root.name}")
-    scratch.mkdir(parents=True, exist_ok=True, mode=0o700)
+    scratch = assigned_scratch(root)
     if state is None:
         state = Path(tempfile.mkdtemp(prefix="browser-state-", dir=scratch))
     else:
@@ -166,6 +194,7 @@ def preview(root, state):
         if not state.is_relative_to(scratch):
             raise ValueError("Preview state leaves the assigned scratch directory")
     bridge = Path(tempfile.mkdtemp(prefix="browser-bridge-", dir=scratch))
+    descriptor, address = bridge_address(bridge)
     resources = Path(__file__).resolve().parent
     child = None
 
@@ -173,7 +202,7 @@ def preview(root, state):
         def handle(self):
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as upstream:
-                    upstream.connect(str(bridge / "application.sock"))
+                    upstream.connect(address)
                     relay(self.request, upstream)
             except (OSError, TimeoutError):
                 pass
@@ -211,6 +240,7 @@ def preview(root, state):
         server.shutdown()
         server.server_close()
         shutil.rmtree(bridge, ignore_errors=True)
+        os.close(descriptor)
         # Native verification state lives until its outer ticket cleanup; fixture state is ephemeral.
         if state.name.startswith("browser-state-"):
             shutil.rmtree(state, ignore_errors=True)

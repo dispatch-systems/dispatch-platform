@@ -772,12 +772,11 @@ function devServerNote(values: Values) {
     .join('; ');
   const restart = 'Restart `npm run dev` for its backend';
   if (!owner) return `${restart}; then ${shown}.`;
-  const post = '`dispatchdev api POST /api/platform/dsps/<id>';
   return (
     `${restart}. Only the DSP with the custom ID ${owner} has it, and \`dispatchdev api GET ` +
     `/api/session\` lists the demo DSPs with their ids and custom IDs. Unless one has it, give ` +
-    `it to one: ${post}/custom-id --data '{"customId":"${owner}"}'\`. Switch the feature on for that DSP: ` +
-    `${post}/features --data '{"feature":"${name}","enabled":true}'\`. Then ${shown}.`
+    `it to one: \`dispatchdev dev custom-id <dsp> ${owner}\`. Switch the feature on for that ` +
+    `DSP: \`dispatchdev dev feature <dsp> ${name} on\`. Then ${shown}.`
   );
 }
 

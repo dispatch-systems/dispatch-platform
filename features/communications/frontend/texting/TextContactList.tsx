@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Conversation, TextContact } from '../../api/index.js';
-import { blockNumber, getTextContacts } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
@@ -10,9 +9,10 @@ import { Face, PhoneFace } from '../shared/Face.js';
 import { ListEmpty, ListHead, Rows } from '../shared/List.js';
 import { numberBeside } from '../shared/format.js';
 import { useFound } from '../shared/useFound.js';
+import { useLine } from '../line.js';
 import './text-contacts.css';
 
-// Messaging's Contacts: whom the DSP can text, everyone Driver Match has a number for and every
+// Messaging's Contacts: whom the DSP can text on the page's line, everyone Driver Match has a number for and every
 // number it saved a name for, A to Z under each name's first letter, or those found by a name or
 // number typed, the closest first. Each shows their number and how long they've waited, or when
 // they last wrote, and opens their conversation, or starts one. Then the numbers blocked, each
@@ -40,7 +40,8 @@ export function TextContactList({
   /** Shows a conversation as the page's own writes left it. */
   show: (conversation: Conversation) => void;
 }) {
-  const read = useCallback(() => getTextContacts(typed), [typed]);
+  const { texting } = useLine();
+  const read = useCallback(() => texting.getTextContacts(typed), [texting, typed]);
   const { found, failed } = useFound(read, typed ? 'found' : 'all', revision, typed ? 200 : 0);
   const chosen = useAction(reach);
   // Numbers unblocked here, gone from Blocked while their unblocking saves, then until the
@@ -55,7 +56,7 @@ export function TextContactList({
   const gone = (number: string) =>
     unblocked.numbers.includes(number) && (!unblocked.settled || unblocked.settled.read === found);
   const unblocking = useAction(async (contact: TextContact) =>
-    show(await blockNumber(contact.conversationId!, false)),
+    show(await texting.blockNumber(contact.conversationId!, false)),
   );
   const unblock = (contact: TextContact) => {
     pending.current += 1;

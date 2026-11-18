@@ -147,7 +147,7 @@
     {
       "id": "cjf87gqd_hr_line",
       "label": "HR Line",
-      "permissions": ["cjf87gqd_hr_line.phones"],
+      "permissions": ["cjf87gqd_hr_line.use", "cjf87gqd_hr_line.phones"],
       "requires": [],
       "default": false,
       "mandatory": false

@@ -8,9 +8,6 @@ import { useSettings } from '../../../../core/settings/api/client.js';
 // phone, the choices that apply on one, kept as `phone_<choice>`. Sizes go by the text size; the
 // rest are classes of the page's own (`data-*`), which each part's stylesheet draws.
 
-/** Its section of Settings, as Communications' backend declares it. */
-export const section = 'communications.display';
-
 /** What a member has before choosing anything, as the backend declares it. */
 export const defaults: MessageDisplay = {
   text_size: 15,
@@ -109,8 +106,12 @@ export function screenDefaults(screen: Screen): Partial<Display> {
   return Object.fromEntries(phoneChoices.map((choice) => [choice, own[choice]]));
 }
 
-/** The member's own, as Settings read them; the defaults until it has. */
-export const ownDisplay = (settings: SettingsAnswer | undefined): MessageDisplay => {
+/** The member's own of the line's Display section `section`, as Settings read them; the defaults
+ * until it has. */
+export const ownDisplay = (
+  settings: SettingsAnswer | undefined,
+  section: string,
+): MessageDisplay => {
   const kept = settings?.sections.find((each) => each.id === section)?.values;
   return { ...defaults, ...(kept as Partial<MessageDisplay> | undefined) };
 };
@@ -128,10 +129,11 @@ const usePhone = () => useSyncExternalStore(watchPhone, () => matchMedia(phoneQu
 /** The screen this is. */
 export const thisScreen = (): Screen => (matchMedia(phoneQuery).matches ? 'phone' : 'desktop');
 
-/** The member's own on this screen, read with Settings, which a save there updates at once. */
-export function useDisplay() {
+/** The member's own of the line's Display section `section` on this screen, read with Settings,
+ * which a save there updates at once. */
+export function useDisplay(section: string) {
   const { data } = useSettings();
-  return onScreen(ownDisplay(data), usePhone() ? 'phone' : 'desktop');
+  return onScreen(ownDisplay(data, section), usePhone() ? 'phone' : 'desktop');
 }
 
 /** What the page draws by, for the parts that read it as they draw: the thread, the box. */

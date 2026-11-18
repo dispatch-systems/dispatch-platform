@@ -3,6 +3,7 @@
 //! its PR merged, or with `--abandon` for one that never will, and brings the clone up to
 //! `main`. Both work from any checkout of the repository: the platform's, or the agent docs'.
 use crate::{REPOSITORY, Result, Runner, require, workspace};
+use serde::Serialize;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -15,9 +16,11 @@ const AGENT_DOCS: &str = "dispatch-systems/dispatch-agents";
 
 /// The repository on GitHub a checkout is of, which its origin names: the platform, or the
 /// agent docs, which hold no source, so nothing checks them and Dev never serves them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Repository {
     Platform,
+    #[serde(rename = "agents")]
     AgentDocs,
 }
 impl Repository {
@@ -123,7 +126,12 @@ pub fn start(from: &Path, name: &str, base: &str, runner: &dyn Runner) -> Result
     // The agent docs have no packages, and nothing to serve.
     let packages = path.join("package-lock.json").is_file();
     if packages {
-        runner.command(&["npm", "ci", "--no-audit", "--no-fund"], Some(&path), 900)?;
+        let quiet = format!("--loglevel={}", workspace::NPM_LOGLEVEL.1);
+        runner.command(
+            &["npm", "ci", "--no-audit", "--no-fund", &quiet],
+            Some(&path),
+            900,
+        )?;
     }
     let scratch = workspace::checkout_scratch(&path)?;
     let at = clone.git(runner, &["rev-parse", "--short", base])?;
@@ -265,7 +273,7 @@ mod tests {
                 .to_lowercase()
         );
         start(&docs, &name, "origin/main", &NoPackages).unwrap();
-        let scratch = workspace::scratch(&name);
+        let scratch = workspace::scratch(&name).unwrap();
         let made = scratch.is_dir();
         let _ = fs::remove_dir_all(&scratch);
         assert!(made, "its scratch folder");

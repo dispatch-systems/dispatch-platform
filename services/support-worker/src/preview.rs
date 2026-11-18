@@ -27,7 +27,7 @@ impl NativePreview {
     /// Builds the worktree, then serves the build in a sandbox of its own.
     pub async fn start(config: &Config, tree: &Worktree, state: Option<&PathBuf>) -> Result<Self> {
         tree.build(config).await?;
-        let scratch = tree.scratch();
+        let scratch = tree.scratch()?;
         tree.clear_scratch(&["browser-state-", "browser-bridge-"])?;
         let mut command = Command::new("/usr/bin/python3");
         command

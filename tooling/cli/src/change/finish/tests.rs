@@ -253,7 +253,7 @@ fn merged_cleanup_preserves_new_commits_and_a_moved_remote() {
 fn cleanup_plans_without_mutating_and_refuses_foreign_or_dirty_worktrees() {
     let fixture = Fixture::new();
     let github = fixture.reviewer("MERGED");
-    let scratch = workspace::scratch(&fixture.name);
+    let scratch = workspace::scratch(&fixture.name).unwrap();
     assert!(!scratch.exists());
     let plan = finish_plan(&fixture.root, &fixture.name, false, &github).unwrap();
     assert!(plan.can_finish(), "{:?}", plan.blockers);
@@ -325,6 +325,12 @@ fn cleanup_uses_a_remote_lease_and_allows_explicit_closed_abandonment() {
         )
         .is_err()
     );
+    // A change no command moved home since its scratch folder was kept in /tmp.
+    let left = PathBuf::from(format!("/tmp/dispatch-{}", fixture.name));
+    fs::create_dir(&left).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&left, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::write(left.join("decisions.md"), "approved").unwrap();
     finish(
         &fixture.root,
         &fixture.name,
@@ -332,6 +338,7 @@ fn cleanup_uses_a_remote_lease_and_allows_explicit_closed_abandonment() {
         &fixture.reviewer("CLOSED"),
     )
     .unwrap();
+    assert!(!left.exists());
     assert!(!fixture.worktree.exists());
     assert!(fixture.git(&["branch", "--list", &fixture.name]).is_empty());
     assert!(
@@ -417,4 +424,35 @@ fn finishing_brings_a_clone_on_main_up_to_origins_and_leaves_any_other() {
             "{branch}"
         );
     }
+}
+
+#[test]
+fn finishing_stops_the_dev_server_preview_left_running() {
+    use std::os::unix::process::ExitStatusExt;
+    let fixture = Fixture::new();
+    let github = fixture.reviewer("MERGED");
+    let scratch = workspace::scratch(&fixture.name).unwrap();
+    fs::create_dir_all(&scratch).unwrap();
+    let mut server = std::process::Command::new("sleep");
+    server.arg("30");
+    let server = preview::detached(&mut server, &scratch.join("dev-server.log")).unwrap();
+    let pid = server.id() as i32;
+    let ended = std::thread::spawn(move || {
+        let mut server = server;
+        server.wait().unwrap()
+    });
+    preview::keep(
+        &scratch,
+        pid,
+        "127.0.0.1",
+        4101,
+        "0b7a2c1e-5d4f-4e3a-9c8b-7a6f5e4d3c2b",
+        &Native,
+    )
+    .unwrap();
+    let plan = finish_plan(&fixture.root, &fixture.name, false, &github).unwrap();
+    assert_eq!(plan.dev_server, Some(pid));
+    finish(&fixture.root, &fixture.name, false, &github).unwrap();
+    assert_eq!(ended.join().unwrap().signal(), Some(libc::SIGTERM));
+    assert!(!scratch.exists());
 }

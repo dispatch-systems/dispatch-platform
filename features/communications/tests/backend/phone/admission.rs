@@ -212,6 +212,7 @@ impl Fixture {
     }
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test]
 async fn pending_work_survives_phone_admission_exhaustion() {
     let (fixture, served) = Fixture::start().await;

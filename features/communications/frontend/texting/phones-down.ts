@@ -2,8 +2,9 @@ import { settingsHash } from '../../../../core/shell/frontend/runtime/navigation
 import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
 import type { Watching } from '../../../../core/shell/frontend/runtime/slots.js';
 import type { DispatchPhone } from '../../api/index.js';
+import type { TextingLine } from '../line.js';
 
-// The DSP's phones that are down, as every page's banner and a notification say: one offline for
+// A line's phones that are down, as every page's banner and a notification say: one offline for
 // ten minutes or more, or one that says it can't send texts.
 
 /** How long a phone is offline before it's down. */
@@ -12,9 +13,23 @@ export const OFFLINE_MS = 10 * 60_000;
 /** A phone that's down: how, what says it, and by its `key`, each time it went down. */
 export type Down = { kind: 'offline' | 'cant_send'; key: string; words: string };
 
-/** The `phones` an app holds that are down at `now`: by name while there are several. */
-export function down(phones: readonly DispatchPhone[], now: number): Down[] {
-  const named = (phone: DispatchPhone) => (phones.length > 1 ? phone.name : 'Dispatch phone');
+/** What says which line's phones: Dispatch Phone's own, by default, or another's. */
+type Called = Pick<TextingLine, 'id' | 'name' | 'phone'>;
+const DISPATCH: Called = { name: 'Dispatch Phone', phone: 'Dispatch phone' };
+
+/** The `phones` of `line` an app holds that are down at `now`: by name while there are several,
+ * else as the line calls its phone; another line's by its name too, unless the phone's says it,
+ * as its alerts always say the line (HR Line · Pixel). */
+export function down(
+  phones: readonly DispatchPhone[],
+  now: number,
+  line: Called = DISPATCH,
+): Down[] {
+  const named = (phone: DispatchPhone) => {
+    if (phones.length === 1) return line.phone;
+    if (line.id === undefined || phone.name.startsWith(line.name)) return phone.name;
+    return `${line.name} · ${phone.name}`;
+  };
   return phones.flatMap((phone): Down[] => {
     const since = phone.lastSeenAt;
     if (!phone.online && since !== null && now - since >= OFFLINE_MS)
@@ -47,8 +62,8 @@ function lasted(ms: number) {
   return days === 1 ? '1 day' : `${days} days`;
 }
 
-/** The phones' card on DSP Connections, for whoever manages the DSP's phones or connections. */
-export function phonesCard({ view }: Watching) {
-  if (!can(view, 'connections.manage') && !can(view, 'phones.manage')) return undefined;
+/** The line's phones' card on DSP Connections, for whoever manages them or the DSP's connections. */
+export function phonesCard({ view }: Watching, line: TextingLine) {
+  if (!can(view, 'connections.manage') && !can(view, line.phones)) return undefined;
   return settingsHash(view.dsp.id, 'connections', view);
 }

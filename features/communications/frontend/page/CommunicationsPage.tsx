@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { SlidersHorizontal, SquarePen } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import type { Conversation, Group } from '../../api/index.js';
-import { markDone, markGroupDone } from '../../api/client.js';
+import { markGroupDone } from '../../api/client.js';
 import { finishSlack } from '../../../slack/api/client.js';
 import { useSlackReturn } from '../../../slack/frontend/index.js';
 import { ErrorBox, Header, Loading } from '../../../../core/shell/frontend/ui/index.js';
@@ -39,17 +39,36 @@ import { useNow } from './useNow.js';
 import { useRemembered } from './useRemembered.js';
 import { useShortcuts } from './useShortcuts.js';
 import { useTodaysRoutes } from '../todays-routes/useTodaysRoutes.js';
+import { DISPATCH_PHONE, keptAt, Line, own, useLine, type TextingLine } from '../line.js';
 import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 
-// Composes inbox and conversation reads, page-lived text drafts, and the selected pane.
+// Composes inbox and conversation reads, page-lived text drafts, and the selected pane, of a line:
+// Dispatch Phone's own, or another feature's, on its own page.
 
 /** How many of the first waiting are read before they're opened. */
 const WARMED = 3;
 
-export function CommunicationsPage({ view, user }: { view: DspView; user: string }) {
+export function CommunicationsPage({
+  view,
+  user,
+  line = DISPATCH_PHONE,
+}: {
+  view: DspView;
+  user: string;
+  line?: TextingLine;
+}) {
+  return (
+    <Line.Provider value={line}>
+      <LinePage view={view} user={user} />
+    </Line.Provider>
+  );
+}
+
+function LinePage({ view, user }: { view: DspView; user: string }) {
+  const line = useLine();
   const timeZone = view.dsp.timezone;
   const page = useRef<HTMLDivElement>(null);
-  const display = useDisplay();
+  const display = useDisplay(line.display);
   const layout = useLayout(page, dockAt(display));
   // The profile open as each conversation opens, as the member may keep it: not with one pane at a
   // time, where it would cover the conversation.
@@ -62,11 +81,12 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     if (host) prefetchRouteData(host, view);
   };
   const manages = can(view, 'connections.manage');
-  const [chosen, choose] = useRemembered('workspace', view.dsp.id, user);
-  const [chosenSection, chooseSection] = useRemembered('section', view.dsp.id, user);
-  const [chosenView, chooseView] = useRemembered('routes-view', view.dsp.id, user);
+  const remembered = keptAt(line, view.dsp.id);
+  const [chosen, choose] = useRemembered('workspace', remembered, user);
+  const [chosenSection, chooseSection] = useRemembered('section', remembered, user);
+  const [chosenView, chooseView] = useRemembered('routes-view', remembered, user);
   // The day Recents' Previous days were shown on, as they stay shown until it ends.
-  const [previousOn, showPreviousOn] = useRemembered('previous-days', view.dsp.id, user);
+  const [previousOn, showPreviousOn] = useRemembered('previous-days', remembered, user);
   // Of the workspace chosen while a section of workspaces is chosen, as Slack is; else of every one,
   // as Recents lists them.
   const ofWorkspace = SECTIONS.some((each) => each.id === chosenSection && each.workspaces);
@@ -206,12 +226,14 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const updating =
     manages && model.workspaces ? (inbox?.workspaces.filter((each) => each.needsUpdate) ?? []) : [];
   const done = useAction(async (conversation: Conversation) =>
-    show(await markDone(conversation.id, conversation.last)),
+    show(await line.texting.markDone(conversation.id, conversation.last)),
   );
   const doneGroup = useAction(async (listed: Group) =>
     showGroup(await markGroupDone(listed.id, listed.last)),
   );
-  const connect = manages && inbox?.workspaces.length === 0 && inbox.phones.length === 0;
+  // Slack is Dispatch Phone's own line's to connect.
+  const connect =
+    own(line) && manages && inbox?.workspaces.length === 0 && inbox.phones.length === 0;
   const unlisted =
     pinnedNow && !shownRows.some((each) => each.row.id === pinnedNow.row.id)
       ? pinnedNow
@@ -235,7 +257,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     >
       <Shown value={display}>
         <div className="communications-page" inert={updating.length > 0}>
-          <Header title="Dispatch Phone">
+          <Header title={line.name}>
             {layout !== 'phone' && offline}
             {sections.length > 0 && displaySettings && (
               <button
@@ -355,7 +377,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
               ) : pane.kind === 'conversation' ? (
                 <ConversationPane
                   key={pane.id}
-                  gifs={hasFeature(view, 'communications.gifs')}
+                  gifs={own(line) && hasFeature(view, 'communications.gifs')}
                   id={pane.id}
                   listed={current}
                   conversations={inbox.conversations}

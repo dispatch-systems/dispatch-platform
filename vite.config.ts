@@ -19,12 +19,13 @@ export default defineConfig({
     rolldownOptions: {
       output: {},
       treeshake: {
-        // The table modules run nothing when imported. Saying so lets the unused table
-        // code behind the shared `ui` index leave the entry chunk, as it did before
-        // Rolldown; the routes that render tables load it with them.
+        // The shared `ui` modules run nothing when imported. Saying so keeps what a page
+        // doesn't use behind the `ui` index out of its chunks, as before Rolldown: the
+        // routes that render a table, a date field or a dialog load it, and its styles,
+        // with them.
         moduleSideEffects: [
           {
-            test: /[\\/]core[\\/]shell[\\/]frontend[\\/]ui[\\/](useDataTable|tableCsv|DataTable)\.tsx?$/,
+            test: /[\\/]core[\\/]shell[\\/]frontend[\\/]ui[\\/][^\\/]+\.tsx?$/,
             sideEffects: false,
           },
         ],

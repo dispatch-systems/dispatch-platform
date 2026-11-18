@@ -7,6 +7,7 @@ import { paused, runs } from './messages.js';
 import { Shown } from '../display/display.js';
 import { Face, SenderFace } from '../shared/Face.js';
 import { KINDS } from './kinds.js';
+import { useLine } from '../line.js';
 import { PartyFace } from './party.js';
 import { MessageBody } from '../shared/MessageBody.js';
 import {
@@ -76,7 +77,7 @@ export function Thread({
   workdays?: readonly Workday[];
 }) {
   const person = conversation.with;
-  const { attachments } = KINDS[conversation.kind];
+  const attachments = KINDS[conversation.kind].attachments(useLine().texting);
   const { style, times } = useContext(Shown);
   const plain = style === 'plain';
   const pauses = !plain && times === 'after_pause';

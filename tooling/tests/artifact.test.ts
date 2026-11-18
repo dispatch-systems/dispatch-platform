@@ -6,7 +6,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fixture } from '../../core/shell/tests/support/support.js';
 import { verifyArtifact, writeManifest } from '../build/artifact.js';
-import { dashboardGraphSizes, type DashboardAssets } from '../testing/dashboard-assets.js';
+import type { DashboardAssets } from '../testing/dashboard-assets.js';
+import { assetBudget, graphSizes, initialStylesheet } from '../testing/page-budgets.js';
 
 test(
   'installed artifact serves the complete platform directly from Rust and has no Node runtime payload',
@@ -72,52 +73,13 @@ test(
     const get = await fetch(url, { headers: { 'accept-encoding': 'identity' } });
     const bytes = await get.arrayBuffer();
     assert(
-      bytes.byteLength < 400_000,
-      'main dashboard JavaScript stays below 400 KB before compression',
+      bytes.byteLength < assetBudget('main script').budget,
+      assetBudget('main script').message,
     );
     const assets: DashboardAssets = JSON.parse(
       fs.readFileSync(path.join(artifact, 'tooling/build-info.json'), 'utf8'),
     ).dashboardAssets;
-    const graphs = [
-      { name: 'initial', entries: [], raw: 500_000, transferred: 115_000 },
-      {
-        name: 'DSP picker',
-        entries: ['../../core/platform_owner/frontend/dsps/picker.ts'],
-        raw: 500_000,
-        transferred: 120_000,
-      },
-      {
-        name: 'Settings profile',
-        // The page, the Profile panel and Driver Match's tab badge load together.
-        entries: [
-          '../../features/settings/frontend/index.ts',
-          '../../core/accounts/frontend/settings/ProfileBadge.tsx',
-          '../../features/driver_match/frontend/badge.ts',
-        ],
-        raw: 445_000,
-        transferred: 132_000,
-      },
-      {
-        name: 'daily Timecard',
-        entries: [
-          '../../features/timecard/frontend/index.ts',
-          '../../features/timecard/frontend/tabs/daily/TimecardsPage.tsx',
-        ],
-        raw: 500_000,
-        transferred: 150_000,
-      },
-      {
-        name: 'Collectors',
-        entries: ['../../core/collection/frontend/collectors/index.ts'],
-        raw: 490_000,
-        transferred: 145_000,
-      },
-    ];
-    for (const graph of graphs) {
-      const size = dashboardGraphSizes(path.join(artifact, 'dashboard'), assets, [
-        'index.html',
-        ...graph.entries,
-      ]);
+    for (const { graph, size } of graphSizes(path.join(artifact, 'dashboard'), assets)) {
       assert(
         size.scripts.raw < graph.raw,
         `${graph.name} complete JavaScript graph exceeds ${graph.raw} bytes`,
@@ -126,10 +88,7 @@ test(
         size.scripts.transferred < graph.transferred,
         `${graph.name} transferred JavaScript graph exceeds ${graph.transferred} bytes`,
       );
-      assert(
-        size.styles.raw < (graph.name === 'initial' ? 30_000 : 60_000),
-        `${graph.name} complete CSS graph exceeds its budget`,
-      );
+      assert(size.styles.raw < graph.styles, `${graph.name} complete CSS graph exceeds its budget`);
       t.diagnostic(
         `${graph.name}: ${size.scripts.raw} raw / ${size.scripts.transferred} transferred JavaScript bytes`,
       );
@@ -137,7 +96,7 @@ test(
     const stylesheet = document.match(/href="(\.?\/assets\/[^"]+\.css)"/)![1]!;
     const styles = await fetch(new URL(stylesheet, f.env.DISPATCH_ORIGIN));
     assert(
-      (await styles.arrayBuffer()).byteLength < 30_000,
+      (await styles.arrayBuffer()).byteLength < initialStylesheet,
       'initial common CSS stays below 30 KB; feature CSS loads with its route',
     );
 
@@ -183,8 +142,8 @@ test(
     assert.equal(map.headers.get('cache-control'), 'public, max-age=31536000, immutable');
     assert.equal(map.headers.get('content-encoding'), 'br');
     assert(
-      Number(map.headers.get('content-length')) < 900_000,
-      'compressed vector map stays within its initial-load budget',
+      Number(map.headers.get('content-length')) < assetBudget('map').budget,
+      assetBudget('map').message,
     );
     const vanFile = manifest.files.find((file) =>
       /dashboard\/assets\/login-van-.*\.glb$/.test(file.path),
@@ -197,8 +156,8 @@ test(
     assert.equal(van.headers.get('cache-control'), 'public, max-age=31536000, immutable');
     assert.equal(van.headers.get('content-encoding'), 'br');
     assert(
-      Number(van.headers.get('content-length')) < 300_000,
-      'compressed van transfer stays under 300 KB',
+      Number(van.headers.get('content-length')) < assetBudget('van').budget,
+      assetBudget('van').message,
     );
     const rendererFile = manifest.files.find((file) =>
       /dashboard\/assets\/renderer-.*\.js$/.test(file.path),
@@ -209,8 +168,8 @@ test(
       { headers: { 'accept-encoding': 'br' } },
     );
     assert(
-      Number(renderer.headers.get('content-length')) < 200_000,
-      'deferred renderer transfer stays under 200 KB',
+      Number(renderer.headers.get('content-length')) < assetBudget('renderer').budget,
+      assetBudget('renderer').message,
     );
     const font = await fetch(f.env.DISPATCH_ORIGIN + '/assets/inter.woff2');
     assert.equal(font.headers.get('cache-control'), 'public, no-cache');

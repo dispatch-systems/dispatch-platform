@@ -1,0 +1,140 @@
+.dsp-view-banner {
+  z-index: 30;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px;
+  display: flex;
+  position: sticky;
+  top: 0;
+}
+.dsp-view-banner > svg {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+.dsp-view-banner > div {
+  min-width: 0;
+}
+.dsp-view-banner strong,
+.dsp-view-banner span {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  display: block;
+}
+.dsp-view-banner span {
+  color: var(--muted-foreground);
+  margin-top: 3px;
+}
+.dsp-view-banner > button {
+  flex-shrink: 0;
+}
+/* Where the drawer replaces the sidebar, the banner gives way to the drawer's panel, and a dot on
+   the menu button marks the view. */
+.dsp-view-panel {
+  display: none;
+}
+@media (width <= 980px) {
+  .dsp-view-banner {
+    display: none;
+  }
+  .dsp-view-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 4px 12px 0;
+    padding: 12px;
+    border: 1px solid var(--violet);
+    border-radius: var(--radius);
+    background: var(--violet-surface);
+  }
+}
+.dsp-view-panel strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.dsp-view-panel strong svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--violet);
+}
+.dsp-view-panel .view-role-menu {
+  margin-left: 0;
+}
+/* Its list keeps to the menu's width; one running past the screen's foot scrolls the drawer. */
+.dsp-view-panel .view-role-menu .account-popover {
+  width: 100%;
+  max-width: none;
+}
+.dsp-view-panel .view-role-menu summary {
+  justify-content: space-between;
+  max-width: none;
+  min-height: var(--control-height);
+  padding-inline: 12px;
+}
+.dsp-view-banner > div {
+  flex: 0 1 auto;
+}
+.dsp-view-banner > button {
+  margin-left: auto;
+}
+.view-role-menu {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+.view-role-menu summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  min-height: 32px;
+  padding: 4px 8px 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  list-style: none;
+}
+.view-role-menu summary::-webkit-details-marker {
+  display: none;
+}
+.view-role-menu summary:hover {
+  background: var(--accent);
+}
+.view-role-menu summary svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
+  transition: transform var(--motion-duration);
+}
+.view-role-menu[open] summary svg {
+  transform: rotate(180deg);
+}
+.view-role-menu .account-popover {
+  inset: calc(100% + 6px) auto auto 0;
+  width: max-content;
+  min-width: max(100%, 168px);
+  max-width: min(280px, calc(100vw - 32px));
+  max-height: min(320px, calc(100vh - 96px));
+  overflow-y: auto;
+}
+.view-role-menu .account-popover button {
+  justify-content: space-between;
+  min-height: 0;
+}
+.view-role-menu .account-popover span {
+  margin: 0;
+  color: inherit;
+}

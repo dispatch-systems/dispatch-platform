@@ -42,9 +42,49 @@ pub fn feature_directory(root: &Path, feature: &str) -> Option<PathBuf> {
     None
 }
 
-/// Where the checkout named `name` keeps everything it makes outside itself.
-pub fn scratch(name: &str) -> PathBuf {
+/// Where the checkout named `name` keeps everything it makes outside itself: a folder of
+/// `~/dispatch-platform/scratch`, by that folder's real path. The stores tests make refuse a
+/// path through a symlink, and the MacBook keeps `~/dispatch-platform` behind one.
+pub fn scratch(name: &str) -> Result<PathBuf> {
+    let home = std::env::var_os("HOME").ok_or("HOME is required for the scratch folders.")?;
+    Ok(real(&Path::new(&home).join("dispatch-platform/scratch"))?.join(name))
+}
+/// The scratch folder of the change named `name` as it is now: where `scratch` keeps it, unless
+/// only the one it kept in `/tmp` before is there, which no command has moved yet.
+pub fn current_scratch(name: &str) -> Result<PathBuf> {
+    let dir = scratch(name)?;
+    let old = left_in_tmp(name);
+    Ok(match fs::symlink_metadata(&dir) {
+        Err(_) if is_real_dir(&old) => old,
+        _ => dir,
+    })
+}
+/// Where a change kept its scratch folder before they moved home: macOS clears `/tmp`.
+fn left_in_tmp(name: &str) -> PathBuf {
     PathBuf::from(format!("/tmp/dispatch-{name}"))
+}
+/// Removes the link a move left at the change's old `/tmp` folder, once its folder is gone; a
+/// real folder there, or a link to anything else, is left alone.
+pub fn forget_left_in_tmp(name: &str, dir: &Path) -> Result<()> {
+    let old = left_in_tmp(name);
+    if fs::symlink_metadata(&old).is_ok_and(|meta| meta.file_type().is_symlink())
+        && fs::read_link(&old)? == dir
+    {
+        fs::remove_file(old)?;
+    }
+    Ok(())
+}
+/// `path` by its real path as far as it is there, and as it is named past that.
+fn real(path: &Path) -> Result<PathBuf> {
+    match fs::canonicalize(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            match (path.parent(), path.file_name()) {
+                (Some(parent), Some(name)) => Ok(real(parent)?.join(name)),
+                _ => Err(error.into()),
+            }
+        }
+        real => Ok(real?),
+    }
 }
 /// The name of the checkout at `root`: its folder's.
 pub fn checkout_name(root: &Path) -> Result<&str> {
@@ -52,19 +92,69 @@ pub fn checkout_name(root: &Path) -> Result<&str> {
         .and_then(|name| name.to_str())
         .ok_or_else(|| "A checkout without a folder name".into())
 }
-/// The scratch folder of the checkout at `root`, made private if it is new, by its real path:
-/// the stores tests make refuse a path through a symlink, and macOS keeps `/tmp` behind one.
+/// The scratch folder of the checkout at `root`, by its real path: the one it kept in `/tmp`
+/// moved into place if it has none yet, else made private if it is new. A folder in `/tmp` that
+/// only a copy could move, onto another disk, stays where it is until `finish`: a command still
+/// writing to it would lose what it wrote after the copy.
 pub fn checkout_scratch(root: &Path) -> Result<PathBuf> {
-    Ok(fs::canonicalize(scratch_dir(checkout_name(root)?)?)?)
+    let name = checkout_name(root)?;
+    let dir = scratch(name)?;
+    let old = left_in_tmp(name);
+    let there = fs::symlink_metadata(&dir).is_ok();
+    if !move_into_place(&old, &dir, |from, to| fs::rename(from, to))? && !there && is_real_dir(&old)
+    {
+        return Ok(fs::canonicalize(old)?);
+    }
+    private_dir(&dir)?;
+    Ok(fs::canonicalize(dir)?)
 }
-/// The scratch folder of the checkout named `name`, made private if it is new.
-fn scratch_dir(name: &str) -> Result<PathBuf> {
-    let dir = scratch(name);
+/// Whether `path` is a folder itself, never what a link names, that this user owns and no one
+/// else can open: `/tmp` is shared, and a folder another user made there could read or redirect
+/// what a change writes.
+fn is_real_dir(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    fs::symlink_metadata(path).is_ok_and(|meta| {
+        meta.is_dir() && meta.uid() == unsafe { libc::geteuid() } && meta.mode() & 0o077 == 0
+    })
+}
+/// A folder only this user can open, with the folders it is in, if it is new.
+fn private_dir(dir: &Path) -> Result<()> {
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
-        .create(&dir)?;
-    Ok(dir)
+        .create(dir)?;
+    Ok(())
+}
+/// Moves the scratch folder `old` to `dir` by `rename`, once: only while `dir` isn't there and
+/// `old` is a folder itself. It leaves a link at `old` and says so. False when there was
+/// nothing to move, or the move would cross disks, which a rename can't.
+fn move_into_place(
+    old: &Path,
+    dir: &Path,
+    rename: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> Result<bool> {
+    if fs::symlink_metadata(dir).is_ok() || !is_real_dir(old) {
+        return Ok(false);
+    }
+    private_dir(dir.parent().ok_or("A scratch folder without a parent")?)?;
+    match rename(old, dir) {
+        Err(error) if error.kind() == std::io::ErrorKind::CrossesDevices => return Ok(false),
+        // Another command moved it meanwhile.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && dir.is_dir() => {
+            return Ok(false);
+        }
+        moved => moved?,
+    }
+    crate::review::reconnect(dir, &crate::Native)?;
+    // A reviewer reading a pass's checkout, or a brief naming it, still finds it by its old
+    // path until `finish` removes the link with the folder.
+    std::os::unix::fs::symlink(dir, old)?;
+    eprintln!(
+        "Moved the scratch folder {} to {}.",
+        old.display(),
+        dir.display()
+    );
+    Ok(true)
 }
 /// A file only this user can read, replaced whole.
 pub fn write_private(path: &Path, text: &str) -> Result<()> {
@@ -143,6 +233,9 @@ fn unit_of(cgroup: &str) -> Option<&str> {
         .next_back()
         .filter(|unit| unit.ends_with(".scope") || unit.ends_with(".service"))
 }
+/// How npm logs in every command the CLI starts, and what those start: its warnings and errors,
+/// without the `npm notice run` lines it writes for each script, which bury what a step said.
+pub const NPM_LOGLEVEL: (&str, &str) = ("npm_config_loglevel", "warn");
 /// Runs `command` through the shell in `cwd` with `env` added, its output going to `log`, and
 /// answers whether it passed and how long it took. It runs below Dev, in a scope of `SLICE`, and
 /// first in line for the out-of-memory killer, ahead of the agents' sessions: a command that
@@ -193,6 +286,7 @@ pub fn logged(
     let status = process
         .args(["sh", "-c", command])
         .current_dir(cwd)
+        .env(NPM_LOGLEVEL.0, NPM_LOGLEVEL.1)
         .envs(env.iter().copied())
         .stdin(Stdio::null())
         .stdout(file.try_clone()?)
@@ -266,6 +360,15 @@ mod tests {
         assert_eq!(unit_of(&login), None);
     }
     #[test]
+    fn npm_in_a_logged_step_logs_only_its_warnings_and_errors() {
+        // At its default level npm writes `npm notice run …` for each script a step runs.
+        let temp = tempfile::tempdir().unwrap();
+        let log = temp.path().join("step.log");
+        let level = r#"printf %s "$npm_config_loglevel""#;
+        assert!(logged(level, temp.path(), &log, &[]).unwrap().0);
+        assert_eq!(fs::read_to_string(&log).unwrap(), "warn");
+    }
+    #[test]
     fn sizes_and_times_read_plainly() {
         assert_eq!(human(13_200_000_000), "13.2 GB");
         assert_eq!(human(830_000_000), "830 MB");
@@ -279,5 +382,95 @@ mod tests {
         let measured = size(&crate::Native, temp.path());
         assert!(measured.is_some_and(|bytes| bytes >= 8192), "{measured:?}");
         assert_eq!(size(&crate::Native, &temp.path().join("gone")), None);
+    }
+    #[test]
+    fn a_scratch_folder_moved_from_tmp_keeps_its_review_checkout_one_of_the_clones() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(temp.path()).unwrap();
+        let clone = base.join("repo");
+        fs::create_dir(&clone).unwrap();
+        let git = |args: &[&str]| {
+            let identity = ["-c", "user.name=t", "-c", "user.email=t@t"];
+            git(&crate::Native, &clone, &[&identity[..], args].concat()).unwrap()
+        };
+        git(&["init", "-q"]);
+        git(&["commit", "-q", "--allow-empty", "-m", "x"]);
+        let old = base.join("tmp/dispatch-change");
+        let reading = old.join("review/1/checkout");
+        git(&[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            reading.to_str().unwrap(),
+        ]);
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&old, fs::Permissions::from_mode(0o700)).unwrap();
+        let dir = base.join("scratch/change");
+        let rename = |from: &Path, to: &Path| fs::rename(from, to);
+        assert!(move_into_place(&old, &dir, rename).unwrap());
+        // The old path is a link to the new folder, so a reviewer reading it still can.
+        assert_eq!(fs::read_link(&old).unwrap(), dir);
+        assert!(old.join("review/1/checkout").is_dir());
+        // A second command finds the link and moves nothing.
+        assert!(!move_into_place(&old, &dir, rename).unwrap());
+        assert!(dir.join("review/1/checkout").is_dir());
+        // `take` and `finish` remove it through git, by where it is now.
+        let moved = dir.join("review/1/checkout");
+        git(&["worktree", "remove", "--force", moved.to_str().unwrap()]);
+        assert!(!moved.exists());
+    }
+    #[test]
+    fn finishing_removes_only_the_link_a_move_left_in_tmp() {
+        let temp = tempfile::tempdir().unwrap();
+        let name = format!("forget-{}", std::process::id());
+        let old = left_in_tmp(&name);
+        let dir = fs::canonicalize(temp.path()).unwrap().join(&name);
+        // A real folder there is another change's to keep.
+        fs::create_dir(&old).unwrap();
+        forget_left_in_tmp(&name, &dir).unwrap();
+        assert!(old.is_dir());
+        fs::remove_dir(&old).unwrap();
+        // So is a link to anything but this change's folder.
+        std::os::unix::fs::symlink(temp.path().join("other"), &old).unwrap();
+        forget_left_in_tmp(&name, &dir).unwrap();
+        assert!(fs::symlink_metadata(&old).is_ok());
+        fs::remove_file(&old).unwrap();
+        std::os::unix::fs::symlink(&dir, &old).unwrap();
+        forget_left_in_tmp(&name, &dir).unwrap();
+        assert!(fs::symlink_metadata(&old).is_err());
+    }
+    #[test]
+    fn a_folder_only_a_copy_could_move_stays_where_it_is() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(temp.path()).unwrap();
+        let old = base.join("tmp/dispatch-change");
+        fs::create_dir_all(&old).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&old, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::write(old.join("check.log"), "still written").unwrap();
+        let dir = base.join("scratch/change");
+        let across = |_: &Path, _: &Path| Err(std::io::ErrorKind::CrossesDevices.into());
+        assert!(!move_into_place(&old, &dir, across).unwrap());
+        assert_eq!(
+            fs::read_to_string(old.join("check.log")).unwrap(),
+            "still written"
+        );
+        assert!(!dir.exists());
+    }
+    #[test]
+    fn a_folder_in_tmp_others_can_open_is_never_taken_for_a_changes() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(temp.path()).unwrap();
+        let old = base.join("tmp/dispatch-change");
+        fs::create_dir_all(&old).unwrap();
+        fs::set_permissions(&old, fs::Permissions::from_mode(0o755)).unwrap();
+        let dir = base.join("scratch/change");
+        let rename = |from: &Path, to: &Path| fs::rename(from, to);
+        assert!(!move_into_place(&old, &dir, rename).unwrap());
+        assert!(!is_real_dir(&old));
+        fs::set_permissions(&old, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(is_real_dir(&old));
     }
 }

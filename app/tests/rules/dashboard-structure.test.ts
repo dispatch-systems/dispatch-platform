@@ -150,6 +150,9 @@ const entries = [
   'core/collection/frontend/live-reading.tsx',
   // A line of Dispatch Phone's phones on DSP Connections, which another feature's line shows too.
   'features/communications/frontend/texting/phone/PhonesCard.tsx',
+  // Another feature's line's page, count, Display section, alerts and banner, Dispatch Phone's own
+  // drawn for that line.
+  'features/communications/frontend/lines.ts',
 ];
 
 test('an owner reaches another only through a front door or public entry', () => {

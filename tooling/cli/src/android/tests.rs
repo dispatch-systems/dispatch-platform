@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::{
     cell::{Cell, RefCell},
     fs,
+    os::unix::fs::DirBuilderExt,
     path::{Path, PathBuf},
 };
 
@@ -20,8 +21,14 @@ impl Fixture {
     fn new() -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(temp.path()).unwrap();
-        let scratch = crate::workspace::scratch(root.file_name().unwrap().to_str().unwrap());
+        let scratch =
+            crate::workspace::scratch(root.file_name().unwrap().to_str().unwrap()).unwrap();
         fs::create_dir(root.join("scratch")).unwrap();
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(scratch.parent().unwrap())
+            .unwrap();
         std::os::unix::fs::symlink(root.join("scratch"), &scratch).unwrap();
         for folder in [
             "sdk/platform-tools",

@@ -13,6 +13,7 @@ import {
   sameDayOf,
   weekdayOf,
 } from '../lib/calendar.js';
+import './date-field.css';
 
 const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /**

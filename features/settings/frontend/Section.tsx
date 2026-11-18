@@ -12,19 +12,10 @@ import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { useUnsavedEdits } from '../../../core/shell/frontend/runtime/useUnsavedEdits.js';
 import { ConfirmDialog, ErrorBox } from '../../../core/shell/frontend/ui/index.js';
 import { useDraft } from './drafts.js';
+import { sectionElement } from './find.js';
 import { FieldRow, held, saved, valid } from './fields/index.js';
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-
-/**
- * What marks a section's element, to find it by the section's id; given `reveal`, it is pointed
- * out (`data-found`), and `reveal` takes it once drawn.
- */
-export const sectionElement = (id: string, reveal?: RefCallback<HTMLElement>) => ({
-  id: `settings-section-${id}`,
-  'data-settings-section': id,
-  ...(reveal && { 'data-found': '', ref: reveal }),
-});
 
 /**
  * Edits capture their starting revision; rereads do not rebase an unsaved draft. Stale saves

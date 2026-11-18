@@ -6,7 +6,8 @@
 //! tree, without pushing. The agent docs' PR opens the same way, without that check: they hold
 //! nothing it checks.
 use crate::{
-    Result, Runner, build::Environment, change::Repository, check, preview, require, workspace,
+    Result, Runner, build::Environment, change::Repository, check, github, preview, require,
+    workspace,
 };
 use std::{io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
@@ -132,6 +133,30 @@ pub fn with_review_line(body: &str, line: &str) -> Result<String> {
         Some(first) if opens_review(first) => &rest[first.len()..],
         _ => rest,
     };
+    let rest = rest.trim_start_matches('\n');
+    Ok(match rest.is_empty() {
+        true => format!("{before}\n{line}\n"),
+        false => format!("{before}\n{line}\n\n{rest}"),
+    })
+}
+/// The line `pr` opens the Verification section with for a change approved as showing nothing
+/// new, so the user sees the claim in the PR.
+pub fn unchanged_line(why: &str) -> String {
+    format!("UI unchanged: {why}")
+}
+/// `body` with its section `name` opening with `line`, unless the section holds it already.
+pub fn with_line(body: &str, name: &str, line: &str) -> Result<String> {
+    if section(body, name).is_some_and(|text| text.lines().any(|each| each.trim() == line)) {
+        return Ok(body.to_owned());
+    }
+    let heading = format!("## {name}\n");
+    let at = body
+        .match_indices(&heading)
+        .find(|(at, _)| *at == 0 || body[..*at].ends_with('\n'))
+        .ok_or_else(|| format!("The PR body has no ## {name} section."))?
+        .0
+        + heading.len();
+    let (before, rest) = body.split_at(at);
     let rest = rest.trim_start_matches('\n');
     Ok(match rest.is_empty() {
         true => format!("{before}\n{line}\n"),
@@ -325,29 +350,32 @@ pub fn publish(
     if repository == Repository::Platform {
         checked(root, env, runner)?;
     }
-    let gh = |args: &[&str]| {
-        let mut command = vec!["gh"];
-        command.extend_from_slice(args);
-        workspace::text(runner, &command, Some(root))
+    let gh = |args: &[&str]| github::call(runner, root, args);
+    // The branch's open PR, as its number and address.
+    let listed = || {
+        gh(&[
+            "pr",
+            "list",
+            "--repo",
+            repository.name(),
+            "--head",
+            &branch,
+            "--state",
+            "open",
+            "--json",
+            "number,url",
+            "--jq",
+            ".[0] | select(.) | \"\\(.number) \\(.url)\"",
+        ])
     };
-    let open = gh(&[
-        "pr",
-        "list",
-        "--repo",
-        repository.name(),
-        "--head",
-        &branch,
-        "--state",
-        "open",
-        "--json",
-        "number,url",
-        "--jq",
-        ".[0] | select(.) | \"\\(.number) \\(.url)\"",
-    ])?;
+    let open = listed()?;
+    let approval = preview::approval(root, runner)?;
     // A change to what a page shows opens its PR only once the user approved how it looks.
     if open.is_empty() {
-        match preview::approval(root, runner)? {
-            preview::Approval::None | preview::Approval::Approved => {}
+        match &approval {
+            preview::Approval::None
+            | preview::Approval::Approved
+            | preview::Approval::Unchanged(_) => {}
             preview::Approval::Missing => {
                 return Err(
                     "This change alters what a page shows: show the user first with \
@@ -366,6 +394,11 @@ pub fn publish(
             }
         }
     }
+    let text = match &approval {
+        preview::Approval::Unchanged(why) => with_line(text, "Verification", &unchanged_line(why))?,
+        _ => text.to_owned(),
+    };
+    let text = text.as_str();
     if only_check {
         println!(
             "The title{} pass: `dispatchdev pr` pushes it.",
@@ -378,6 +411,7 @@ pub fn publish(
     }
     git(&["push", "-q", "--force-with-lease", "-u", "origin", &branch])?;
     let url = match open.split_once(' ') {
+        // Setting the title and body is the same however often it's done.
         Some((number, url)) => {
             gh(&[
                 "pr",
@@ -393,21 +427,30 @@ pub fn publish(
             println!("Updated #{number}: {url}");
             url.to_owned()
         }
+        // A try whose answer was lost may have opened it: GitHub is asked before another.
         None => {
-            let url = gh(&[
-                "pr",
-                "create",
-                "--repo",
-                repository.name(),
-                "--base",
-                "main",
-                "--head",
-                &branch,
-                "--title",
-                title,
-                "--body",
-                text,
-            ])?;
+            let opened = || -> Result<Option<String>> {
+                Ok(listed()?.split_once(' ').map(|(_, url)| url.to_owned()))
+            };
+            let url = github::once(
+                runner,
+                root,
+                &[
+                    "pr",
+                    "create",
+                    "--repo",
+                    repository.name(),
+                    "--base",
+                    "main",
+                    "--head",
+                    &branch,
+                    "--title",
+                    title,
+                    "--body",
+                    text,
+                ],
+                &opened,
+            )?;
             println!("Opened {url}");
             url
         }
@@ -555,6 +598,22 @@ mod tests {
                 "{to}"
             );
         }
+    }
+    #[test]
+    fn a_line_opens_its_section_once() {
+        let body = "## Verification\n\nRan it.\n\n## Review\n\nUnder review\n";
+        let line = unchanged_line("a refactor");
+        let written = with_line(body, "Verification", &line).unwrap();
+        assert_eq!(
+            section(&written, "Verification"),
+            Some("UI unchanged: a refactor\n\nRan it.")
+        );
+        assert_eq!(with_line(&written, "Verification", &line).unwrap(), written);
+        assert_eq!(
+            with_line("## Risk\n\nx\n\n## Verification\n", "Verification", &line).unwrap(),
+            "## Risk\n\nx\n\n## Verification\n\nUI unchanged: a refactor\n"
+        );
+        assert!(with_line("## Risk\n\nx\n", "Verification", &line).is_err());
     }
     #[test]
     fn the_review_line_replaces_the_one_the_section_opened_with() {

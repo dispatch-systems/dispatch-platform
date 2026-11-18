@@ -2,7 +2,10 @@
 //! names on GitHub and its workflow runs, and hex digests.
 pub mod process;
 pub mod runs;
-use std::path::Path;
+use std::{
+    path::Path,
+    time::{Duration, Instant},
+};
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 /// Where API calls and provenance name this repository.
 pub const REPOSITORY: &str = "dispatch-systems/dispatch-platform";
@@ -41,6 +44,15 @@ pub fn require(value: bool, message: &str) -> Result<()> {
 }
 pub trait Runner {
     fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>>;
+    /// Waits before what runs next, as a command waiting on something does: a test's runner
+    /// moves its clock instead.
+    fn pause(&self, duration: Duration) {
+        std::thread::sleep(duration);
+    }
+    /// The time by the clock `pause` moves.
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
 }
 pub struct Native;
 impl Runner for Native {

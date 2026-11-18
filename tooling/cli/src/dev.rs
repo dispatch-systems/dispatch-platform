@@ -16,13 +16,42 @@ pub struct Source {
     pub dirty: bool,
     pub fingerprint: String,
 }
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessIdentity {
     pub pid: i32,
     pub started: String,
     #[serde(skip_serializing)]
     pub command: String,
+}
+/// The process `pid` as `ps` tells it: when it started and its command line, each word once
+/// spaced, or nothing once it ended.
+pub fn identity(pid: i32, runner: &dyn Runner) -> Option<ProcessIdentity> {
+    let line = workspace::text(
+        runner,
+        &[
+            "env",
+            "LC_ALL=C",
+            "ps",
+            "-ww",
+            "-p",
+            &pid.to_string(),
+            "-o",
+            "lstart=",
+            "-o",
+            "args=",
+        ],
+        None,
+    )
+    .ok()?;
+    let words: Vec<&str> = line.split_whitespace().collect();
+    // `lstart` is five words: `Tue Nov 18 09:30:00 2026`.
+    let (started, command) = (words.get(..5)?, words.get(5..)?);
+    Some(ProcessIdentity {
+        pid,
+        started: started.join(" "),
+        command: command.join(" "),
+    })
 }
 #[derive(Deserialize)]
 struct Record {
@@ -211,18 +240,7 @@ pub fn status(root: &Path, runner: &dyn Runner) -> Result<Status> {
         status.reason = Some("Fixture receipt has no valid process identity.".into());
         return Ok(status);
     };
-    let pid = process.pid.to_string();
-    let live = workspace::text(
-        runner,
-        &[
-            "env", "LC_ALL=C", "ps", "-ww", "-p", &pid, "-o", "lstart=", "-o", "args=",
-        ],
-        Some(&root),
-    );
-    let expected = format!("{} {}", process.started, process.command);
-    if live.is_err()
-        || live.is_ok_and(|line| line.split_whitespace().collect::<Vec<_>>().join(" ") != expected)
-    {
+    if identity(process.pid, runner).as_ref() != Some(&process) {
         status.reason = Some(
             "Fixture process ended or its identity changed; no sign-in link is exposed.".into(),
         );
