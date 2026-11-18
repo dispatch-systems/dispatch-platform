@@ -6,6 +6,7 @@ import { Loading } from '../../core/shell/frontend/ui/Loading.js';
 import { PageBoundary } from '../../core/shell/frontend/ui/PageBoundary.js';
 import { OpenPage, PageWithTabs } from '../../core/shell/frontend/runtime/PageTabs.js';
 import { hasFeature } from '../../core/shell/frontend/runtime/features.js';
+import { Drawn } from '../../core/shell/frontend/runtime/drawn.js';
 import { NavigationStateContext } from '../../core/shell/frontend/runtime/navigation-state.js';
 import { prefetchRouteData } from '../../core/shell/frontend/runtime/route-prefetch.js';
 import {
@@ -177,6 +178,7 @@ export function Page(props: Parameters<typeof PageContent>[0]) {
         <NavigationStateContext value={address}>
           <PageContent {...props} />
         </NavigationStateContext>
+        <Drawn page={`${props.view ? 'dsp' : 'platform'}:${props.page}`} />
       </Suspense>
     </PageBoundary>
   );

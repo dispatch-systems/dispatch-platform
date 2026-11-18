@@ -1,5 +1,11 @@
 import { test, expect, demo } from '../../../shell/tests/support/fixtures.js';
-import { clockVisible, countUpdateChecks, loginWithClock, runAnswered } from '../support/update.js';
+import {
+  clockVisible,
+  countUpdateChecks,
+  loginWithClock,
+  runAnswered,
+  type BrowserUpdate,
+} from '../support/update.js';
 
 // Keep the loaded HTML deliberately old after refresh to exercise the loop guard too.
 test('completed update waits for two idle seconds, restores filters, and reloads once', async ({
@@ -13,7 +19,7 @@ test('completed update waits for two idle seconds, restores filters, and reloads
   page.on('load', () => loads++);
   await page.route('**/api/browser-update', (route) => {
     checks++;
-    return route.fulfill({ json: { build: 'a'.repeat(64), ready } });
+    return route.fulfill({ json: { build: 'a'.repeat(64), ready } satisfies BrowserUpdate });
   });
   await loginWithClock(page);
   await page.clock.pauseAt(new Date(Date.now() + 1000));
@@ -58,7 +64,7 @@ test('the audit log keeps its filters through an automatic update', async ({ pag
   let loads = 0;
   page.on('load', () => loads++);
   await page.route('**/api/browser-update', (route) =>
-    route.fulfill({ json: { build: 'c'.repeat(64), ready } }),
+    route.fulfill({ json: { build: 'c'.repeat(64), ready } satisfies BrowserUpdate }),
   );
   await loginWithClock(page);
   await page.getByRole('link', { name: 'Audit log', exact: true }).click();
@@ -89,7 +95,7 @@ test('open editing dialog protects input until it closes', async ({ page }) => {
   let loads = 0;
   page.on('load', () => loads++);
   await page.route('**/api/browser-update', (route) =>
-    route.fulfill({ json: { build: 'b'.repeat(64), ready } }),
+    route.fulfill({ json: { build: 'b'.repeat(64), ready } satisfies BrowserUpdate }),
   );
   await loginWithClock(page);
   await page.getByRole('button', { name: 'Create new DSP' }).click();

@@ -6,7 +6,13 @@ import {
   login,
   openDsp,
 } from '../../../../core/shell/tests/support/fixtures.js';
-import type { PhoneApp, PhonePairing, Phones } from '../../api/index.js';
+import type {
+  CommunicationsWaiting,
+  DispatchPhone,
+  PhoneApp,
+  PhonePairing,
+  Phones,
+} from '../../api/index.js';
 
 // The seeded DSP has every feature switched on, its demo's stand-in phone paired, and its owner
 // holds every permission.
@@ -137,7 +143,7 @@ test('The card offers the app its DSP hands out: its download, an update to an o
         undownloaded: null,
       },
     }));
-    await route.fulfill({ response, json: { ...data, phones: older, app } });
+    await route.fulfill({ response, json: { ...data, phones: older, app } satisfies Phones });
   });
   await login(page);
   await openDsp(page, 'Northline Logistics');
@@ -227,14 +233,18 @@ test('the banner of a phone down follows it on every page, with alerts off', asy
   let cantSend = false;
   await page.route('**/api/dsp/communications/waiting', async (route) => {
     const response = await route.fetch();
-    const phone = {
+    const waiting = (await response.json()) as CommunicationsWaiting;
+    const phone: DispatchPhone = {
       id: 'phone_x',
       name: 'Dispatch',
       online: true,
       lastSeenAt: Date.now(),
       cantSend,
     };
-    await route.fulfill({ response, json: { ...(await response.json()), phones: [phone] } });
+    await route.fulfill({
+      response,
+      json: { ...waiting, phones: [phone] } satisfies CommunicationsWaiting,
+    });
   });
   await page.clock.install();
   await login(page);

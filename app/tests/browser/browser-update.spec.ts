@@ -3,6 +3,7 @@ import {
   clockVisible,
   loginWithClock,
   runAnswered,
+  type BrowserUpdate,
 } from '../../../core/server/tests/support/update.js';
 import { expectDate, setDate } from '../../../features/timecard/tests/support/page.js';
 
@@ -21,7 +22,7 @@ test('reload preserves DSP, meal tab, selected date and search on mobile', async
   let loads = 0;
   page.on('load', () => loads++);
   await page.route('**/api/browser-update', (route) =>
-    route.fulfill({ json: { build: 'c'.repeat(64), ready } }),
+    route.fulfill({ json: { build: 'c'.repeat(64), ready } satisfies BrowserUpdate }),
   );
   await loginWithClock(page);
   await page.evaluate((id) => {

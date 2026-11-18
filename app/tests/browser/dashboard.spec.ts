@@ -5,6 +5,7 @@ import {
   login,
   openDsp,
   atHome,
+  atPage,
 } from '../../../core/shell/tests/support/fixtures.js';
 import { setDate } from '../../../features/timecard/tests/support/page.js';
 import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
@@ -224,6 +225,21 @@ test('the mobile drawer stays open while the DSP behind it finishes loading', as
   await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Audit log', exact: true })).toHaveCount(0);
   await expect(pages).toBeHidden();
+});
+
+test('the app marks the page it has drawn, and none while a DSP opens', async ({ page }) => {
+  await login(page);
+  await atPage(page, 'platform:dsps');
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/session/dsp', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await openDsp(page, 'Northline Logistics');
+  await expect(page.locator('html')).not.toHaveAttribute('data-app-ready');
+  release();
+  await atHome(page);
 });
 
 test('platform owner looks through a DSP role until they leave the DSP', async ({

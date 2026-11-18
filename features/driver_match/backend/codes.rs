@@ -32,6 +32,28 @@ pub(crate) fn forget_dsp(store: &Store, dsp: &str) -> Result<()> {
     Ok(())
 }
 
+/// How a new person's code is drawn.
+pub(super) enum Draw<'a> {
+    /// At random, as every real DSP's people get theirs.
+    Random,
+    /// From the DSP's ID and `seed`, the first ID the person holds, as a demo's people get
+    /// theirs: the same each time its demo data is made afresh under that DSP's ID, so a link to
+    /// one of them still opens them.
+    Demo(&'a str),
+}
+impl Draw<'_> {
+    /// The bytes of the code tried `tried` times already.
+    fn bytes(&self, dsp: &str, tried: usize) -> Result<[u8; DRAWN]> {
+        match self {
+            Self::Random => crypto::random(),
+            Self::Demo(seed) => {
+                let drawn = crypto::hmac(dsp.as_bytes(), &format!("{seed} {tried}"));
+                Ok(std::array::from_fn(|i| drawn[i]))
+            }
+        }
+    }
+}
+
 /// A person with a new code, listed in the platform's `driver_codes`.
 pub(super) fn new_person(
     store: &Store,
@@ -40,9 +62,11 @@ pub(super) fn new_person(
     now: &str,
     split_from: Option<&str>,
     actor: Option<&str>,
+    draw: Draw<'_>,
 ) -> Result<String> {
-    for _ in 0..TRIES {
-        let code: String = crypto::random::<DRAWN>()?
+    for tried in 0..TRIES {
+        let code: String = draw
+            .bytes(dsp, tried)?
             .into_iter()
             .filter(|b| *b < FAIR)
             .take(LENGTH)

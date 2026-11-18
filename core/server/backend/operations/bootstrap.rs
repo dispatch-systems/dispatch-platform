@@ -66,9 +66,12 @@ pub fn seed(db: &Store) -> Result<()> {
         "Owner",
         "Dispatch-demo-2026!",
     )?;
-    let dev = db.new_dsp("Dev DSP", "America/Chicago", &owner.id, true)?;
-    let north = db.new_dsp("Northline Logistics", "America/Chicago", &owner.id, false)?;
-    let summit = db.new_dsp("Summit Delivery", "America/Denver", &owner.id, false)?;
+    let new_dsp = |name: &str, timezone: &str, permanent: bool| {
+        db.new_dsp_as(&demo_id(db, name), name, timezone, &owner.id, permanent)
+    };
+    let dev = new_dsp("Dev DSP", "America/Chicago", true)?;
+    let north = new_dsp("Northline Logistics", "America/Chicago", false)?;
+    let summit = new_dsp("Summit Delivery", "America/Denver", false)?;
     for dsp in [&dev, &north, &summit] {
         db.enable_all_features(&dsp.id)?;
     }
@@ -109,6 +112,13 @@ pub fn seed(db: &Store) -> Result<()> {
         &db.config.platform().join("development-seeded"),
         b"synthetic fixtures initialized\n",
     )
+}
+/// The ID of the development fixtures' DSP `name`, as `crypto::id` writes one: the same each
+/// time they start afresh at the platform's address, so a link into the DSP still opens it, and
+/// apart from those of fixtures at another address, as of tests running side by side.
+fn demo_id(db: &Store, name: &str) -> String {
+    let drawn = crypto::sha(format!("{} {name}", db.config.origin));
+    format!("dsp_{}", &drawn[..32])
 }
 /// Fills a new DSP with every feature's demo data, given its timezone, and gives its default
 /// roles what they hold in a demo.

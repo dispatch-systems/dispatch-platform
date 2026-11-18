@@ -465,7 +465,15 @@ test("a file only the member reaches comes in through Google's picker, signed in
     if (route.request().method() === 'OPTIONS')
       return route.fulfill({ status: 204, headers: cors });
     if (route.request().method() === 'PATCH') moved.push(route.request().url());
-    await route.fulfill({ headers: cors, json: { ownedByMe: true, parents: ['root'] } });
+    // Drive's file, with the fields the picker asks it for.
+    await route.fulfill({
+      headers: cors,
+      json: { ownedByMe: true, parents: ['root'] } satisfies {
+        ownedByMe: boolean;
+        parents: string[];
+        driveId?: string;
+      },
+    });
   });
   // Google's picker picks what it was opened on.
   await page.route('https://apis.google.com/js/api.js', (route) =>

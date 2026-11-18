@@ -46,8 +46,15 @@ test('a writeup is written up for someone, suggests the next tier, and locks onc
     assert.equal(category.startTier, 'verbal', category.name);
     assert.deepEqual(category.stepDown, { kind: 'reduce', after: 6, unit: 'months' });
   }
-  const person = overview.people.find((p) => !p.left)!;
+  // The demo's writeups stand as they are, beside those of someone it hasn't written up.
+  const person = overview.people.find(
+    (p) => !p.left && !overview.drivers.some((d) => d.person === p.code),
+  )!;
   assert(person, 'the demo DSP has someone to write up');
+  const others = <T extends { person: string }>(list: T[]) =>
+    list.filter((x) => x.person !== person.code);
+  const theirs = <T extends { person: string }>(list: T[]) =>
+    list.filter((x) => x.person === person.code);
   const tardies = overview.categories.find((c) => c.id === 'tardies')!;
   const input: WriteupInput = {
     person: person.code,
@@ -69,18 +76,13 @@ test('a writeup is written up for someone, suggests the next tier, and locks onc
     saved.writeup.supervisorName,
     `${owner.session.user.firstName} ${owner.session.user.lastName}`,
   );
+  const { standings } = (await owner.get(route)).value as ConductOverview;
+  assert.deepEqual(others(standings), overview.standings);
   assert.deepEqual(
-    ((await owner.get(route)).value as ConductOverview).standings.map((s) => [
-      s.person,
-      s.categoryId,
-      s.tier,
-      s.stepsDownTo,
-    ]),
+    theirs(standings).map((s) => [s.person, s.categoryId, s.tier, s.stepsDownTo]),
     [[person.code, 'tardies', 'verbal', null]],
   );
-  assert(
-    ((await owner.get(route)).value as ConductOverview).standings[0]!.stepsDownOn! > overview.today,
-  );
+  assert(theirs(standings)[0]!.stepsDownOn! > overview.today);
 
   // A suspension is only a final's, and a final with one says how long.
   for (const bad of [
@@ -123,8 +125,10 @@ test('a writeup is written up for someone, suggests the next tier, and locks onc
   });
   assert.equal(deleted.status, 200, deleted.body);
   assert.equal((await owner.get(`${route}/writeups/${id}`)).status, 404);
+  const { drivers } = deleted.value as ConductOverview;
+  assert.deepEqual(others(drivers), overview.drivers);
   assert.deepEqual(
-    (deleted.value as ConductOverview).drivers.map((d) => [d.person, d.count, d.categories]),
+    theirs(drivers).map((d) => [d.person, d.count, d.categories]),
     [[person.code, 1, ['safety']]],
   );
 

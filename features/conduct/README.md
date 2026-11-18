@@ -107,6 +107,8 @@ with a photo of the paper if they like.
 - `backend/history.rs`: paginated history, date-specific drafting and category policy impact.
 - `backend/backups.rs`: backing signed copies up, and how it's going.
 - `backend/overview.rs`: compact summaries, with people as the directory knows them now.
+- `backend/demo.rs`: what a development or preview DSP starts with: three drivers written up in
+  four categories, at every tier, signed and not.
 - `frontend/writeups/`: photo preview, rotation and retake before signing; cancellation during
   preparation and a non-dismissible commit phase; signed photos with explicit retry and enlargement.
 - `frontend/tiers.ts`: how tiers read and climb on the page, from what the server works out,

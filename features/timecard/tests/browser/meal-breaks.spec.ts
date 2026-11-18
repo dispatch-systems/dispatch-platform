@@ -13,10 +13,16 @@ import {
   atHome,
 } from '../../../../core/shell/tests/support/fixtures.js';
 import { expectDate, setDate } from '../support/page.js';
-import type { MealSource } from '../../api/index.js';
+import type {
+  DailySyncStatus,
+  EmployeeSyncSource,
+  EmployeeSyncStatus,
+  MealSource,
+} from '../../api/index.js';
 import type { Job } from '../../../../core/collection/api/index.js';
+import type { AuditPage } from '../../../../core/platform_owner/api/index.js';
 import { paycomDefaults } from '../../frontend/paycom.js';
-import { syncJob } from '../support/status.js';
+import { syncJob, type SyncStarted } from '../support/status.js';
 
 const date = '2026-09-15';
 const paycomUrl = (code: string) =>
@@ -470,17 +476,17 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
     });
     await route.fulfill({
       json: {
-        date: new URL(route.request().url()).searchParams.get('date'),
+        date: new URL(route.request().url()).searchParams.get('date')!,
         scopeAvailable: true,
         paycom: source(paycomStatus, 'paycom.collect'),
         flex: source(flexStatus, 'cortex.meal_breaks.collect'),
-      },
+      } satisfies DailySyncStatus,
     });
   });
   await page.route('**/api/dsp/jobs/employees?*', async (route) => {
     await holdStatus;
     const query = new URL(route.request().url()).searchParams;
-    const source = {
+    const source: EmployeeSyncSource = {
       enabled: true,
       active: false,
       total: 0,
@@ -492,15 +498,15 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
     };
     await route.fulfill({
       json: {
-        period: { from: query.get('from'), to: query.get('to') },
-        through: query.get('to'),
+        period: { from: query.get('from')!, to: query.get('to')! },
+        through: query.get('to')!,
         requestId: null,
         scopeAvailable: true,
         active: active(paycomStatus) || active(flexStatus),
         complete: false,
         paycom: source,
         cortex: source,
-      },
+      } satisfies EmployeeSyncStatus,
     });
   });
   await page.route('**/api/dsp/jobs/meal-breaks', async (route) => {
@@ -510,7 +516,7 @@ test('sync remains locked across dates, tabs and reloads until both sources stop
     holdStatus = new Promise((resolve) => {
       releaseStatus = resolve;
     });
-    await route.fulfill({ status: 202, json: { date: jobDate, jobs: [] } });
+    await route.fulfill({ status: 202, json: { date: jobDate!, jobs: [] } satisfies SyncStarted });
   });
   await page.route('**/api/dsp/paycom/meal-breaks/page?*', (route) =>
     route.fulfill({
@@ -636,7 +642,7 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
   await page.route('**/api/dsp/jobs/meal-breaks?*', (route) =>
     route.fulfill({
       json: {
-        date: new URL(route.request().url()).searchParams.get('date'),
+        date: new URL(route.request().url()).searchParams.get('date')!,
         scopeAvailable: true,
         paycom: {
           enabled: true,
@@ -652,7 +658,7 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
           jobDate: null,
           collectedAt,
         },
-      },
+      } satisfies DailySyncStatus,
     }),
   );
   await page.route('**/api/dsp/jobs/meal-breaks', (route) => {
@@ -661,7 +667,7 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
     expect(route.request().postDataJSON().date).toBe(date);
     syncRequests++;
     syncStatus = flexStatus = 'queued';
-    return route.fulfill({ status: 202, json: { date, jobs: [] } });
+    return route.fulfill({ status: 202, json: { date, jobs: [] } satisfies SyncStarted });
   });
   await open(page);
   const sync = page.getByRole('button', { name: 'Sync now', exact: true });
@@ -783,7 +789,7 @@ test.describe('DSP calendar dates', () => {
     await page.route('**/api/dsp/jobs/meal-breaks?*', (route) =>
       route.fulfill({
         json: {
-          date: new URL(route.request().url()).searchParams.get('date'),
+          date: new URL(route.request().url()).searchParams.get('date')!,
           scopeAvailable: true,
           paycom: {
             enabled: true,
@@ -799,12 +805,15 @@ test.describe('DSP calendar dates', () => {
             jobDate: null,
             collectedAt,
           },
-        },
+        } satisfies DailySyncStatus,
       }),
     );
     await page.route('**/api/dsp/jobs/meal-breaks', (route) => {
       synced.push(route.request().postDataJSON().date);
-      return route.fulfill({ status: 202, json: { date: synced.at(-1), jobs: [] } });
+      return route.fulfill({
+        status: 202,
+        json: { date: synced.at(-1)!, jobs: [] } satisfies SyncStarted,
+      });
     });
     await open(page, false, null);
     await expectDate(page, '2026-09-16');
@@ -871,7 +880,7 @@ test.describe('DSP calendar dates', () => {
           counts: { team: 1 },
           actors: [],
           dsps: [],
-        },
+        } satisfies AuditPage,
       }),
     );
     await open(page, false, null);

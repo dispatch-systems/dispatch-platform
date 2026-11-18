@@ -112,7 +112,7 @@ impl DriverMatchStore for Store {
         assign::read(self, dsp)
     }
     fn write_pass(&self, dsp: &str, collected: Collected) -> Result<usize> {
-        assign::write(self, dsp, collected)
+        assign::write(self, dsp, collected, false)
     }
     fn driver_match(&self, dsp: &str) -> Result<DriverMatch> {
         overview::driver_match(self, dsp)

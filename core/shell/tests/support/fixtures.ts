@@ -66,16 +66,15 @@ export function dspAddress(page: Page, code: string) {
   return `${admin.protocol}//${code}.localhost:${admin.port}/`;
 }
 /**
- * Waits for a DSP's Home page, as either it shows: the member's widgets, where any feature gives
- * them one, or that it is still being built, where none does or the window is too narrow for them.
+ * Waits for the app to have drawn `drawn`, a page as the app marks it (`dsp:<page>` or
+ * `platform:<page>`), whatever the page shows.
  */
-export async function atHome(page: Page) {
-  await expect(
-    page
-      .getByRole('heading', { name: 'Home', exact: true, level: 1 })
-      .or(page.getByRole('heading', { name: 'Currently under development', exact: true })),
-  ).toBeVisible();
+export async function atPage(page: Page, drawn: string) {
+  await expect(page.locator('html')).toHaveAttribute('data-app-ready', drawn);
 }
+/** Waits for a DSP's Home page, whatever it shows. */
+export const atHome = (page: Page) => atPage(page, 'dsp:overview');
+
 /**
  * Places widgets on `client`'s Home page in `dspId`, as arranging it would keep them: each by its
  * id, at its column and row from the top left (0, 0 unless given), `columns` by `rows`. A page

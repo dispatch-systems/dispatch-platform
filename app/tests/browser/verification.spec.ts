@@ -1,3 +1,4 @@
+import type { BrowserFrame, Connection } from '../../../core/collection/api/index.js';
 import { test, expect, openDsp, signIn } from '../../../core/shell/tests/support/fixtures.js';
 
 test.use({ hasTouch: true });
@@ -37,13 +38,16 @@ test('Paycom window scales input, supports drag/scroll/keyboard, and only contin
         accountLabel: 'DEMO',
         checks: [],
         ...(!ready ? { verificationSessionId: sessionId } : {}),
-      },
+      } satisfies Connection,
     }),
   );
   await page.route('**/api/dsp/connections/paycom/screenshot?*', async (route) => {
     expect(new URL(route.request().url()).searchParams.get('sessionId')).toBe(sessionId);
     await route.fulfill({
-      json: { sessionId, image: (await provider.screenshot()).toString('base64') },
+      json: {
+        sessionId,
+        image: (await provider.screenshot()).toString('base64'),
+      } satisfies BrowserFrame,
     });
   });
   await page.route('**/api/dsp/connections/paycom/assist', async (route) => {
@@ -63,7 +67,7 @@ test('Paycom window scales input, supports drag/scroll/keyboard, and only contin
     if (input.kind === 'key')
       await provider.keyboard.press((input.shift ? 'Shift+' : '') + input.key);
     if (input.kind === 'type') await provider.keyboard.insertText(input.text);
-    await route.fulfill({ json: { ok: true } });
+    await route.fulfill({ json: { ok: true } satisfies { ok: boolean } });
   });
   await page.route('**/api/dsp/connections/paycom/submit', async (route) => {
     submits++;

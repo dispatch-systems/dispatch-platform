@@ -75,6 +75,10 @@ mod contracts;
 #[path = "../tests/backend/databases.rs"]
 mod databases;
 #[cfg(test)]
+#[cfg(all(feature = "conduct", feature = "driver_match", feature = "timecard"))]
+#[path = "../tests/backend/demo.rs"]
+mod demo;
+#[cfg(test)]
 #[path = "../tests/backend/export.rs"]
 mod export;
 #[cfg(test)]

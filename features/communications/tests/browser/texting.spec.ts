@@ -1,5 +1,10 @@
 import type { Page } from '@playwright/test';
-import type { Communications, ConversationWindow, Message } from '../../api/index.js';
+import type {
+  Communications,
+  ConversationMessages,
+  ConversationWindow,
+  Message,
+} from '../../api/index.js';
 import {
   test,
   expect,
@@ -775,7 +780,9 @@ async function textFixture(page: Page, all: Message[], ready = false) {
   await page.route('**/api/dsp/communications', async (route) => {
     const response = await route.fetch();
     const value = (await response.json()) as Communications;
-    await route.fulfill({ json: { ...value, revision: value.revision + revision } });
+    await route.fulfill({
+      json: { ...value, revision: value.revision + revision } satisfies Communications,
+    });
   });
   await page.route('**/conversations/*/window?*', async (route) => {
     const response = await route.fetch();
@@ -799,7 +806,11 @@ async function textFixture(page: Page, all: Message[], ready = false) {
       const start = Math.max(0, end - 50);
       await fixture.beforeLegacy?.();
       await route.fulfill({
-        json: { ...source, messages: all.slice(start, end), more: start > 0 },
+        json: {
+          ...source,
+          messages: all.slice(start, end),
+          more: start > 0,
+        } satisfies ConversationMessages,
       });
     },
   );
@@ -1077,7 +1088,7 @@ test('legacy on-phone video fetch and download own conversion until both operati
   await page.route('**/texts/files/bounded-video/fetch', async (route) => {
     fetching.release();
     await fetched.promise;
-    await route.fulfill({ json: { kept: true } });
+    await route.fulfill({ json: { kept: true } satisfies { kept: boolean } });
   });
   await page.route('**/texts/files/bounded-video', async (route) => {
     saving.release();

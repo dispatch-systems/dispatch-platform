@@ -7,9 +7,11 @@
 //! - `standing`: the rules a category's tiers climb and step down by.
 //! - `overview`: what the page reads, in one answer.
 //! - `settings`: what a DSP sets on Conduct's page of Settings.
+//! - `demo`: the writeups a development or preview DSP starts with.
 pub(crate) mod backups;
 pub(crate) mod categories;
 pub(crate) mod copies;
+pub(crate) mod demo;
 pub(crate) mod history;
 pub(crate) mod overview;
 mod requests;
