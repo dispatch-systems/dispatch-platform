@@ -273,6 +273,9 @@ pub fn run(root: &Path, now: SystemTime, runner: &dyn Runner) -> Result<()> {
             Approval::Changed(paths) => format!("changed since approved: {}", paths.join(", ")),
         }
     );
+    if let Some(server) = preview::server(&workspace::checkout_scratch(root)?, runner) {
+        println!("{}", server.line());
+    }
     match &pull {
         None => println!("PR: none open"),
         Some(pull) => println!(

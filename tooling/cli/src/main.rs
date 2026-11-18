@@ -179,13 +179,18 @@ const COMMANDS: &[Spec] = &[
     .arguments(usize::MAX),
     spec(
         "preview",
-        &["preview [--pages <page[/tab],...>]", "preview approve"],
+        &[
+            "preview [--pages <page[/tab],...>]",
+            "preview approve",
+            "preview stop",
+        ],
         "Show the change as it is: serve it, restarting the dev server when it serves other \
          code, and save a screenshot of each page it touches, on the tab or Settings section it \
          touches, or --pages, <page>/<tab> for a tab and platform:<page> for the platform owner's \
-         own, wide and on a phone, each with a link that opens on it. Once the user approved how \
-         it looks, approve keeps its UI files: pr opens no PR for a change to what a page shows \
-         until those are the files it pushes.",
+         own, wide and on a phone, each with a link that opens on it. The server runs apart from \
+         the command, at the same address each time it starts again, until stop or finish stops \
+         it. Once the user approved how it looks, approve keeps its UI files: pr opens no PR for \
+         a change to what a page shows until those are the files it pushes.",
     )
     .options(&["--pages"])
     .arguments(1),
@@ -598,8 +603,13 @@ fn run() -> Result<()> {
             Some("approve") if line.option("--pages").is_none() => {
                 preview::approve(&line.root()?, &Native)
             }
-            Some("approve") => Err("preview approve takes no --pages.".into()),
-            Some(_) => Err("Choose preview, or preview approve.".into()),
+            Some("stop") if line.option("--pages").is_none() => {
+                preview::stop_serving(&line.root()?, &Native)
+            }
+            Some(action @ ("approve" | "stop")) => {
+                Err(format!("preview {action} takes no --pages.").into())
+            }
+            Some(_) => Err("Choose preview, preview approve or preview stop.".into()),
         },
         "review" => {
             let action = line.name()?;

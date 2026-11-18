@@ -304,6 +304,18 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
   await first.close();
   assert.equal(fs.existsSync(first.root), false);
   assert.equal((await request(memberOrigin, '/api/session')).status, 200);
+  // Started again at its address with its entry, as `dispatchdev preview` restarts it, the link
+  // it printed signs in on the new one.
+  const again = await startPreview({
+    cwd: worktrees[0],
+    host: '127.0.0.1',
+    port: Number(new URL(first.origin).port),
+    entry: first.previewUrl.split('/__preview/')[1],
+  });
+  previews.push(again);
+  assert.equal(again.previewUrl, first.previewUrl);
+  assert.equal((await fetch(first.previewUrl, { redirect: 'manual' })).status, 303);
+  await again.close();
   await second.close();
   assert.equal(fs.existsSync(second.root), false);
 });
@@ -313,4 +325,5 @@ test('preview configuration refuses public wildcard bindings and invalid ports',
     await assert.rejects(startPreview({ host }), /must name one address/);
   for (const port of [-1, 65536, 1.5, NaN])
     await assert.rejects(startPreview({ port }), /must be an integer/);
+  await assert.rejects(startPreview({ entry: 'guessable' }), /must be a random UUID/);
 });

@@ -7,6 +7,7 @@ use crate::{
     change::{Clone, Repository, valid_name},
     ci::{self, Landed, Outcome},
     merge::short,
+    preview,
     status::{self, Whose},
     workspace,
 };
@@ -27,6 +28,9 @@ pub struct Owed {
     pub branch: String,
     pub head: String,
     pub pr: Option<Pr>,
+    /// The dev server `preview` started for it, while it runs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server: Option<preview::Server>,
     /// Its next step, the first of `steps`.
     pub next: String,
     pub whose: Whose,
@@ -170,6 +174,9 @@ fn entry(change: &Found, now: SystemTime, runner: &dyn Runner) -> Owed {
         branch: git(&["branch", "--show-current"]),
         head: git(&["rev-parse", "HEAD"]),
         pr: None,
+        server: workspace::current_scratch(&change.name)
+            .ok()
+            .and_then(|scratch| preview::server(&scratch, runner)),
         next: String::new(),
         whose: Whose::Agent,
         steps: vec![],
@@ -351,9 +358,11 @@ fn block(owed: &Owed) -> String {
             owed.path.display()
         ),
         pr,
-        workspace::next(&owed.steps),
-        whose.to_owned(),
     ]
+    .into_iter()
+    .chain(owed.server.as_ref().map(preview::Server::line))
+    .chain([workspace::next(&owed.steps), whose.to_owned()])
+    .collect::<Vec<_>>()
     .join("\n")
 }
 

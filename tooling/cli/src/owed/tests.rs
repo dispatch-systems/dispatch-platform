@@ -52,6 +52,7 @@ fn an_entry_is_written_as_the_hook_reads_it() {
             url: "https://github.com/o/r/pull/7".to_owned(),
             state: PrState::Merged,
         }),
+        server: None,
         next: "next".to_owned(),
         whose: Whose::Reviewers,
         steps: vec!["next".to_owned(), "then".to_owned()],
