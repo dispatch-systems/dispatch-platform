@@ -7,6 +7,7 @@
 //! written in, the name its sender was shown by as it was filed, whether its number was blocked as
 //! it came, and the Done that covered it; the rest of the row, and the text's files, are the phone
 //! side's (`phone::storage`).
+use super::contacts::BLOCKED;
 use crate::backend::origins::{self, Transport};
 use crate::backend::{
     changes::changed_conversation,
@@ -234,8 +235,9 @@ macro_rules! waiting_since {
 }
 
 /// The numbers' conversations of the line `?1` that are listed: those of numbers it didn't block.
-const LISTED: &str = "kind='number' AND line IS ?1 \
-                      AND number NOT IN (SELECT number FROM communications_blocked WHERE line IS ?1)";
+fn listed() -> String {
+    format!("kind='number' AND line IS ?1 AND number NOT IN {BLOCKED}")
+}
 /// A text waiting to be filed, as `Unfiled` reads it, with the line of its phone, from `t`.
 const UNFILED: &str = "t.id,t.number,t.at,t.sent_by,d.line FROM phones_texts t \
                        JOIN phones_devices d ON d.id=t.device_id";
@@ -274,7 +276,8 @@ impl TextStore for Store {
         self.dsp(dsp)?.query_as(
             &format!(
                 "SELECT * FROM communications_text_conversations WHERE state='waiting' \
-                 AND {LISTED} ORDER BY waiting_since,id"
+                 AND {} ORDER BY waiting_since,id",
+                listed()
             ),
             [line],
         )
@@ -290,8 +293,9 @@ impl TextStore for Store {
         self.dsp(dsp)?.query_as(
             &format!(
                 "SELECT * FROM communications_text_conversations WHERE state<>'waiting' \
-                 AND last_at IS NOT NULL AND {LISTED} AND (last_at<?2 OR (last_at=?2 AND id<?3)) \
-                 ORDER BY last_at DESC,id DESC LIMIT ?4"
+                 AND last_at IS NOT NULL AND {} AND (last_at<?2 OR (last_at=?2 AND id<?3)) \
+                 ORDER BY last_at DESC,id DESC LIMIT ?4",
+                listed()
             ),
             params![line, at, id, most as i64],
         )
@@ -468,9 +472,9 @@ impl TextStore for Store {
         db.transaction(|| {
             let conversation = conversation(&db, line, filed)?;
             // A text from a number blocked as it came never makes its conversation wait.
-            let sql = "SELECT count(*) FROM communications_blocked WHERE number=? AND line IS ?";
+            let sql = format!("SELECT count(*) FROM {BLOCKED} WHERE number=?2");
             let blocked = match filed {
-                Filed::Number(number) => db.count(sql, params![number, line])? > 0,
+                Filed::Number(number) => db.count(&sql, params![line, number])? > 0,
                 Filed::Driver { .. } | Filed::WorkPhone(_) => false,
             };
             // Only on its own phone's line.

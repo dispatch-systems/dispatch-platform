@@ -469,9 +469,11 @@ queues a text for a phone.
   Phone's own), so a number texting Dispatch Phone's phones and another line's has a conversation
   on each. Another line's texts are each filed under their number, on that line, however Routes
   knows the number: work phones, drivers, Pick driver, filing again and the live day are Dispatch
-  Phone's own. Each line saves its own names for numbers and blocks its own
-  (`communications_contacts`, `communications_blocked`, by the line and the number): a name
-  another line saves, or a block, never touches Dispatch Phone's, nor Dispatch Phone's another's.
+  Phone's own. Each line saves its own names for numbers and blocks its own: Dispatch Phone's in
+  `communications_contacts` and `communications_blocked`, by the number, as ever; another line's
+  beside them, in `communications_line_contacts` and `communications_line_blocked`, by the line
+  and the number. A name another line saves, or a block, never touches Dispatch Phone's, nor
+  Dispatch Phone's another's.
   Whom a conversation of another line is with: whoever Driver Match has the number for, else the
   name that line saved, else the number. Every read and write of a conversation by its ID is of
   one line: another line's, as Slack's on another line, isn't found
@@ -1064,9 +1066,9 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (`phones_texts`, below) the conversation it's filed in, none while it waits to be, the name its
   sender was shown by, whether its number was blocked as it came and the Done that covered it
   (migration 9, which copied each from `communications_texts`, since dropped),
-  `communications_contacts` (the names saved for numbers, each line's own, by whom and when, the
+  `communications_contacts` (the names Dispatch Phone saved for numbers, by whom and when, the
   latest alone: the audit log keeps each),
-  `communications_blocked` (the numbers blocked, each line's own, by whom and when, until
+  `communications_blocked` (the numbers Dispatch Phone blocked, by whom and when, until
   unblocked: the audit log keeps each) and `communications_picked`
   (the driver picked for a work phone on a day, by whom and when); and, from migration 17,
   `communications_refiling` (each day still to be filed again, and since when),
@@ -1079,9 +1081,12 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   with their revision, in its `settings` table under `communications.quick_replies`. For pushes,
   `communications_push` (each browser a member is told in, by where its pushes go, with the keys
   they're encrypted for and the address it was subscribed at: migration 18), kept until it's let
-  go of. From migration 24, each conversation by text, name, block and browser is of a line
-  (`line`, none for Dispatch Phone's own, as every one kept before is), and each change is noted
-  with its line. The phone side's, as Phones made them before Dispatch Phone adopted them (its migrations
+  go of. From migration 24, each conversation by text is of a line (`line`, none for Dispatch
+  Phone's own, as every one kept before is), one a number's for each line, and each change is
+  noted with its line; another line's names, blocks and browsers are kept apart, by the line
+  (`communications_line_contacts`, `communications_line_blocked`, `communications_line_push`),
+  and Dispatch Phone's stay in their tables as they were, so the release before the lines still
+  reads and writes its own. The phone side's, as Phones made them before Dispatch Phone adopted them (its migrations
   7 and 8, which find them made on a database Phones migrated, and leave Phones' own records of
   its migrations as they were): `phones_devices` (each phone, by its key's SHA-256, and how it last
   said it stands, `health`, migration 14), `phones_pairings` (the code that pairs the

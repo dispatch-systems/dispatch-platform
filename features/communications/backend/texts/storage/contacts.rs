@@ -44,6 +44,17 @@ pub trait ContactStore {
     ) -> Result<bool>;
 }
 
+/// The names the line `?1` saved, each number's with who saved it and when: Dispatch Phone's own
+/// (none) kept as they always were, by the number alone, which the release before the lines reads
+/// and writes; another line's beside them, by its line and the number.
+const CONTACTS: &str = "(SELECT number,name,saved_by,saved_at FROM communications_contacts \
+                        WHERE ?1 IS NULL UNION ALL SELECT number,name,saved_by,saved_at \
+                        FROM communications_line_contacts WHERE line=?1)";
+/// The numbers the line `?1` blocked, kept as `CONTACTS` are.
+pub(super) const BLOCKED: &str = "(SELECT number FROM communications_blocked WHERE ?1 IS NULL \
+                                  UNION ALL SELECT number FROM communications_line_blocked \
+                                  WHERE line=?1)";
+
 impl ContactStore for Store {
     fn communications_contacts(
         &self,
@@ -51,7 +62,7 @@ impl ContactStore for Store {
         line: Option<&str>,
     ) -> Result<Vec<(String, String)>> {
         self.dsp(dsp)?.query_as(
-            "SELECT number,name FROM communications_contacts WHERE line IS ? ORDER BY number",
+            &format!("SELECT number,name FROM {CONTACTS} ORDER BY number"),
             [line],
         )
     }
@@ -66,26 +77,28 @@ impl ContactStore for Store {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let before: Option<(String,)> = db.one_as(
-                "SELECT name FROM communications_contacts WHERE number=? AND line IS ?",
-                params![number, line],
+                &format!("SELECT name FROM {CONTACTS} WHERE number=?2"),
+                params![line, number],
             )?;
             let before = before.map(|(name,)| name);
             if before.as_deref() == Some(name) {
                 return Ok(None);
             }
-            let at = now();
-            let renamed = db.exec(
-                "UPDATE communications_contacts SET name=?,saved_by=?,saved_at=? \
-                 WHERE number=? AND line IS ?",
-                params![name, by, at, number, line],
-            )?;
-            if renamed == 0 {
-                db.exec(
-                    "INSERT INTO communications_contacts (line,number,name,saved_by,saved_at) \
-                     VALUES (?,?,?,?,?)",
-                    params![line, number, name, by, at],
-                )?;
-            }
+            match line {
+                None => db.exec(
+                    "INSERT INTO communications_contacts (number,name,saved_by,saved_at) \
+                     VALUES (?,?,?,?) ON CONFLICT(number) DO UPDATE SET name=excluded.name,\
+                     saved_by=excluded.saved_by,saved_at=excluded.saved_at",
+                    params![number, name, by, now()],
+                )?,
+                Some(line) => db.exec(
+                    "INSERT INTO communications_line_contacts \
+                     (line,number,name,saved_by,saved_at) VALUES (?,?,?,?,?) \
+                     ON CONFLICT(line,number) DO UPDATE SET name=excluded.name,\
+                     saved_by=excluded.saved_by,saved_at=excluded.saved_at",
+                    params![line, number, name, by, now()],
+                )?,
+            };
             changed_number(&db, line, number)?;
             Ok(Some(before))
         })
@@ -95,10 +108,9 @@ impl ContactStore for Store {
         db.transaction(|| changed_number(&db, None, number))
     }
     fn communications_blocked(&self, dsp: &str, line: Option<&str>) -> Result<BTreeSet<String>> {
-        let blocked: Vec<(String,)> = self.dsp(dsp)?.query_as(
-            "SELECT number FROM communications_blocked WHERE line IS ?",
-            [line],
-        )?;
+        let blocked: Vec<(String,)> = self
+            .dsp(dsp)?
+            .query_as(&format!("SELECT number FROM {BLOCKED}"), [line])?;
         Ok(blocked.into_iter().map(|(number,)| number).collect())
     }
     fn block_communications_number(
@@ -110,15 +122,24 @@ impl ContactStore for Store {
     ) -> Result<bool> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            let changed = match by {
-                Some(by) => db.exec(
-                    "INSERT OR IGNORE INTO communications_blocked \
+            let changed = match (line, by) {
+                (None, Some(by)) => db.exec(
+                    "INSERT OR IGNORE INTO communications_blocked (number,blocked_by,blocked_at) \
+                     VALUES (?,?,?)",
+                    params![number, by, now()],
+                )?,
+                (None, None) => db.exec(
+                    "DELETE FROM communications_blocked WHERE number=?",
+                    [number],
+                )?,
+                (Some(line), Some(by)) => db.exec(
+                    "INSERT OR IGNORE INTO communications_line_blocked \
                      (line,number,blocked_by,blocked_at) VALUES (?,?,?,?)",
                     params![line, number, by, now()],
                 )?,
-                None => db.exec(
-                    "DELETE FROM communications_blocked WHERE number=? AND line IS ?",
-                    params![number, line],
+                (Some(line), None) => db.exec(
+                    "DELETE FROM communications_line_blocked WHERE line=? AND number=?",
+                    [line, number],
                 )?,
             };
             if changed > 0 {

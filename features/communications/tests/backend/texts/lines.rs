@@ -307,7 +307,7 @@ async fn names_and_blocks_are_each_lines_own_and_logged_as_its_own() {
 }
 
 #[tokio::test]
-async fn what_was_kept_before_the_lines_is_dispatch_phones_own() {
+async fn what_was_kept_before_the_lines_is_dispatch_phones_own_and_left_as_it_was() {
     let (_root, state, dsp) = started();
     let at = dsp.clone();
     let (old, revision) = state
@@ -320,19 +320,11 @@ async fn what_was_kept_before_the_lines_is_dispatch_phones_own() {
                  ALTER TABLE communications_text_conversations DROP COLUMN line; \
                  CREATE UNIQUE INDEX communications_text_conversations_numbers \
                  ON communications_text_conversations (kind, number) WHERE driver_id IS NULL; \
-                 DROP TABLE communications_contacts; \
-                 CREATE TABLE communications_contacts (number TEXT PRIMARY KEY, \
-                 name TEXT NOT NULL, saved_by TEXT NOT NULL, saved_at INTEGER NOT NULL); \
-                 DROP TABLE communications_blocked; \
-                 CREATE TABLE communications_blocked (number TEXT PRIMARY KEY, \
-                 blocked_by TEXT NOT NULL, blocked_at INTEGER NOT NULL); \
                  DROP INDEX communications_changes_lines; \
                  ALTER TABLE communications_changes DROP COLUMN line; \
-                 DROP TABLE communications_push; \
-                 CREATE TABLE communications_push (endpoint TEXT PRIMARY KEY, \
-                 user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, \
-                 site TEXT NOT NULL CHECK (site IN ('admin', 'dsp')), created_at INTEGER NOT NULL); \
-                 CREATE INDEX communications_push_users ON communications_push (user_id); \
+                 DROP TABLE communications_line_contacts; \
+                 DROP TABLE communications_line_blocked; \
+                 DROP TABLE communications_line_push; \
                  INSERT INTO communications_text_conversations (id,kind,number,state,last_at) \
                  VALUES ('txt_kept','number','+14255550199','responded',1000); \
                  INSERT INTO communications_contacts VALUES ('+14255550199','Jordan','me',1000); \
@@ -342,8 +334,44 @@ async fn what_was_kept_before_the_lines_is_dispatch_phones_own() {
                  INSERT INTO communications_changes (conversation_id) VALUES ('txt_kept');",
             )?;
             let revision = before.count("SELECT max(revision) FROM communications_changes", [])?;
+            // Dispatch Phone's names, blocks and browsers, as the release before the lines made
+            // them: their tables, their indexes and their rows.
+            let kept = |db: &dispatch_core::db::Db| -> dispatch_core::Result<Vec<Vec<String>>> {
+                let mut kept: Vec<Vec<String>> = db.query_as(
+                    "SELECT ifnull(sql,'') FROM sqlite_master WHERE tbl_name IN \
+                     ('communications_contacts','communications_blocked','communications_push') \
+                     ORDER BY name",
+                    [],
+                )?
+                .into_iter()
+                .map(|(sql,): (String,)| vec![sql])
+                .collect();
+                kept.extend(db.query_as::<(String, String)>(
+                    "SELECT number,name FROM communications_contacts UNION ALL \
+                     SELECT number,blocked_by FROM communications_blocked UNION ALL \
+                     SELECT endpoint,user_id FROM communications_push",
+                    [],
+                )?
+                .into_iter()
+                .map(|(key, by)| vec![key, by]));
+                Ok(kept)
+            };
+            let was = kept(&before)?;
             drop(before);
-            migrate(db, &at, &[24]);
+            // Taken twice, as a restart cut short may: the second changes nothing.
+            migrate(db, &at, &[24, 24]);
+            let after = db.dsp(&at)?;
+            assert_eq!(kept(&after)?, was);
+            // The release before the lines still saves a name and keeps a browser as it did.
+            after.0.execute_batch(
+                "INSERT INTO communications_contacts (number,name,saved_by,saved_at) \
+                 VALUES ('+14255550199','Jordan','me',2000) ON CONFLICT(number) DO UPDATE \
+                 SET name=excluded.name,saved_by=excluded.saved_by,saved_at=excluded.saved_at; \
+                 INSERT INTO communications_push (endpoint,user_id,p256dh,auth,site,created_at) \
+                 VALUES ('https://fcm.googleapis.com/fcm/send/kept','me','key','secret','admin',\
+                 1000) ON CONFLICT (endpoint) DO UPDATE SET user_id=excluded.user_id;",
+            )?;
+            drop(after);
             Ok((db.communications_text_conversation(&at, "txt_kept")?, revision))
         })
         .await

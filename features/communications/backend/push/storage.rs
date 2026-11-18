@@ -1,6 +1,6 @@
-//! The browsers members are told of new messages in (`communications_push`), each by where a push
-//! to it goes, its endpoint, and the line it's told of: Dispatch Phone's own (none), or another
-//! feature's, each kept apart.
+//! The browsers members are told of new messages in, each by where a push to it goes, its
+//! endpoint, and the line it's told of: Dispatch Phone's own (none, `communications_push`), or
+//! another feature's (`communications_line_push`), each kept apart.
 use dispatch_core::{
     Result,
     db::{FromRow, Row, Store, now},
@@ -80,6 +80,13 @@ pub trait PushStore {
     fn communications_pushing(&self, dsp: &str, line: Option<&str>) -> Result<bool>;
 }
 
+/// The browsers told of the line `?1`'s messages: Dispatch Phone's own (none) kept as they always
+/// were, by the endpoint alone, which the release before the lines reads and writes; another
+/// line's beside them, by the endpoint and its line.
+const PUSHES: &str = "(SELECT endpoint,user_id,p256dh,auth,site FROM communications_push \
+                      WHERE ?1 IS NULL UNION ALL SELECT endpoint,user_id,p256dh,auth,site \
+                      FROM communications_line_push WHERE line=?1)";
+
 impl PushStore for Store {
     fn keep_communications_push(
         &self,
@@ -96,15 +103,23 @@ impl PushStore for Store {
         } = subscription;
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            db.exec(
-                "DELETE FROM communications_push WHERE endpoint=? AND line IS ?",
-                params![endpoint, line],
-            )?;
-            db.exec(
-                "INSERT INTO communications_push \
-                 (endpoint,line,user_id,p256dh,auth,site,created_at) VALUES (?,?,?,?,?,?,?)",
-                params![endpoint, line, user, p256dh, auth, address, now()],
-            )?;
+            match line {
+                None => db.exec(
+                    "INSERT INTO communications_push (endpoint,user_id,p256dh,auth,site,created_at) \
+                     VALUES (?,?,?,?,?,?) ON CONFLICT (endpoint) DO UPDATE SET \
+                     user_id=excluded.user_id,p256dh=excluded.p256dh,auth=excluded.auth,\
+                     site=excluded.site,created_at=excluded.created_at",
+                    params![endpoint, user, p256dh, auth, address, now()],
+                )?,
+                Some(line) => db.exec(
+                    "INSERT INTO communications_line_push \
+                     (endpoint,line,user_id,p256dh,auth,site,created_at) VALUES (?,?,?,?,?,?,?) \
+                     ON CONFLICT (endpoint,line) DO UPDATE SET user_id=excluded.user_id,\
+                     p256dh=excluded.p256dh,auth=excluded.auth,site=excluded.site,\
+                     created_at=excluded.created_at",
+                    params![endpoint, line, user, p256dh, auth, address, now()],
+                )?,
+            };
             Ok(())
         })
     }
@@ -115,10 +130,17 @@ impl PushStore for Store {
         user: &str,
         endpoint: &str,
     ) -> Result<()> {
-        self.dsp(dsp)?.exec(
-            "DELETE FROM communications_push WHERE endpoint=? AND line IS ? AND user_id=?",
-            params![endpoint, line, user],
-        )?;
+        let db = self.dsp(dsp)?;
+        match line {
+            None => db.exec(
+                "DELETE FROM communications_push WHERE endpoint=? AND user_id=?",
+                [endpoint, user],
+            )?,
+            Some(line) => db.exec(
+                "DELETE FROM communications_line_push WHERE endpoint=? AND line=? AND user_id=?",
+                [endpoint, line, user],
+            )?,
+        };
         Ok(())
     }
     fn communications_push(
@@ -128,15 +150,13 @@ impl PushStore for Store {
         endpoint: &str,
     ) -> Result<Option<Subscription>> {
         self.dsp(dsp)?.one_as(
-            "SELECT endpoint,user_id,p256dh,auth,site FROM communications_push \
-             WHERE endpoint=? AND line IS ?",
-            params![endpoint, line],
+            &format!("SELECT * FROM {PUSHES} WHERE endpoint=?2"),
+            params![line, endpoint],
         )
     }
     fn communications_pushes(&self, dsp: &str, line: Option<&str>) -> Result<Vec<Subscription>> {
         self.dsp(dsp)?.query_as(
-            "SELECT endpoint,user_id,p256dh,auth,site FROM communications_push WHERE line IS ? \
-             ORDER BY user_id,endpoint",
+            &format!("SELECT * FROM {PUSHES} ORDER BY user_id,endpoint"),
             [line],
         )
     }
@@ -149,18 +169,24 @@ impl PushStore for Store {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             for endpoint in endpoints {
-                db.exec(
-                    "DELETE FROM communications_push WHERE endpoint=? AND line IS ?",
-                    params![endpoint, line],
-                )?;
+                match line {
+                    None => db.exec(
+                        "DELETE FROM communications_push WHERE endpoint=?",
+                        [endpoint],
+                    )?,
+                    Some(line) => db.exec(
+                        "DELETE FROM communications_line_push WHERE endpoint=? AND line=?",
+                        [endpoint, line],
+                    )?,
+                };
             }
             Ok(())
         })
     }
     fn communications_pushing(&self, dsp: &str, line: Option<&str>) -> Result<bool> {
-        Ok(self.dsp(dsp)?.count(
-            "SELECT count(*) FROM communications_push WHERE line IS ?",
-            [line],
-        )? > 0)
+        Ok(self
+            .dsp(dsp)?
+            .count(&format!("SELECT count(*) FROM {PUSHES}"), [line])?
+            > 0)
     }
 }
