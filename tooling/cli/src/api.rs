@@ -315,6 +315,8 @@ fn send(site: &Site, session: &Value, call: Call<'_>, runner: &dyn Runner) -> Re
 pub enum Change<'a> {
     /// A known custom ID, in place of its random one, so the custom features of that ID show.
     CustomId(&'a str),
+    /// One of its features switched on or off, as the Features tab switches it.
+    Feature { feature: &'a str, enabled: bool },
 }
 
 /// Makes `change` to the DSP `wanted` names on the dev server `npm run dev` runs in the checkout
@@ -345,6 +347,14 @@ fn apply(server: &Server, wanted: &str, change: Change<'_>, runner: &dyn Runner)
             format!("/api/platform/dsps/{id}/custom-id"),
             json!({ "customId": custom }),
             format!("{name} has the custom ID {custom}."),
+        ),
+        Change::Feature { feature, enabled } => (
+            format!("/api/platform/dsps/{id}/features"),
+            json!({ "feature": feature, "enabled": enabled }),
+            format!(
+                "{feature} is {} for {name}.",
+                if enabled { "on" } else { "off" }
+            ),
         ),
     };
     let body = body.to_string();
@@ -446,6 +456,19 @@ mod tests {
                 "http://127.0.0.1:41733/api/platform/dsps/dsp_2/custom-id".to_owned(),
                 json!({"customId": "k7m2qx4p"})
             )]
+        );
+        let switch = Change::Feature {
+            feature: "live_route_data",
+            enabled: false,
+        };
+        let said = apply(&fixture.server, "dsp_1", switch, &fixture).unwrap();
+        assert_eq!(said, "live_route_data is off for Dev DSP.");
+        assert_eq!(
+            fixture.posted()[1],
+            (
+                "http://127.0.0.1:41733/api/platform/dsps/dsp_1/features".to_owned(),
+                json!({"feature": "live_route_data", "enabled": false})
+            )
         );
 
         let production = Fixture::new("production");

@@ -234,15 +234,21 @@ const COMMANDS: &[Spec] = &[
     .options(&["--owner", "--only", "--file"]),
     spec(
         "dev",
-        &["dev status [--json]", "dev custom-id <dsp> <id>"],
+        &[
+            "dev status [--json]",
+            "dev custom-id <dsp> <id>",
+            "dev feature <dsp> <feature>",
+            "            <on | off>",
+        ],
         "The checkout's fixture server, its process and served source identity, without \
          starting, stopping or signing in. JSON omits the sign-in link and password. custom-id \
-         gives a DSP there, by its name or id, a known custom ID, through the platform owner's \
-         route as DSP administration does, logged and audited as there; a server that says \
-         it is Production is refused.",
+         gives a DSP there, by its name or id, a known custom ID, and feature switches one of \
+         its features on or off, each through the platform owner's route as DSP \
+         administration does, logged and audited as there; a server that says it is \
+         Production is refused.",
     )
     .flags(&["--json"])
-    .arguments(3),
+    .arguments(4),
     spec(
         "verify",
         &["verify <feature>"],
@@ -747,9 +753,18 @@ fn run() -> Result<()> {
                     return Err("--json goes with dev status.".into());
                 }
                 ["custom-id", dsp, id] => (*dsp, api::Change::CustomId(id)),
+                ["feature", dsp, feature, state @ ("on" | "off")] => (
+                    *dsp,
+                    api::Change::Feature {
+                        feature,
+                        enabled: *state == "on",
+                    },
+                ),
                 _ => {
                     return Err(
-                        "Use dispatchdev dev status [--json] or dev custom-id <dsp> <id>.".into(),
+                        "Use dispatchdev dev status [--json], dev custom-id <dsp> <id> \
+                                or dev feature <dsp> <feature> <on | off>."
+                            .into(),
                     );
                 }
             };
