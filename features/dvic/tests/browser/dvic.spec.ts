@@ -1,6 +1,7 @@
 import {
   test,
   expect,
+  expectEverySize,
   login,
   openDsp,
   demo,
@@ -169,6 +170,21 @@ test('the latest collected day opens first even when nobody was short; Today lea
   await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Latest' }).click();
   await expect(latest).toBeVisible();
+});
+
+test('Latest DVIC fits every size, with drivers short and on a day nobody was', async ({
+  page,
+  dispatch,
+}) => {
+  const { dsp } = await seedDvic(dispatch);
+  await login(page);
+  await openDsp(page, dsp.name);
+  await expectEverySize(page, dsp.id, 'dvic.latest');
+  dispatch.database(`dsps/${dsp.id}/data/dvic/dvic.sqlite`, (db) => {
+    db.prepare('DELETE FROM dvic_inspections WHERE start_date=?').run('2026-09-26');
+    db.prepare('UPDATE dvic_reports SET max_date=?').run('2026-09-25');
+  });
+  await expectEverySize(page, dsp.id, 'dvic.latest');
 });
 
 test('a large week opens without downloading every inspection and never shows a failed summary as zero', async ({

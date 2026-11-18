@@ -21,15 +21,36 @@ a.widget:focus-visible {
   padding: 10px 12px;
 }
 .widget > header {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 13px;
   white-space: nowrap;
 }
+/* In one column the day goes below the label when both don't fit on a line, and in a single cell,
+   with no room for a second line, it shows only where it fits beside it. */
 .widget[data-columns='1'] > header {
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 2px 4px;
   font-size: 12px;
+}
+.widget[data-columns='1'][data-rows='1'] > header {
+  max-height: 1lh;
+  overflow: hidden;
+}
+/* A single cell, as small as a laptop's window makes it, fits its header and one thing under it:
+   tighter, with its count's number sized to the cell. */
+.widget[data-columns='1'][data-rows='1'] {
+  padding: 8px 10px;
+  gap: 4px;
+}
+.widget[data-columns='1'][data-rows='1'] .widget-note {
+  font-size: 11px;
+  line-height: 1.25;
+}
+.widget[data-columns='1'][data-rows='1'] .widget-zero {
+  gap: 2px 4px;
 }
 .widget > header svg {
   width: 15px;
@@ -62,7 +83,7 @@ a.widget:focus-visible {
   flex-direction: column;
 }
 .widget-count strong {
-  font-size: 34px;
+  font-size: clamp(20px, 28cqh, 34px);
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -70,6 +91,7 @@ a.widget:focus-visible {
 }
 .widget-count span {
   font-size: 12px;
+  line-height: 1.2;
   color: var(--muted-foreground);
 }
 
@@ -95,13 +117,13 @@ a.widget:focus-visible {
   justify-content: center;
 }
 .widget-zero svg {
-  width: 22px;
-  height: 22px;
+  width: clamp(14px, 20cqh, 22px);
+  height: clamp(14px, 20cqh, 22px);
   flex: none;
   color: var(--series-1);
 }
 .widget-zero strong {
-  font-size: 30px;
+  font-size: clamp(20px, 28cqh, 30px);
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;

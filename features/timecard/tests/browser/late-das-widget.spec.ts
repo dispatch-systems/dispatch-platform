@@ -1,6 +1,7 @@
 import {
   test,
   expect,
+  expectEverySize,
   atHome,
   login,
   openDsp,
@@ -48,4 +49,6 @@ test('Late DAs on Home follows the DSP’s late rule as it changes, and opens Me
     'true',
   );
   await expect(page.locator('.meal-table tbody > tr')).toHaveCount(Number(late));
+  // Every size it declares holds them.
+  await expectEverySize(page, dsp.id, 'timecard.late_das');
 });
