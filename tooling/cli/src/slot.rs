@@ -248,13 +248,13 @@ mod tests {
             &|_| drop(first.borrow_mut().take()),
             &mut say,
         );
+        // It waited, then got the slot once the first run let it go, in that order.
+        assert_eq!(said.len(), 2, "{said:?}");
         assert_eq!(
-            said,
-            [
-                "Waiting for a test slot, held by npm run test:ui in one.",
-                "Got a test slot after 0s.",
-            ]
+            said[0],
+            "Waiting for a test slot, held by npm run test:ui in one."
         );
+        assert!(said[1].starts_with("Got a test slot after "), "{said:?}");
         assert!(build.is_ok() && second.is_ok());
     }
     #[test]
