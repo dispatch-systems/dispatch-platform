@@ -13,9 +13,13 @@ import {
 } from '../../../core/shell/tests/support/fixtures.js';
 import { capturedMail } from '../../../core/shell/tests/support/mail-support.js';
 import { virtualAuthenticator } from '../../../core/accounts/tests/support/authenticator.js';
+import type { CustomFeature } from '../../../core/accounts/api/generated/CustomFeature.js';
+import type { CustomFeatures } from '../../../core/accounts/api/generated/CustomFeatures.js';
 import type {
   AuditPage,
   DspFeatureReport,
+  DspFeatures,
+  DspVisibility,
   Visibility,
 } from '../../../core/platform_owner/api/index.js';
 
@@ -35,7 +39,7 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
   const platformStyle = `/assets/custom-${owner}-platform-12345678.css`;
   const style = `/assets/custom-${owner}-fuel-log-12345678.css`;
   const lazy = `/assets/custom-${owner}-fuel-page-12345678.js`;
-  const catalog = [
+  const catalog: CustomFeature[] = [
     {
       id,
       label: 'Fuel Log',
@@ -167,7 +171,7 @@ async function custom(page: Page, dispatch: Dispatch, hold = false) {
           { id: `${id}.view`, label: 'View Fuel Log', group: null, implied: [], under: null },
         ],
         frontends: [{ name: id, url: entry, styles: [style], place: 500 }],
-      };
+      } satisfies CustomFeatures;
     }
     await route.fulfill({ response, json: view });
   });
@@ -399,7 +403,7 @@ test("the platform lists custom controls only on their owning DSP's Features tab
   const feature = await custom(page, dispatch);
   const own = feature.own.id;
   const part = `${feature.id}.entries`;
-  const catalog = [
+  const catalog: CustomFeature[] = [
     ...feature.catalog.map((entry) => ({ ...entry, requires: ['routes'] })),
     {
       ...feature.catalog[0]!,
@@ -451,7 +455,7 @@ test("the platform lists custom controls only on their owning DSP's Features tab
         json: {
           features: enabled ? ids : [part],
           changed: [{ feature: feature.id, enabled }],
-        },
+        } satisfies DspFeatures,
       });
     }
     const response = await route.fetch();
@@ -462,7 +466,7 @@ test("the platform lists custom controls only on their owning DSP's Features tab
         ...report,
         features: [...report.features, ...states()],
         custom: catalog,
-      },
+      } satisfies DspFeatureReport,
     });
   });
   await page.route(`**/api/platform/dsps/${own}/features/visibility`, (route) => {
@@ -473,7 +477,7 @@ test("the platform lists custom controls only on their owning DSP's Features tab
       json: {
         hidden: visibility === 'hidden' ? [feature.id] : [],
         beta: visibility === 'beta' ? [feature.id] : [],
-      },
+      } satisfies DspVisibility,
     });
   });
   await login(page);

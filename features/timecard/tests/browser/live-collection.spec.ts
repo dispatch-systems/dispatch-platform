@@ -1,5 +1,6 @@
 import { mealPageFixture } from '../support/assessment.js';
-import type { CortexMeal } from '../../api/index.js';
+import type { CortexMeal, DailyTimecard, DailyTimecardPage } from '../../api/index.js';
+import type { CollectionUpdates } from '../../../../core/collection/api/index.js';
 import type { Route } from '@playwright/test';
 import {
   test,
@@ -28,13 +29,13 @@ test('driver results update open timecards and meal breaks without resetting the
             json: {
               revision: String(revision),
               changes: [{ provider: 'all', dates: [], employeeCode: null, roster: true }],
-            },
+            } satisfies CollectionUpdates,
           })
           .catch(() => {});
       }),
     );
   };
-  let card = {
+  let card: DailyTimecard = {
     employeeCode: 'E001',
     name: 'Live Driver',
     date,
@@ -54,7 +55,7 @@ test('driver results update open timecards and meal breaks without resetting the
         json: {
           revision: String(revision),
           changes: [{ provider: 'all', dates: [], employeeCode: null, roster: true }],
-        },
+        } satisfies CollectionUpdates,
       });
     else {
       waiting.clear();
@@ -77,7 +78,12 @@ test('driver results update open timecards and meal breaks without resetting the
           }))
         : [card];
     return route.fulfill({
-      json: { rows, total: card.hours === 9 ? 101 : 1, available: true, collectedAt: null },
+      json: {
+        rows,
+        total: card.hours === 9 ? 101 : 1,
+        available: true,
+        collectedAt: null,
+      } satisfies DailyTimecardPage,
     });
   });
   await page.route('**/api/dsp/paycom/meal-breaks/page?*', (route) => {
@@ -131,7 +137,7 @@ test('driver results update open timecards and meal breaks without resetting the
     json: {
       revision: '0',
       changes: [{ provider: 'all', dates: [], employeeCode: null, roster: true }],
-    },
+    } satisfies CollectionUpdates,
   });
   const nextPoll = async () => {
     await expect

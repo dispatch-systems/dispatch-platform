@@ -1,5 +1,8 @@
 import type { Job } from '../../../../core/collection/api/index.js';
 
+/** What starting a day's sync answers (`POST /api/dsp/jobs/meal-breaks`): its day and its jobs. */
+export type SyncStarted = { date: string; jobs: Job[] };
+
 export function syncJob(status: Job['status'], kind: Job['kind']): Job {
   return {
     id: `${kind}-job`,

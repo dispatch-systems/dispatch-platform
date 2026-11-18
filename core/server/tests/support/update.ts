@@ -1,6 +1,9 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, login } from '../../../shell/tests/support/fixtures.js';
 
+/** What `/api/browser-update` answers: the build the server serves, and whether it is ready. */
+export type BrowserUpdate = { build: string; ready: boolean };
+
 /** Waits for `locator` to show, running the frozen test clock: dynamic routes commit through
  * Suspense, so their timers must run under it. */
 export async function clockVisible(page: Page, locator: Locator) {

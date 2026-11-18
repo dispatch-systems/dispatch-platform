@@ -1,9 +1,10 @@
+import type { BrowserFrame, Connection } from '../../../core/collection/api/index.js';
 import { test, expect, login, openDsp } from '../../../core/shell/tests/support/fixtures.js';
 
 test('credentials close before login finishes, errors stay on the card, and CAPTCHA opens after retry', async ({
   page,
 }) => {
-  let connection: Record<string, unknown> = {
+  let connection: Connection = {
     provider: 'paycom',
     enabled: true,
     status: 'ready',
@@ -41,10 +42,10 @@ test('credentials close before login finishes, errors stay on the card, and CAPT
   await page.route('**/api/dsp/connections/paycom/screenshot?*', (route) =>
     route.fulfill({
       json: {
-        sessionId: connection.verificationSessionId,
+        sessionId: connection.verificationSessionId!,
         image:
           'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j0xkAAAAASUVORK5CYII=',
-      },
+      } satisfies BrowserFrame,
     }),
   );
   try {

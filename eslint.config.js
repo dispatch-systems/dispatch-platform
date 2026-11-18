@@ -53,6 +53,18 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       'no-empty-pattern': ['error', { allowObjectPatternsAsParameters: true }],
+      // An answer a browser test fakes for a route is the type the app reads it as, so a field
+      // that type gains fails `check` here rather than the test on CI. An error's answer, with a
+      // status of 400 or more, is the app's error shape alone.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.property.name='fulfill'] > ObjectExpression:not(:has(> Property[key.name='status'][value.value>=400])) > Property[key.name='json'] > ObjectExpression",
+          message:
+            'Type the answer a route is faked with: `{ … } satisfies <the type the app reads it as>`.',
+        },
+      ],
     },
   },
   {
