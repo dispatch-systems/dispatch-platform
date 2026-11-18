@@ -63,6 +63,17 @@ pub fn current_scratch(name: &str) -> Result<PathBuf> {
 fn left_in_tmp(name: &str) -> PathBuf {
     PathBuf::from(format!("/tmp/dispatch-{name}"))
 }
+/// Removes the link a move left at the change's old `/tmp` folder, once its folder is gone; a
+/// real folder there, or a link to anything else, is left alone.
+pub fn forget_left_in_tmp(name: &str, dir: &Path) -> Result<()> {
+    let old = left_in_tmp(name);
+    if fs::symlink_metadata(&old).is_ok_and(|meta| meta.file_type().is_symlink())
+        && fs::read_link(&old)? == dir
+    {
+        fs::remove_file(old)?;
+    }
+    Ok(())
+}
 /// `path` by its real path as far as it is there, and as it is named past that.
 fn real(path: &Path) -> Result<PathBuf> {
     match fs::canonicalize(path) {
@@ -125,6 +136,9 @@ fn move_into_place(old: &Path, dir: &Path) -> Result<()> {
         moved => moved?,
     }
     crate::review::reconnect(dir, &crate::Native)?;
+    // A reviewer reading a pass's checkout, or a brief naming it, still finds it by its old
+    // path until `finish` removes the link with the folder.
+    std::os::unix::fs::symlink(dir, old)?;
     eprintln!(
         "Moved the scratch folder {} to {}.",
         old.display(),
@@ -388,11 +402,36 @@ mod tests {
         ]);
         let dir = base.join("scratch/change");
         move_into_place(&old, &dir).unwrap();
-        assert!(!old.exists());
+        // The old path is a link to the new folder, so a reviewer reading it still can.
+        assert_eq!(fs::read_link(&old).unwrap(), dir);
+        assert!(old.join("review/1/checkout").is_dir());
+        // A second command finds the link and moves nothing.
+        move_into_place(&old, &dir).unwrap();
+        assert!(dir.join("review/1/checkout").is_dir());
         // `take` and `finish` remove it through git, by where it is now.
         let moved = dir.join("review/1/checkout");
         git(&["worktree", "remove", "--force", moved.to_str().unwrap()]);
         assert!(!moved.exists());
+    }
+    #[test]
+    fn finishing_removes_only_the_link_a_move_left_in_tmp() {
+        let temp = tempfile::tempdir().unwrap();
+        let name = format!("forget-{}", std::process::id());
+        let old = left_in_tmp(&name);
+        let dir = fs::canonicalize(temp.path()).unwrap().join(&name);
+        // A real folder there is another change's to keep.
+        fs::create_dir(&old).unwrap();
+        forget_left_in_tmp(&name, &dir).unwrap();
+        assert!(old.is_dir());
+        fs::remove_dir(&old).unwrap();
+        // So is a link to anything but this change's folder.
+        std::os::unix::fs::symlink(temp.path().join("other"), &old).unwrap();
+        forget_left_in_tmp(&name, &dir).unwrap();
+        assert!(fs::symlink_metadata(&old).is_ok());
+        fs::remove_file(&old).unwrap();
+        std::os::unix::fs::symlink(&dir, &old).unwrap();
+        forget_left_in_tmp(&name, &dir).unwrap();
+        assert!(fs::symlink_metadata(&old).is_err());
     }
     #[test]
     fn a_copy_across_disks_keeps_each_file_with_its_mode_and_each_link() {

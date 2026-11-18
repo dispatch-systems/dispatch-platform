@@ -522,9 +522,11 @@ fn the_scaffolder_keeps_its_temporary_files_in_the_checkouts_scratch_folder_by_i
         std::fs::read_to_string(scratch.join("decisions.md")).unwrap(),
         "approved"
     );
-    assert!(!old.exists());
+    // The old path is left as a link to the new folder, for what still names it.
+    assert_eq!(std::fs::read_link(&old).unwrap(), scratch);
     assert!(moved.contains("Moved the scratch folder"), "{moved}");
     // Once: a folder in /tmp again never takes the place of the one there now.
+    std::fs::remove_file(&old).unwrap();
     std::fs::create_dir(&old).unwrap();
     let kept = generate();
     std::fs::remove_dir(&old).unwrap();
