@@ -96,91 +96,16 @@ function address(path: string, asked: Record<string, string | undefined>) {
   ).toString();
   return query ? `${path}?${query}` : path;
 }
-/** The DSP's conversations, those waiting first, then the answered of every workspace or
- * `team`'s, and its workspaces. */
-export const getCommunications = (signal: AbortSignal, team?: string) =>
-  api<Communications>(address(communicationsUrl, { team }), undefined, signal);
-/** How many conversations wait on an answer, read again every `poll` milliseconds. */
-export const waitingUrl = `${communicationsUrl}/waiting`;
-export const useCommunicationsWaiting = (poll: number) =>
-  useCachedData<CommunicationsWaiting>(waitingUrl, poll);
-/** How many conversations wait, and the latest message each waits on. */
-export const getWaiting = (signal: AbortSignal) =>
-  api<CommunicationsWaiting>(waitingUrl, undefined, signal);
-/** The key a browser subscribes with to be told of new messages with Dispatch closed: none while
- * the server pushes nothing. */
-const pushKeyUrl = `${communicationsUrl}/push`;
-export const getPushKey = (signal?: AbortSignal) => api<PushKey>(pushKeyUrl, undefined, signal);
-export const usePushKey = () => useCachedData<PushKey>(pushKeyUrl);
-/** Keeps this browser's subscription, `endpoint` and its `keys`, as the member's. */
-export const keepPushing = (
-  endpoint: string,
-  keys: { p256dh: string; auth: string },
-  signal?: AbortSignal,
-) => api<{ ok: true }>(`${communicationsUrl}/push`, { endpoint, keys }, signal);
-/** Lets go of the member's browser at `endpoint`. */
-export const stopPushing = (endpoint: string, signal?: AbortSignal) =>
-  api<{ ok: true }>(`${communicationsUrl}/push/remove`, { endpoint }, signal);
-/** What changed since `after`, and who is typing, once either differs from what the page has. */
-export const getCommunicationsUpdates = (after: number, typing: number, signal: AbortSignal) =>
-  api<CommunicationsUpdates>(
-    `${communicationsUrl}/updates?after=${after}&typing=${typing}`,
-    undefined,
-    signal,
-  );
 /** Where a list's conversations are: Slack's, of every workspace or `team`'s, or by text, the
  * numbers' or the work phones'. */
 export type Listing = { kind: 'number' | 'work' } | { kind?: undefined; team?: string };
 const of = (listing: Listing) => (listing.kind ? { kind: listing.kind } : { team: listing.team });
-/** Conversations found by a name typed, misspelt or not, or by a number. */
-export const searchConversations = (typed: string, listing: Listing) =>
-  api<Conversations>(address(`${communicationsUrl}/conversations`, { q: typed, ...of(listing) }));
-/** The answered conversations, and groups, before the last one shown. */
-export const olderConversations = (last: Pick<Conversation, 'id' | 'lastAt'>, listing: Listing) =>
-  api<Conversations>(
-    address(`${communicationsUrl}/conversations`, {
-      before: `${last.lastAt ?? 0}:${last.id}`,
-      ...of(listing),
-    }),
-  );
-/** A conversation and its latest messages, or those before `first`: at low `priority` when it's
- * read before it's opened. */
-export const getConversation = (
-  id: string,
-  first?: Message,
-  priority?: 'low',
-  signal?: AbortSignal,
-) =>
-  api<ConversationMessages>(
-    `${communicationsUrl}/conversations/${id}${first ? `?before=${first.ts}` : ''}`,
-    undefined,
-    signal,
-    priority,
-  );
 /** No automatic fallback or cache merge: the answer replaces the requested window. */
 export type ConversationWindowRequest = { origins?: 1 } & (
   | { cursor: string; anchor?: never; leading?: never }
   | { anchor: string; leading: number; cursor?: never }
   | { cursor?: never; anchor?: never; leading?: never }
 );
-/** A complete latest/anchored window or one of its before/after/refresh continuations. */
-export const getConversationWindow = (
-  id: string,
-  request?: ConversationWindowRequest,
-  priority?: 'low',
-  signal?: AbortSignal,
-) =>
-  api<ConversationWindow>(
-    address(`${communicationsUrl}/conversations/${encodeURIComponent(id)}/window`, {
-      origins: request?.origins === undefined ? undefined : String(request.origins),
-      cursor: request?.cursor,
-      anchor: request?.anchor,
-      leading: request?.leading === undefined ? undefined : String(request.leading),
-    }),
-    undefined,
-    signal,
-    priority,
-  );
 /** What the profile beside a conversation shows of the member it's with, read as it opens. */
 export function useProfile(id: string) {
   const url = `${communicationsUrl}/conversations/${id}/profile`;
@@ -193,27 +118,8 @@ export const getContacts = (typed = '', team?: string) =>
 /** Opens a direct message with a member, to message them first. */
 export const openConversation = (teamId: string, userId: string) =>
   api<Conversation>(`${communicationsUrl}/conversations`, { teamId, userId });
-/** Sends a message, with the photos added for it, or a GIF chosen in their place: it, and the
- * conversation it's in now. */
-export const sendMessage = (id: string, text: string, photos: string[] = [], gif?: MessageGif) =>
-  api<SentMessage>(
-    `${communicationsUrl}/conversations/${id}/messages`,
-    gif ? { text, photos, gif } : { text, photos },
-  );
 /** Where the page searches KLIPY's GIFs, while the DSP has them and the server can. */
 export const getGifSearch = () => api<GifSearch>(`${communicationsUrl}/gifs`);
-/** Marks a conversation answered without a reply, as far as `seen`, the latest message shown. */
-export const markDone = (id: string, seen?: Message | null) =>
-  api<Conversation>(`${communicationsUrl}/conversations/${id}/done`, seen ? { seen: seen.ts } : {});
-/** Says the member is writing in a conversation, for the next few seconds. */
-export const sayTyping = (id: string) =>
-  api<{ ok: true }>(`${communicationsUrl}/conversations/${id}/typing`, {});
-/** Sends again a text that failed. */
-export const retryText = (id: string, message: string) =>
-  api<Message>(`${communicationsUrl}/conversations/${id}/messages/${message}/retry`, {});
-/** Saves a name for the number a conversation texts. */
-export const saveContact = (id: string, name: string) =>
-  api<Conversation>(`${communicationsUrl}/conversations/${id}/contact`, { name });
 /** Adds the number a conversation texts to the person `code`'s. */
 export const addToPerson = (id: string, code: string) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/person`, { code });
@@ -223,15 +129,6 @@ export const removeFromPerson = (id: string, code: string) =>
 /** Everyone Driver Match knows who hasn't left, whom a number can be added to, read while Save
  * contact is open. */
 export const useTextPeople = () => useCachedData<TextPeople>(`${communicationsUrl}/texts/people`);
-/** Blocks the number a conversation texts, or unblocks it. */
-export const blockNumber = (id: string, blocked: boolean) =>
-  api<Conversation>(
-    `${communicationsUrl}/conversations/${id}/${blocked ? 'block' : 'unblock'}`,
-    {},
-  );
-/** Opens the conversation with a number, to text it first. */
-export const textFirst = (number: string) =>
-  api<Conversation>(`${communicationsUrl}/texts/conversations`, { number });
 /** Opens the work conversation of one of today's drivers, to text them first. */
 export const textDriver = (driverId: string) =>
   api<Conversation>(`${communicationsUrl}/texts/conversations`, { driverId });
@@ -254,9 +151,6 @@ export async function saveQuickReplies(replies: string[], revision: number) {
   if (dataCache.session === session) dataCache.put(quickRepliesUrl, saved);
   return saved;
 }
-/** Whom the DSP can text, or those found by a name or number typed, and the numbers blocked. */
-export const getTextContacts = (typed = '') =>
-  api<TextContacts>(address(`${communicationsUrl}/texts/contacts`, { q: typed }));
 /**
  * How a message carries photos and files, by the way it goes: a photo added before it's sent, and
  * where a photo or file attached to one is read from once it's kept.
@@ -272,11 +166,11 @@ export type Attachments = {
    */
   fetch?: (id: string, signal?: AbortSignal) => Promise<{ kept: boolean }>;
 };
-/** Adds `photo` through the upload route `path`, for a message not sent yet: a refusal worded as
+/** Adds `photo` through the upload route at `url`, for a message not sent yet: a refusal worded as
  * its calls' are. */
-const adding = (path: string) => (photo: File, signal?: AbortSignal) =>
+const adding = (url: string) => (photo: File, signal?: AbortSignal) =>
   upload<CommunicationsUpload>(
-    `${communicationsUrl}/${path}?name=${encodeURIComponent(photo.name)}&type=${encodeURIComponent(photo.type)}`,
+    `${url}?name=${encodeURIComponent(photo.name)}&type=${encodeURIComponent(photo.type)}`,
     photo,
     undefined,
     signal,
@@ -285,17 +179,124 @@ const adding = (path: string) => (photo: File, signal?: AbortSignal) =>
   });
 /** A Slack message's, kept in Dispatch. */
 export const slackAttachments: Attachments = {
-  add: adding('uploads'),
+  add: adding(`${communicationsUrl}/uploads`),
   address: (id) => `${communicationsUrl}/files/${id}`,
 };
-/** A text's, kept with the texts the DSP's phones relay. */
-export const textAttachments: Attachments = {
-  add: adding('texts/uploads'),
-  address: (id) => `${communicationsUrl}/texts/files/${id}`,
-  preview: (id) => `${communicationsUrl}/texts/files/${id}/preview`,
-  fetch: (id, signal) =>
-    api<{ kept: boolean }>(`${communicationsUrl}/texts/files/${id}/fetch`, {}, signal),
-};
+/** A text's, of the line at `url`, kept with the texts its phones relay. */
+const textAttachments = (url: string): Attachments => ({
+  add: adding(`${url}/texts/uploads`),
+  address: (id) => `${url}/texts/files/${id}`,
+  preview: (id) => `${url}/texts/files/${id}/preview`,
+  fetch: (id, signal) => api<{ kept: boolean }>(`${url}/texts/files/${id}/fetch`, {}, signal),
+});
+/**
+ * One line's texting at `url`, as its page, its count, its alerts and its banner of phones down
+ * call it: Dispatch Phone's own, Slack's among it, or another feature's, from routes of its own, by
+ * the same calls and words. Each reads and changes only that line's conversations.
+ */
+export function lineTexting(url: string) {
+  const waitingUrl = `${url}/waiting`;
+  const pushUrl = `${url}/push`;
+  return {
+    /** Where its routes are, which every one begins with. */
+    url,
+    /** The line's conversations, those waiting first, then the answered, of every workspace or
+     * `team`'s on Dispatch Phone's own, and its workspaces. */
+    getOverview: (signal: AbortSignal, team?: string) =>
+      api<Communications>(address(url, { team }), undefined, signal),
+    /** How many conversations wait on an answer, read again every `poll` milliseconds. */
+    waitingUrl,
+    useWaiting: (poll: number) => useCachedData<CommunicationsWaiting>(waitingUrl, poll),
+    /** How many conversations wait, and the latest message each waits on. */
+    getWaiting: (signal: AbortSignal) => api<CommunicationsWaiting>(waitingUrl, undefined, signal),
+    /** The key a browser subscribes with to be told of new messages with Dispatch closed: none
+     * while the server pushes nothing. */
+    getPushKey: (signal?: AbortSignal) => api<PushKey>(pushUrl, undefined, signal),
+    usePushKey: () => useCachedData<PushKey>(pushUrl),
+    /** Keeps this browser's subscription, `endpoint` and its `keys`, as the member's. */
+    keepPushing: (endpoint: string, keys: { p256dh: string; auth: string }, signal?: AbortSignal) =>
+      api<{ ok: true }>(pushUrl, { endpoint, keys }, signal),
+    /** Lets go of the member's browser at `endpoint`. */
+    stopPushing: (endpoint: string, signal?: AbortSignal) =>
+      api<{ ok: true }>(`${pushUrl}/remove`, { endpoint }, signal),
+    /** What changed since `after`, and who is typing, once either differs from what the page has. */
+    getUpdates: (after: number, typing: number, signal: AbortSignal) =>
+      api<CommunicationsUpdates>(
+        `${url}/updates?after=${after}&typing=${typing}`,
+        undefined,
+        signal,
+      ),
+    /** Conversations found by a name typed, misspelt or not, or by a number. */
+    searchConversations: (typed: string, listing: Listing) =>
+      api<Conversations>(address(`${url}/conversations`, { q: typed, ...of(listing) })),
+    /** The answered conversations, and groups, before the last one shown. */
+    olderConversations: (last: Pick<Conversation, 'id' | 'lastAt'>, listing: Listing) =>
+      api<Conversations>(
+        address(`${url}/conversations`, {
+          before: `${last.lastAt ?? 0}:${last.id}`,
+          ...of(listing),
+        }),
+      ),
+    /** A conversation and its latest messages, or those before `first`: at low `priority` when
+     * it's read before it's opened. */
+    getConversation: (id: string, first?: Message, priority?: 'low', signal?: AbortSignal) =>
+      api<ConversationMessages>(
+        `${url}/conversations/${id}${first ? `?before=${first.ts}` : ''}`,
+        undefined,
+        signal,
+        priority,
+      ),
+    /** A complete latest/anchored window or one of its before/after/refresh continuations. */
+    getConversationWindow: (
+      id: string,
+      request?: ConversationWindowRequest,
+      priority?: 'low',
+      signal?: AbortSignal,
+    ) =>
+      api<ConversationWindow>(
+        address(`${url}/conversations/${encodeURIComponent(id)}/window`, {
+          origins: request?.origins === undefined ? undefined : String(request.origins),
+          cursor: request?.cursor,
+          anchor: request?.anchor,
+          leading: request?.leading === undefined ? undefined : String(request.leading),
+        }),
+        undefined,
+        signal,
+        priority,
+      ),
+    /** Sends a message, with the photos added for it, or a GIF chosen in their place on Dispatch
+     * Phone's own: it, and the conversation it's in now. */
+    sendMessage: (id: string, text: string, photos: string[] = [], gif?: MessageGif) =>
+      api<SentMessage>(
+        `${url}/conversations/${id}/messages`,
+        gif ? { text, photos, gif } : { text, photos },
+      ),
+    /** Marks a conversation answered without a reply, as far as `seen`, the latest message shown. */
+    markDone: (id: string, seen?: Message | null) =>
+      api<Conversation>(`${url}/conversations/${id}/done`, seen ? { seen: seen.ts } : {}),
+    /** Says the member is writing in a conversation, for the next few seconds. */
+    sayTyping: (id: string) => api<{ ok: true }>(`${url}/conversations/${id}/typing`, {}),
+    /** Sends again a text that failed. */
+    retryText: (id: string, message: string) =>
+      api<Message>(`${url}/conversations/${id}/messages/${message}/retry`, {}),
+    /** Saves a name for the number a conversation texts. */
+    saveContact: (id: string, name: string) =>
+      api<Conversation>(`${url}/conversations/${id}/contact`, { name }),
+    /** Blocks the number a conversation texts, or unblocks it. */
+    blockNumber: (id: string, blocked: boolean) =>
+      api<Conversation>(`${url}/conversations/${id}/${blocked ? 'block' : 'unblock'}`, {}),
+    /** Opens the conversation with a number, to text it first. */
+    textFirst: (number: string) => api<Conversation>(`${url}/texts/conversations`, { number }),
+    /** Whom the line can text, or those found by a name or number typed, and the numbers blocked. */
+    getTextContacts: (typed = '') =>
+      api<TextContacts>(address(`${url}/texts/contacts`, { q: typed })),
+    /** A text's photos and files, kept with the texts the line's phones relay. */
+    attachments: textAttachments(url),
+  };
+}
+export type LineTexting = ReturnType<typeof lineTexting>;
+/** Dispatch Phone's own line's. */
+export const dispatchTexting = lineTexting(communicationsUrl);
 /** The address of the workspace `team`'s logo, at its `version`, which it carries. */
 export const workspaceLogoUrl = (team: string, version: string) =>
   `${communicationsUrl}/workspaces/${encodeURIComponent(team)}/logo?v=${version}`;

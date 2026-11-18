@@ -1,8 +1,30 @@
 # Every route cjf87gqd_hr_line registers: its method and path, who may call it, the
 # database access its work runs under, and whether it wakes the scheduler.
 # Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/cjf87gqd-hr-line Dsp("cjf87gqd_hr_line.use") Read
+GET /api/dsp/cjf87gqd-hr-line/conversations Dsp("cjf87gqd_hr_line.use") Read
+GET /api/dsp/cjf87gqd-hr-line/conversations/{id} Dsp("cjf87gqd_hr_line.use") Read
+GET /api/dsp/cjf87gqd-hr-line/conversations/{id}/window Dsp("cjf87gqd_hr_line.use") Read
 GET /api/dsp/cjf87gqd-hr-line/phones Dsp("connections.manage|cjf87gqd_hr_line.phones") Read
 GET /api/dsp/cjf87gqd-hr-line/phones/pairing/{id} Dsp("connections.manage|cjf87gqd_hr_line.phones") Read
+GET /api/dsp/cjf87gqd-hr-line/push Dsp("cjf87gqd_hr_line.use") Read
+GET /api/dsp/cjf87gqd-hr-line/texts/contacts Dsp("cjf87gqd_hr_line.use") Read
+GET /api/dsp/cjf87gqd-hr-line/texts/files/{id} Dsp("cjf87gqd_hr_line.use") Async
+GET /api/dsp/cjf87gqd-hr-line/texts/files/{id}/preview Dsp("cjf87gqd_hr_line.use") Async
+GET /api/dsp/cjf87gqd-hr-line/updates Dsp("cjf87gqd_hr_line.use") Async
+GET /api/dsp/cjf87gqd-hr-line/waiting Dsp("cjf87gqd_hr_line.use") Read
+POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/block Dsp("cjf87gqd_hr_line.use") Scoped(DataDomain("communications"))
+POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/contact Dsp("cjf87gqd_hr_line.use") Scoped(DataDomain("communications"))
+POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/done Dsp("cjf87gqd_hr_line.use") Scoped(DataDomain("communications"))
+POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/messages Dsp("cjf87gqd_hr_line.use") Async
+POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/messages/{message}/retry Dsp("cjf87gqd_hr_line.use") Async
+POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/typing Dsp("cjf87gqd_hr_line.use") Async
+POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/unblock Dsp("cjf87gqd_hr_line.use") Scoped(DataDomain("communications"))
 POST /api/dsp/cjf87gqd-hr-line/phones/pairing Dsp("connections.manage|cjf87gqd_hr_line.phones") Write
 POST /api/dsp/cjf87gqd-hr-line/phones/{id}/remove Dsp("connections.manage|cjf87gqd_hr_line.phones") Async
 POST /api/dsp/cjf87gqd-hr-line/phones/{id}/rename Dsp("connections.manage|cjf87gqd_hr_line.phones") Write
+POST /api/dsp/cjf87gqd-hr-line/push Dsp("cjf87gqd_hr_line.use") Async
+POST /api/dsp/cjf87gqd-hr-line/push/remove Dsp("cjf87gqd_hr_line.use") Scoped(DataDomain("communications"))
+POST /api/dsp/cjf87gqd-hr-line/texts/conversations Dsp("cjf87gqd_hr_line.use") Scoped(DataDomain("communications"))
+POST /api/dsp/cjf87gqd-hr-line/texts/files/{id}/fetch Dsp("cjf87gqd_hr_line.use") Async
+POST /api/dsp/cjf87gqd-hr-line/texts/uploads Dsp("cjf87gqd_hr_line.use") Upload

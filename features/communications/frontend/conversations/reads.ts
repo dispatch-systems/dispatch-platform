@@ -1,10 +1,6 @@
 import type { Conversation, ConversationMessages, Message, Workday } from '../../api/index.js';
 import type { ConversationWindow } from '../../api/index.js';
-import {
-  getConversation,
-  getConversationWindow,
-  type ConversationWindowRequest,
-} from '../../api/client.js';
+import type { ConversationWindowRequest, LineTexting } from '../../api/client.js';
 import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { canPrefetch } from '../../../../core/shell/frontend/runtime/prefetch.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
@@ -135,7 +131,10 @@ const withDays = (kept: readonly Workday[], read: readonly Workday[]) => [
 ];
 
 export class ConversationReads {
-  constructor(private readonly timeZone: string) {}
+  constructor(
+    private readonly texting: LineTexting,
+    private readonly timeZone: string,
+  ) {}
 
   /** The mounted thread supplies current geometry, including interactions begun during a read. */
   viewport(id: string, read: () => ConversationViewport) {
@@ -269,7 +268,12 @@ export class ConversationReads {
       !controller.signal.aborted;
     let succeeded = false;
     try {
-      const page = await getConversation(id, shown.messages[0], undefined, controller.signal);
+      const page = await this.texting.getConversation(
+        id,
+        shown.messages[0],
+        undefined,
+        controller.signal,
+      );
       const now = this.entries.get(id) === entry ? entry.held.opened : undefined;
       if (now && owns() && entry.turns.shown === since) {
         if (entry.viewport?.().blocked) {
@@ -454,7 +458,12 @@ export class ConversationReads {
       return true;
     };
     try {
-      const window = await getConversationWindow(id, intent, priority, controller.signal);
+      const window = await this.texting.getConversationWindow(
+        id,
+        intent,
+        priority,
+        controller.signal,
+      );
       if (!available()) return;
       const currentView = entry.viewport?.();
       const moved =
@@ -516,7 +525,7 @@ export class ConversationReads {
         // CURRENT viewport; a scroll or a completed older page during these awaits belongs to it.
         let latest: ConversationMessages =
           before?.window || !following
-            ? await getConversation(id, undefined, priority, controller.signal)
+            ? await this.texting.getConversation(id, undefined, priority, controller.signal)
             : { ...window, more: window.range.hasBefore };
         if (!available()) return;
         const lastRead = latest.messages;
@@ -527,7 +536,7 @@ export class ConversationReads {
           // Existing eligible legacy history is merged below; it needs no second traversal.
           if (!current?.window || !target || byTs(latest.messages[0], target) <= 0) break;
           const first = latest.messages[0];
-          const page = await getConversation(id, first, priority, controller.signal);
+          const page = await this.texting.getConversation(id, first, priority, controller.signal);
           if (!available()) return;
           if (!page.messages.length || byTs(page.messages[0]!, first) >= 0) break;
           latest = {

@@ -6,5 +6,6 @@ export const featureLabels = {
 } as const;
 export const permissionLabels = {
   "cjf87gqd_hr_line.phones": "Manage HR Line Phones",
+  "cjf87gqd_hr_line.use": "Use HR Line",
   "cjf87gqd_legacy_tracker.manage": "Manage Legacy Tracker"
 } as const;
