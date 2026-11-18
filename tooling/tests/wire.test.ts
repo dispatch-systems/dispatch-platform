@@ -10,9 +10,11 @@ import {
   wiredManifest,
   wiredMcpManifest,
   wiredProduct,
+  wiredList,
   wiredTools,
   type Crate,
 } from '../scaffold/wire.js';
+import { rustfmt } from '../scaffold/source-editing.js';
 
 // The MCP's wiring, from its tools: what `npm run contracts:generate` writes so that a tool
 // needing a feature can use its crate, in builds that have it and no other.
@@ -193,4 +195,22 @@ test("the app turns on the MCP's Cargo feature of each feature its tools need", 
   const wired = wiredManifest(manifest, features, ['dvic']);
   assert.match(wired, /^dvic = \["dep:dispatch-dvic", "dispatch-mcp\/dvic"\]$/m);
   assert.match(wired, /^timecard = \["dep:dispatch-timecard", "driver_match"\]$/m);
+});
+
+test("the registry's list reads as rustfmt writes it, however long a feature's name", () => {
+  const custom = (folder: string) =>
+    crateOf(
+      `k7m2qx4p_${folder}`,
+      `[package]\nname = "dispatch-k7m2qx4p-${folder.replaceAll('_', '-')}"\n\n[features]\nts = []\n`,
+      { name: `k7m2qx4p_${folder}`, dir: `features/custom/k7m2qx4p/${folder}`, owner: 'k7m2qx4p' },
+    );
+  // Each a line longer than the last: one that fits, one rustfmt breaks before `.registered`,
+  // and one whose arguments it breaks a line each.
+  const list = wiredList([
+    ...features,
+    custom('fuel_log'),
+    custom('legacy_tracker_links'),
+    custom('fuel_purchase_reconciliation_history_tracker'),
+  ]);
+  assert.equal(list, rustfmt(list));
 });
