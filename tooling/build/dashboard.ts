@@ -6,10 +6,7 @@ import type { DashboardAssets } from '../testing/dashboard-assets.js';
 
 /** The dashboard's production build in `outDir`, compressed as it is served, and what each of
  * its chunks bundles, from Vite's manifest, which stays outside the served folder. */
-export async function buildDashboard(
-  outDir: string,
-  logLevel?: 'error',
-): Promise<DashboardAssets> {
+export async function buildDashboard(outDir: string, logLevel?: 'error'): Promise<DashboardAssets> {
   await build({ logLevel, build: { outDir, manifest: true } });
   const manifest = path.join(outDir, '.vite/manifest.json');
   const assets = JSON.parse(fs.readFileSync(manifest, 'utf8'));

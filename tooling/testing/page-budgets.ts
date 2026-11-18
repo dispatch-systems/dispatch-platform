@@ -71,6 +71,7 @@ const limits = ({ graph, size }: GraphSizes[number]) => [
     label: 'transferred',
     size: size.scripts.transferred,
     budget: graph.transferred,
+    compressed: true,
   },
   { what: 'CSS', label: 'CSS', size: size.styles.raw, budget: graph.styles },
 ];
@@ -81,54 +82,57 @@ export const overBudget = (sizes: GraphSizes) =>
 const thin = (left: number, budget: number) => left < budget / 100;
 const bytes = (n: number) => n.toLocaleString('en-US');
 
+/** Where `main` stood against a budget a change is over: its size, or why it wasn't measured. */
+function mainAgainst(
+  main: GraphSizes | string,
+  graph: string,
+  what: string,
+  { size: now, budget }: { size: number; budget: number },
+) {
+  if (typeof main === 'string') return `  main: ${main}.`;
+  const before = main.find((other) => other.graph.name === graph);
+  const size = before && limits(before).find((limit) => limit.what === what)!.size;
+  if (size === undefined) return '  main: no such graph.';
+  const left = budget - size;
+  const stood =
+    left <= 0
+      ? `already ${bytes(-left)} over: main's to fix, not this change's`
+      : thin(left, budget)
+        ? `${bytes(left)} left: main is at the edge already`
+        : `${bytes(left)} left: this change adds ${bytes(now - size)}`;
+  return `  main: ${bytes(size)} bytes, ${stood}.`;
+}
+
 /** What `dispatchdev check` says of a change's graphs: a line for each, with each size and what
  * its budget leaves; a warning for each budget under 1% from full; and each one over, with by how
- * much and where `main` stands against it: its sizes, or why they weren't measured. */
+ * much and where `main` stood against it, where it was measured. */
 export function pageSizeReport(change: GraphSizes, main?: GraphSizes | string) {
   const width = Math.max(...change.map(({ graph }) => graph.name.length));
   const lines: string[] = [];
   const warnings: string[] = [];
   let thinTransfer = false;
   for (const graph of change) {
+    const name = graph.graph.name;
     const measured = limits(graph).map((limit) => {
       const left = limit.budget - limit.size;
       const room = left > 0 ? `${bytes(left)} left` : `${bytes(-left)} over`;
       return `${limit.label} ${bytes(limit.size)}/${bytes(limit.budget)} (${room})`;
     });
-    lines.push(`${`${graph.graph.name}:`.padEnd(width + 1)} ${measured.join(', ')}`);
-    for (const limit of limits(graph)) {
-      const left = limit.budget - limit.size;
-      const what = `${graph.graph.name}'s ${limit.what}`;
-      if (thin(left, limit.budget) && limit.what.startsWith('transferred')) thinTransfer = true;
+    lines.push(`${`${name}:`.padEnd(width + 1)} ${measured.join(', ')}`);
+    for (const { what, size, budget, compressed } of limits(graph)) {
+      const left = budget - size;
+      if (!thin(left, budget)) continue;
+      if (compressed) thinTransfer = true;
       if (left > 0) {
-        if (thin(left, limit.budget))
-          warnings.push(
-            `Warning: ${what} has ${bytes(left)} bytes left, under 1% of its ${bytes(limit.budget)}.`,
-          );
+        warnings.push(
+          `Warning: ${name}'s ${what} has ${bytes(left)} bytes left, under 1% of its ${bytes(budget)}.`,
+        );
         continue;
       }
       warnings.push(
-        `✖ ${what} is ${bytes(limit.size)} bytes, ${bytes(-left)} over its budget of ${bytes(limit.budget)}.`,
+        `\u2716 ${name}'s ${what} is ${bytes(size)} bytes, ${bytes(-left)} over its budget of ${bytes(budget)}.`,
       );
-      if (main === undefined) continue;
-      if (typeof main === 'string') {
-        warnings.push(`  main: ${main}.`);
-        continue;
-      }
-      const before = main.find((other) => other.graph.name === graph.graph.name);
-      const then = before && limits(before).find((other) => other.what === limit.what)!.size;
-      if (then === undefined) {
-        warnings.push(`  main: no such graph.`);
-        continue;
-      }
-      const mainLeft = limit.budget - then;
-      warnings.push(
-        mainLeft <= 0
-          ? `  main: ${bytes(then)} bytes, already ${bytes(-mainLeft)} over: main's to fix, not this change's.`
-          : thin(mainLeft, limit.budget)
-            ? `  main: ${bytes(then)} bytes, ${bytes(mainLeft)} left: main is at the edge already.`
-            : `  main: ${bytes(then)} bytes, ${bytes(mainLeft)} left: this change adds ${bytes(limit.size - then)}.`,
-      );
+      if (main !== undefined) warnings.push(mainAgainst(main, name, what, { size, budget }));
     }
   }
   if (thinTransfer)

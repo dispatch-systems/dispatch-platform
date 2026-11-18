@@ -88,10 +88,7 @@ test(
         size.scripts.transferred < graph.transferred,
         `${graph.name} transferred JavaScript graph exceeds ${graph.transferred} bytes`,
       );
-      assert(
-        size.styles.raw < graph.styles,
-        `${graph.name} complete CSS graph exceeds its budget`,
-      );
+      assert(size.styles.raw < graph.styles, `${graph.name} complete CSS graph exceeds its budget`);
       t.diagnostic(
         `${graph.name}: ${size.scripts.raw} raw / ${size.scripts.transferred} transferred JavaScript bytes`,
       );

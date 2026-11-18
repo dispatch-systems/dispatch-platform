@@ -94,10 +94,16 @@ test('page sizes name each graph over its budget, by how much and where main sto
     graph('Home', 90_000, 19_900, 5_000),
     graph('Settings', 90_000, 15_000, 10_200),
   ]);
-  assert.match(homeOver!, /Home's transferred JavaScript is 20,984 bytes, 984 over its budget of 20,000/);
+  assert.match(
+    homeOver!,
+    /Home's transferred JavaScript is 20,984 bytes, 984 over its budget of 20,000/,
+  );
   assert.match(homeMain!, /^ {2}main: 19,900 bytes, 100 left: main is at the edge/);
   assert.match(settingsOver!, /Settings's CSS is 10,050 bytes, 50 over its budget of 10,000/);
   assert.match(settingsMain!, /^ {2}main: 10,200 bytes, already 200 over/);
-  assert.match(report([graph('Home', 90_000, 15_000, 5_000)])[3]!, /5,000 left: this change adds 5,984/);
+  assert.match(
+    report([graph('Home', 90_000, 15_000, 5_000)])[3]!,
+    /5,000 left: this change adds 5,984/,
+  );
   assert.match(report('not measured, as its packages differ')[3]!, /main: not measured/);
 });
