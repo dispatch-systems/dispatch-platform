@@ -660,7 +660,7 @@ mod tests {
             if args[0] == "gh" && self.down.contains(&now) {
                 let call = args[..3].join(" ");
                 return Err(
-                    format!("{call} failed: dial tcp 140.82.112.6:443: i/o timeout").into(),
+                    format!("{call} failed: dial tcp: lookup api.github.com: i/o timeout").into(),
                 );
             }
             let (status, conclusion) = match now >= self.ends {
@@ -759,8 +759,8 @@ mod tests {
                 "run"
             };
             let unanswered = format!(
-                "GitHub didn't answer: `gh {call} list` failed on all 3 tries: dial tcp \
-                 140.82.112.6:443: i/o timeout."
+                "GitHub didn't answer: `gh {call} list` failed on all 3 tries: dial tcp: lookup \
+                 api.github.com: i/o timeout."
             );
             assert!(
                 said.iter().any(|line| line.ends_with(&unanswered)),

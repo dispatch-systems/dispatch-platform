@@ -186,12 +186,11 @@ mod tests {
         // GitHub failing.
         for failure in [
             "gh timed out or exceeded output limit",
-            "gh run list failed: Get \"https://api.github.com/graphql\": dial tcp \
-             140.82.112.6:443: i/o timeout",
+            "gh run list failed: Get \"https://api.github.com/graphql\": dial tcp: lookup \
+             api.github.com: i/o timeout",
             "gh run list failed: error connecting to api.github.com\ncheck your internet \
              connection or https://githubstatus.com",
-            "gh run list failed: read tcp 10.0.0.2:5123->140.82.112.6:443: read: connection \
-             reset by peer",
+            "gh run list failed: read tcp: read: connection reset by peer",
             "gh run list failed: net/http: TLS handshake timeout",
             "gh run list failed: HTTP 502: Bad Gateway (https://api.github.com/graphql)",
             "gh run list failed: HTTP 429: too many requests",
