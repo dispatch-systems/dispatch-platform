@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     fs,
+    io::Write,
     path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -142,17 +143,17 @@ fn gh(root: &Path, args: &[&str], runner: &dyn Runner) -> Result<String> {
     command.extend_from_slice(&["--repo", REPOSITORY]);
     workspace::text(runner, &command, Some(root))
 }
-/// The newest run of the checks on `branch` for `event`, or the newest `finished` one: of
-/// `commit` alone when one is named.
-fn latest(
+/// The newest run of the checks on `branch` for `event` that `filters` of `gh run list` keep,
+/// with its `fields`.
+fn newest(
     root: &Path,
     branch: &str,
     event: &str,
-    commit: Option<&str>,
-    finished: bool,
+    filters: &[&str],
+    fields: &str,
     runner: &dyn Runner,
-) -> Result<Option<Run>> {
-    let mut list = vec![
+) -> Result<Option<Value>> {
+    let list = [
         "run",
         "list",
         "--workflow",
@@ -164,16 +165,31 @@ fn latest(
         "--limit",
         "1",
         "--json",
-        "databaseId,headSha,status,conclusion,startedAt",
+        fields,
     ];
+    let runs: Vec<Value> =
+        serde_json::from_str(&gh(root, &[&list[..], filters].concat(), runner)?)?;
+    Ok(runs.into_iter().next())
+}
+/// The newest run of the checks on `branch` for `event`, or the newest `finished` one: of
+/// `commit` alone when one is named.
+fn latest(
+    root: &Path,
+    branch: &str,
+    event: &str,
+    commit: Option<&str>,
+    finished: bool,
+    runner: &dyn Runner,
+) -> Result<Option<Run>> {
+    let mut filters = vec![];
     if finished {
-        list.extend(["--status", "completed"]);
+        filters.extend(["--status", "completed"]);
     }
     if let Some(commit) = commit {
-        list.extend(["--commit", commit]);
+        filters.extend(["--commit", commit]);
     }
-    let runs: Vec<Value> = serde_json::from_str(&gh(root, &list, runner)?)?;
-    let Some(run) = runs.first() else {
+    let fields = "databaseId,headSha,status,conclusion,startedAt";
+    let Some(run) = newest(root, branch, event, &filters, fields, runner)? else {
         return Ok(None);
     };
     let id = run["databaseId"].as_u64().ok_or("A run without an id")?;
@@ -225,30 +241,141 @@ fn latest(
     }))
 }
 
-pub fn run(root: &Path, now: SystemTime, runner: &dyn Runner) -> Result<()> {
+/// A run of the checks on a commit the PR's head replaced, or the commit alone when it had none.
+struct Replaced {
+    run: Option<u64>,
+    commit: String,
+}
+impl Replaced {
+    /// The line that says so before the head's `run` is told, as it stands at `now`.
+    fn line(&self, head: &str, run: Option<&Run>, now: SystemTime) -> String {
+        let standing = match run {
+            None => "not started yet".to_owned(),
+            Some(run) if !run.done => match run.pending(now) {
+                Pending::Dropped { .. } => "never started".to_owned(),
+                Pending::Running(waited) => {
+                    format!("running for {}", workspace::duration(waited))
+                }
+            },
+            Some(run) => match run.conclusion.as_str() {
+                "success" => "passed".to_owned(),
+                "failure" => "failed".to_owned(),
+                conclusion => conclusion.replace('_', " "),
+            },
+        };
+        let (old, new) = (short(&self.commit), short(head));
+        match self.run {
+            Some(id) => format!(
+                "Run {id} is on {old}, which {new} replaced: its results no longer count; the \
+                 head's run is {standing}."
+            ),
+            None => format!(
+                "{old} is no longer the PR's head: {new} replaced it, and the head's run is \
+                 {standing}."
+            ),
+        }
+    }
+}
+/// The run on `commit`, when one is named, else `branch`'s newest that failed, when either is on
+/// a commit other than `head`, the PR's: GitHub tells a run's results however old its head.
+fn replaced(
+    root: &Path,
+    branch: &str,
+    head: &str,
+    commit: Option<&str>,
+    runner: &dyn Runner,
+) -> Result<Option<Replaced>> {
+    let id = |run: &Value| run["databaseId"].as_u64();
+    let Some(commit) = commit else {
+        let failed = newest(
+            root,
+            branch,
+            "pull_request",
+            &["--status", "failure"],
+            "databaseId,headSha",
+            runner,
+        )?;
+        return Ok(failed
+            .filter(|run| run["headSha"] != head)
+            .map(|run| Replaced {
+                run: id(&run),
+                commit: run["headSha"].as_str().unwrap_or_default().to_owned(),
+            }));
+    };
+    let commit = workspace::git(
+        runner,
+        root,
+        &[
+            "rev-parse",
+            "--verify",
+            "-q",
+            &format!("{commit}^{{commit}}"),
+        ],
+    )
+    .map_err(|_| format!("{commit} names no commit in this checkout."))?;
+    if commit == head {
+        return Ok(None);
+    }
+    let on = newest(
+        root,
+        branch,
+        "pull_request",
+        &["--commit", &commit],
+        "databaseId",
+        runner,
+    )?;
+    Ok(Some(Replaced {
+        run: on.as_ref().and_then(id),
+        commit,
+    }))
+}
+
+/// `dispatchdev ci [<commit>]`: why the checks on the PR's head failed, said first when the
+/// commit named, or the newest run that failed, is on a head since replaced.
+pub fn run(
+    root: &Path,
+    commit: Option<&str>,
+    now: SystemTime,
+    runner: &dyn Runner,
+    out: &mut dyn Write,
+) -> Result<()> {
     let branch = workspace::text(runner, &["git", "branch", "--show-current"], Some(root))?;
     if branch == "main" {
+        if commit.is_some() {
+            return Err(
+                "On main, `dispatchdev ci` reads main's latest run: name no commit.".into(),
+            );
+        }
         return main(root, now, runner);
     }
     let (branch, head) = review::pushed(root, runner)?;
-    let Some(run) =
-        latest(root, &branch, "pull_request", None, false, runner)?.filter(|run| run.head == head)
-    else {
-        println!("No checks have started on {} yet.", short(&head));
+    let run =
+        latest(root, &branch, "pull_request", None, false, runner)?.filter(|run| run.head == head);
+    if let Some(replaced) = replaced(root, &branch, &head, commit, runner)? {
+        writeln!(out, "{}", replaced.line(&head, run.as_ref(), now))?;
+    }
+    let Some(run) = run else {
+        writeln!(out, "No checks have started on {} yet.", short(&head))?;
         return Ok(());
     };
     let pending = (!run.done).then(|| run.pending(now));
     if let Some(Pending::Dropped { run, waited }) = pending {
-        println!(
+        writeln!(
+            out,
             "GitHub never started the checks on {}: run {run} has been queued without a job for {}.",
             short(&head),
             workspace::duration(waited)
-        );
-        println!("{}", workspace::next(&[restart(&branch)]));
+        )?;
+        writeln!(out, "{}", workspace::next(&[restart(&branch)]))?;
         return Ok(());
     }
     if run.failed.is_empty() {
-        println!("Nothing failed on {}{}.", short(&head), so_far(pending));
+        writeln!(
+            out,
+            "Nothing failed on {}{}.",
+            short(&head),
+            so_far(pending)
+        )?;
         return Ok(());
     }
     let main = latest(root, "main", "push", None, true, runner)?;
@@ -261,7 +388,11 @@ pub fn run(root: &Path, now: SystemTime, runner: &dyn Runner) -> Result<()> {
     for job in &run.failed {
         // The gate fails whenever another job does; alone, its own steps failed.
         if job.name == crate::merge::REQUIRED && others {
-            println!("FAIL {}: it fails because the jobs above did", job.name);
+            writeln!(
+                out,
+                "FAIL {}: it fails because the jobs above did",
+                job.name
+            )?;
             continue;
         }
         let failed = job.lines(&log(job.id));
@@ -293,9 +424,9 @@ pub fn run(root: &Path, now: SystemTime, runner: &dyn Runner) -> Result<()> {
                 }
             }
         };
-        println!("FAIL {}: {verdict}", job.title());
+        writeln!(out, "FAIL {}: {verdict}", job.title())?;
         for line in &failed[failed.len().saturating_sub(LINES)..] {
-            println!("    {line}");
+            writeln!(out, "    {line}")?;
         }
     }
     let mut next = vec![];
@@ -320,7 +451,7 @@ pub fn run(root: &Path, now: SystemTime, runner: &dyn Runner) -> Result<()> {
             run.rerun()
         ));
     }
-    println!("{}", workspace::next(&next));
+    writeln!(out, "{}", workspace::next(&next))?;
     Ok(())
 }
 
@@ -749,6 +880,140 @@ mod tests {
         let ended =
             r#""status":"completed","conclusion":"failure","startedAt":"2026-11-11T20:49:10Z""#;
         assert_eq!(pending(ended, none, "abc", at(1_794_430_150 + 7_200)), None);
+    }
+    const OLD: &str = "aaaa111122223333444455556666777788889999";
+    const EARLIER: &str = "cccc111122223333444455556666777788889999";
+    const HEAD: &str = "bbbb111122223333444455556666777788889999";
+    /// The branch `change`, pushed at `HEAD`, which replaced `OLD` and `EARLIER`, and GitHub with
+    /// run 4 on `OLD`, which failed, and none on `EARLIER`.
+    struct Pushed {
+        /// What `gh run list` gives of the newest run.
+        newest: String,
+        /// What it gives of the newest run that failed.
+        failed: String,
+        jobs: &'static str,
+    }
+    /// Run 4, on `OLD`, which failed.
+    fn old() -> String {
+        format!(
+            r#"[{{"databaseId":4,"headSha":"{OLD}","status":"completed","conclusion":"failure"}}]"#
+        )
+    }
+    impl Pushed {
+        /// The newest run 5, on `HEAD`, with `fields`, or run 4 when the head's has none yet; the
+        /// newest that failed run 4 when `failed`, else none.
+        fn new(head: Option<&str>, failed: bool) -> Self {
+            Self {
+                newest: head.map_or_else(old, |fields| {
+                    format!(r#"[{{"databaseId":5,"headSha":"{HEAD}",{fields}}}]"#)
+                }),
+                failed: if failed { old() } else { "[]".to_owned() },
+                jobs: r#"{"jobs":[{"name":"core","databaseId":9,"conclusion":"success"}]}"#,
+            }
+        }
+        /// What `dispatchdev ci` says, with `commit` named, at `now`, line by line.
+        fn ci(&self, commit: Option<&str>, now: SystemTime) -> Result<Vec<String>> {
+            let mut out = vec![];
+            run(Path::new("."), commit, now, self, &mut out)?;
+            Ok(String::from_utf8(out)?.lines().map(str::to_owned).collect())
+        }
+    }
+    impl Runner for Pushed {
+        fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+            let filter = |flag: &str| {
+                args.windows(2)
+                    .find(|pair| pair[0] == flag)
+                    .map(|pair| pair[1])
+            };
+            let answer = match args {
+                ["git", "branch", "--show-current"] => "change".to_owned(),
+                ["git", "status", "--porcelain"] => String::new(),
+                ["git", "rev-parse", "HEAD"] => HEAD.to_owned(),
+                ["git", "rev-parse", "--verify", "-q", rev] => {
+                    match rev.strip_suffix("^{commit}") {
+                        Some(commit) => [OLD, EARLIER, HEAD]
+                            .into_iter()
+                            .find(|full| full.starts_with(commit))
+                            .ok_or("git rev-parse failed")?
+                            .to_owned(),
+                        // The branch as pushed.
+                        None => HEAD.to_owned(),
+                    }
+                }
+                ["gh", "run", "list", ..] => match (filter("--status"), filter("--commit")) {
+                    (Some("failure"), None) => self.failed.clone(),
+                    (None, Some(OLD)) => old(),
+                    (None, Some(_)) => "[]".to_owned(),
+                    (None, None) => self.newest.clone(),
+                    _ => return Err(format!("unexpected {args:?}").into()),
+                },
+                ["gh", "run", "view", ..] => self.jobs.to_owned(),
+                _ => return Err(format!("unexpected {args:?}").into()),
+            };
+            Ok(answer.into_bytes())
+        }
+    }
+    #[test]
+    fn a_run_on_a_head_since_replaced_is_said_to_count_no_longer() {
+        let now = UNIX_EPOCH + Duration::from_secs(1_794_430_150);
+        let passed = Some(r#""status":"completed","conclusion":"success""#);
+        let replaced = |standing: &str| {
+            format!(
+                "Run 4 is on aaaa111122, which bbbb111122 replaced: its results no longer count; \
+                 the head's run is {standing}."
+            )
+        };
+        let nothing = "Nothing failed on bbbb111122.".to_owned();
+        // T3 names the short commit of the head a run's notice was for.
+        let ci = |pushed: Pushed, commit| pushed.ci(commit, now).unwrap();
+        assert_eq!(
+            ci(Pushed::new(passed, false), Some("aaaa111")),
+            [replaced("passed"), nothing.clone()]
+        );
+        assert_eq!(
+            ci(Pushed::new(passed, false), Some("cccc111")),
+            [
+                "cccc111122 is no longer the PR's head: bbbb111122 replaced it, and the head's \
+                 run is passed."
+                    .to_owned(),
+                nothing.clone()
+            ]
+        );
+        assert_eq!(
+            ci(Pushed::new(passed, false), Some("bbbb111")),
+            std::slice::from_ref(&nothing)
+        );
+        assert_eq!(
+            Pushed::new(passed, false)
+                .ci(Some("dddd111"), now)
+                .unwrap_err()
+                .to_string(),
+            "dddd111 names no commit in this checkout."
+        );
+        // Unnamed, the newest run that failed is the one T3 told of.
+        assert_eq!(
+            ci(Pushed::new(passed, true), None),
+            [replaced("passed"), nothing.clone()]
+        );
+        assert_eq!(ci(Pushed::new(passed, false), None), [nothing]);
+        // The head's run is told as it stands, and then reported as usual.
+        let going = r#""status":"in_progress","conclusion":"","startedAt":"2026-11-11T20:49:10Z""#;
+        assert_eq!(
+            Pushed::new(Some(going), true)
+                .ci(None, now + Duration::from_secs(90))
+                .unwrap(),
+            [
+                replaced("running for 1m 30s"),
+                "Nothing failed on bbbb111122 so far: the run has gone on for 1m 30s.".to_owned()
+            ]
+        );
+        assert_eq!(
+            ci(Pushed::new(None, true), None),
+            [
+                replaced("not started yet"),
+                "No checks have started on bbbb111122 yet.".to_owned()
+            ]
+        );
     }
     #[test]
     fn a_failed_job_names_the_step_it_failed_in() {
