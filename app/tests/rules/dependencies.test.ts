@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { localDependencies, readCrate, type Crate } from './support/cargo.js';
-import { declared, inTest } from './support/manifests.js';
+import { closure, declared, installedWith, inTest } from './support/manifests.js';
 import { holds } from './support/holds.js';
 import {
   collectors,
@@ -43,29 +43,6 @@ const unitOfFile = (file: string) => {
   return contract(file) ?? (owner ? unitOf(owner) : file.split('/').slice(0, 2).join('/'));
 };
 
-/**
- * What an owner's tests install it with, from what each owner declares: what it declares, and
- * what each of those declares, all the way down, as the registry wants each dependency
- * registered.
- */
-function installedWith(dir: string, declares: (dir: string) => Iterable<string>) {
-  const reached = new Set<string>();
-  const visit = (each: string) => {
-    for (const next of declares(each))
-      if (!reached.has(next)) {
-        reached.add(next);
-        visit(next);
-      }
-  };
-  visit(dir);
-  return reached;
-}
-/** What a feature or collector declares, by its folder. */
-const declaresOf = (dir: string) => {
-  const owner = [...features(), ...collectors()].find((each) => each.dir === dir);
-  return owner ? declared(owner) : [];
-};
-
 /** The owners of the workspace crates a Cargo.toml lists. */
 const workspaceDependencies = (crate: Crate, dev: boolean) =>
   localDependencies(crate, rust().crates, dev).map((dir) => unitOfFile(`${dir}/Cargo.toml`));
@@ -86,7 +63,7 @@ test("each feature's and collector's Cargo.toml lists exactly what its manifest 
       if (!listed.has(dir)) disagree.push(`${manifest} lacks ${dir}, which its manifest declares`);
     // Its tests may use what it may, core's test helpers, its collectors and features, and what
     // those use in turn, which its tests install with them.
-    const installed = installedWith(owner.dir, declaresOf);
+    const installed = installedWith(owner);
     for (const dir of workspaceDependencies(crate, true))
       if (!mayList(dir) && !installed.has(dir))
         disagree.push(
@@ -104,7 +81,7 @@ test("a feature's tests install what its features use, all the way down, and not
     ['features/c', ['features/b']],
     ['features/d', ['collectors/y']],
   ]);
-  const installed = installedWith('features/a', (dir) => declares.get(dir) ?? []);
+  const installed = closure('features/a', (dir) => declares.get(dir) ?? []);
   assert.deepEqual([...installed].sort(), ['collectors/x', 'features/b', 'features/c']);
 });
 
@@ -191,7 +168,7 @@ test("each owner's Rust names only core, itself and what it declares", () => {
     const own = contract(file);
     const may = own ? new Set(['core', own]) : allowed(owner);
     // Its tests may name what they install it with, as its dev-dependencies list it.
-    const mayTest = own ? may : new Set([...may, ...installedWith(owner.dir, declaresOf)]);
+    const mayTest = own ? may : new Set([...may, ...installedWith(owner)]);
     for (const reference of rust().references(file)) {
       const target = unitOfFile(reference.to);
       const test = inTest(file, reference.offset);
