@@ -44,10 +44,14 @@ export function MessageAlerts({
     followPush(pushed, dsp, ends.signal, line).catch(() => {});
     return () => ends.abort();
   }, [pushed, dsp, user, line]);
+  // Only a push of its own line, which another line's alerts answer for, as the worker takes the
+  // first answer.
   useEffect(
     () =>
       answerWorker((push) =>
-        alertsInFront(push, dsp, inFront(line.page), notifies.current, line.page),
+        (push.line ?? null) === (line.id ?? null)
+          ? alertsInFront(push, dsp, inFront(line.page), notifies.current, line.id)
+          : undefined,
       ),
     [dsp, line],
   );

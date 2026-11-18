@@ -241,12 +241,6 @@ test('another line of the DSP keeps the browser apart, told on its own routes, a
   assert(!asked.some((each) => each.startsWith('unsubscribe')));
 });
 
-test('a push of another line is answered by its own page in front alone', () => {
-  const push = { dsp: NORTH, page: DESK.page, conversation: 'cv_1' };
-  assert.equal(alertsInFront(push, NORTH, { conversation: 'cv_1' }, false, DESK.page), true);
-  assert.equal(alertsInFront(push, NORTH, { conversation: 'cv_1' }, true), undefined);
-});
-
 test('changes from several tabs at once each take their turn, losing no DSP that wants it', async (t) => {
   const { asked, keepers } = browser(t, KEY, KEY, [NORTH]);
   await Promise.all([followPush(true, SUMMIT, going()), followPush(true, WEST, going())]);
