@@ -112,6 +112,7 @@ pub fn state(root: &Path, now: SystemTime, runner: &dyn Runner) -> Result<State>
         // Nothing checks the agent docs before their PR, nor on it.
         checked: repository == Repository::Platform,
         approval: &approval,
+        shown: preview::shown(root, runner)?,
         pull: pull.as_ref(),
         pending: pending.as_ref(),
         progress: &progress,
@@ -141,6 +142,8 @@ struct Standing<'a> {
     /// Whether its repository checks the branch before its PR and on it.
     checked: bool,
     approval: &'a Approval,
+    /// Whether `preview` showed the UI files as committed now.
+    shown: bool,
     pull: Option<&'a Pull>,
     pending: Option<&'a Pending>,
     progress: &'a Progress,
@@ -164,7 +167,12 @@ impl Standing<'_> {
                 "Show the user what it looks like with `dispatchdev preview`; once they approve, \
                  `dispatchdev preview approve`"
                     .to_owned(),
-                Whose::Owner,
+                // Shown, the user has it to answer; not yet, showing it is the agent's.
+                if self.shown {
+                    Whose::Owner
+                } else {
+                    Whose::Agent
+                },
             ),
             (None, _, _) | (_, _, false) if checked => (
                 "`dispatchdev check`, then `dispatchdev pr`".to_owned(),

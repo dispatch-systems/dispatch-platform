@@ -16,9 +16,11 @@ use std::{
 
 /// Where an approval is kept, in the checkout's scratch folder.
 const APPROVED: &str = "preview/approved.json";
+/// The UI files as the last `preview` showed them, so a change it showed is the user's to answer.
+const SHOWN: &str = "preview/shown.json";
 
 /// A change's UI files against what the user approved.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Approval {
     /// The change touches nothing a page shows.
     None,
@@ -116,6 +118,17 @@ pub fn approval(root: &Path, runner: &dyn Runner) -> Result<Approval> {
     Ok(match changed.is_empty() {
         true => Approval::Approved,
         false => Approval::Changed(changed),
+    })
+}
+
+/// Whether the last `preview` showed the UI files as the change commits them now.
+pub fn shown(root: &Path, runner: &dyn Runner) -> Result<bool> {
+    let path = workspace::checkout_scratch(root)?.join(SHOWN);
+    Ok(match fs::read_to_string(&path) {
+        Ok(text) => {
+            serde_json::from_str::<BTreeMap<String, String>>(&text)? == files(root, false, runner)?
+        }
+        Err(_) => false,
     })
 }
 
@@ -635,6 +648,8 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
             }
         }
     }
+    let shown = workspace::checkout_scratch(root)?.join(SHOWN);
+    workspace::write_private(&shown, &serde_json::to_string_pretty(&files)?)?;
     let mut next = vec![];
     if files.keys().any(|path| path.starts_with("android/")) {
         next.push("It changes an app's screens too: show them from the emulator".to_owned());

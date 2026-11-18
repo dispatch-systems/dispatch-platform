@@ -65,6 +65,7 @@ struct Commit {
 }
 
 /// A change's worktree, in its clone's folder of them.
+#[derive(Debug)]
 struct Found {
     name: String,
     path: PathBuf,
@@ -100,19 +101,28 @@ fn clones(
     }
     clones
 }
-/// The changes in progress in `clones`, by their worktrees: the ones `start` made.
-fn changes(clones: &[(Clone, Repository)]) -> Vec<Found> {
+/// The changes in progress in `clones`, by their worktrees: the ones `start` made. A clone with
+/// no worktrees folder has none; one whose folder can't be read is an error, never an empty
+/// list that would read as nothing owed.
+fn changes(clones: &[(Clone, Repository)]) -> Result<Vec<Found>> {
     let mut found = vec![];
     for (clone, repository) in clones {
-        let Ok(entries) = fs::read_dir(&clone.worktrees) else {
-            continue;
+        let entries = match fs::read_dir(&clone.worktrees) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            entries => entries
+                .map_err(|error| format!("Couldn't read {}: {error}", clone.worktrees.display()))?,
         };
-        let mut names: Vec<String> = entries
-            .flatten()
-            .filter(|entry| entry.path().join(".git").exists())
-            .filter_map(|entry| entry.file_name().into_string().ok())
-            .filter(|name| valid_name(name).is_ok())
-            .collect();
+        let mut names = vec![];
+        for entry in entries {
+            let entry = entry
+                .map_err(|error| format!("Couldn't read {}: {error}", clone.worktrees.display()))?;
+            if entry.path().join(".git").exists()
+                && let Ok(name) = entry.file_name().into_string()
+                && valid_name(&name).is_ok()
+            {
+                names.push(name);
+            }
+        }
         names.sort();
         found.extend(names.into_iter().map(|name| Found {
             path: clone.worktrees.join(&name),
@@ -120,7 +130,7 @@ fn changes(clones: &[(Clone, Repository)]) -> Vec<Found> {
             repository: *repository,
         }));
     }
-    found
+    Ok(found)
 }
 
 /// What each change in progress is owed, or each named one in progress, side by side.
@@ -134,7 +144,7 @@ pub fn owed(
     for name in names {
         valid_name(name)?;
     }
-    let mut found = changes(&clones(from, env, runner));
+    let mut found = changes(&clones(from, env, runner))?;
     if !names.is_empty() {
         found.retain(|change| names.contains(&change.name.as_str()));
     }

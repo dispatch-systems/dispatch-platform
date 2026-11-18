@@ -203,3 +203,27 @@ fn each_change_in_either_clone_is_told_on_its_own() {
     assert_eq!(named.unwrap().len(), 1);
     assert!(super::owed(&from, &["Not a name"], &env, SystemTime::now(), &machine).is_err());
 }
+
+#[test]
+fn a_worktrees_folder_that_cant_be_read_is_an_error_not_nothing_owed() {
+    use std::os::unix::fs::PermissionsExt;
+    let temp = tempfile::tempdir().unwrap();
+    let clone = Clone {
+        root: temp.path().join("repo"),
+        worktrees: temp.path().join("worktrees"),
+    };
+    let clones = [(clone, Repository::Platform)];
+    // No worktrees folder: no changes.
+    assert!(changes(&clones).unwrap().is_empty());
+    fs::create_dir(&clones[0].0.worktrees).unwrap();
+    fs::set_permissions(&clones[0].0.worktrees, fs::Permissions::from_mode(0o000)).unwrap();
+    let unreadable = changes(&clones);
+    fs::set_permissions(&clones[0].0.worktrees, fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(
+        unreadable
+            .unwrap_err()
+            .to_string()
+            .contains("Couldn't read"),
+        "an unreadable folder isn't an empty one"
+    );
+}

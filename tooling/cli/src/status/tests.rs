@@ -18,6 +18,7 @@ struct Case<'a> {
     pushed: bool,
     checked: bool,
     approval: Approval,
+    shown: bool,
     pull: Option<Pull>,
     pending: Option<Pending>,
     progress: Progress,
@@ -30,6 +31,7 @@ impl Default for Case<'_> {
             pushed: true,
             checked: true,
             approval: Approval::None,
+            shown: false,
             pull: None,
             pending: None,
             progress: Progress::NotStarted,
@@ -46,6 +48,7 @@ impl Case<'_> {
             pushed: self.pushed,
             checked: self.checked,
             approval: &self.approval,
+            shown: self.shown,
             pull: self.pull.as_ref(),
             pending: self.pending.as_ref(),
             progress: &self.progress,
@@ -88,13 +91,19 @@ fn work_still_in_the_worktree_or_unpushed_is_the_agents() {
     );
 }
 #[test]
-fn a_change_to_what_a_page_shows_waits_on_the_user_until_approved() {
+fn a_change_to_what_a_page_shows_waits_on_the_user_once_shown_until_approved() {
     for approval in [
         Approval::Missing,
         Approval::Changed(vec!["a.tsx".to_owned()]),
     ] {
+        let unshown = Case {
+            approval: approval.clone(),
+            ..Case::default()
+        };
+        assert_eq!(unshown.whose(), Whose::Agent, "showing it is the agent's");
         let shown = Case {
             approval,
+            shown: true,
             ..Case::default()
         };
         assert_eq!(shown.whose(), Whose::Owner);
