@@ -189,7 +189,7 @@ pub async fn measure_route_method<R: serde::Serialize>(
         };
         // Today is read as it stands; a past day as completed.
         let zone = dispatch_core::foundation::clock::zone(&scope.timezone)?;
-        let today = dispatch_core::foundation::clock::today(zone).to_string();
+        let today = dispatch_core::foundation::clock::today(&zone).to_string();
         let request = crate::routes::Request {
             collection: crate::routes::Collection::Routes,
             mode: if scope.date >= today {

@@ -187,7 +187,7 @@ pub async fn measure_live_collection() -> Result<()> {
         if !differences.is_empty() {
             driver.new_page().await?;
             let from=s(&data,"from"); let to=s(&data,"to");
-            let day=jiff::civil::Date::parse_from_str(from,"%Y-%m-%d").map_err(|_|Error::new("invalid_period",409))?;
+            let day=dispatch_core::foundation::clock::date(from).map_err(|_|Error::new("invalid_period",409))?;
             let period=json!({"start":from,"end":to,"key":format!("{from}_{to}"),
                 "dates":(0..14).map(|i|(day+i.days()).to_string()).collect::<Vec<_>>()});
             let mut confirmed=0;
@@ -615,7 +615,7 @@ pub async fn compare_api_collection() -> Result<()> {
         else {
             continue;
         };
-        let (start, end) = api::window(zone, &period)?;
+        let (start, end) = api::window(&zone, &period)?;
         answer_shape(&client, "employee", &format!("api/v1/employee/{code}")).await?;
         answer_shape(
             &client,
@@ -643,7 +643,7 @@ pub async fn compare_api_collection() -> Result<()> {
     // the DSP whose folder this is, so no code from its publication is ever sent to Paycom:
     // those the directory leaves out by now are counted below, not compared.
     let started = Instant::now();
-    let data = api::everyone(&source, zone, &period, None, |done, total| async move {
+    let data = api::everyone(&source, &zone, &period, None, |done, total| async move {
         if done % 20 == 0 || done == total {
             eprintln!("BENCH {}", json!({"read":done,"of":total}));
         }

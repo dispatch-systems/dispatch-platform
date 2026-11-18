@@ -38,12 +38,11 @@ fn tab_pair(value: &str) -> Result<Vec<usize>> {
     Ok(tabs)
 }
 fn adjacent_week(week: &str, delta: i64) -> Result<String> {
-    let (year, number) = dispatch_core::foundation::weeks::parse_week(week)?;
-    let day = jiff::civil::Date::from_isoywd_opt(year, number, jiff::civil::Weekday::Monday)
-        .ok_or_else(|| Error::new("invalid_week", 400))?;
-    let shifted = day
-        .checked_add_signed(delta.weeks())
-        .ok_or_else(|| Error::new("invalid_week", 400))?;
+    // The Monday of the ISO week its Saturday names.
+    let (_, saturday) = dispatch_core::foundation::weeks::week_days(week)?;
+    let shifted = (saturday - 5.days())
+        .checked_add(delta.weeks())
+        .map_err(|_| Error::new("invalid_week", 400))?;
     Ok(crate::dvic::report_week(shifted))
 }
 /// The requests a tab's document made, from its own resource timing: data requests
@@ -627,7 +626,7 @@ async fn probe_scorecard_api() -> Result<()> {
         let (year, number) = week
             .split_once("-W")
             .ok_or_else(|| Error::new("benchmark_configuration_required", 400))?;
-        let monday = jiff::civil::Date::from_isoywd_opt(
+        let monday = jiff::civil::ISOWeekDate::new(
             year.parse()
                 .map_err(|_| Error::new("benchmark_configuration_required", 400))?,
             number
@@ -635,7 +634,8 @@ async fn probe_scorecard_api() -> Result<()> {
                 .map_err(|_| Error::new("benchmark_configuration_required", 400))?,
             jiff::civil::Weekday::Monday,
         )
-        .ok_or_else(|| Error::new("benchmark_configuration_required", 400))?;
+        .map_err(|_| Error::new("benchmark_configuration_required", 400))?
+        .date();
         (
             (monday - 1.days()).to_string(),
             (monday + 5.days()).to_string(),
