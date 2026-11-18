@@ -470,6 +470,31 @@ function readDeclared(owner: Owner): Set<string> {
     if (kinds.has(collection.jobKind)) dirs.push(collection.owner.dir);
   return new Set(dirs);
 }
+/**
+ * What `dir` is installed with, from what each folder `declares`: what it declares, and what each
+ * of those declares, all the way down, as the registry wants each dependency registered.
+ */
+export function closure(dir: string, declares: (dir: string) => Iterable<string>) {
+  const reached = new Set<string>();
+  const visit = (each: string) => {
+    for (const next of declares(each))
+      if (!reached.has(next)) {
+        reached.add(next);
+        visit(next);
+      }
+  };
+  visit(dir);
+  return reached;
+}
+/** What an owner's tests install it with, and so may name: the closure of what it declares. */
+export function installedWith(owner: Owner): Set<string> {
+  // The owner's own declarations first, as the MCP's are its Cargo.toml's, then each one's.
+  return closure(owner.dir, (dir) => {
+    if (dir === owner.dir) return declared(owner);
+    const each = [...features(), ...collectors()].find((other) => other.dir === dir);
+    return each ? declared(each) : [];
+  });
+}
 /** The features and collectors the MCP's Cargo.toml lists, by folder. */
 function mcpDeclared(): Set<string> {
   if (!isFile('mcp/Cargo.toml')) return new Set();
