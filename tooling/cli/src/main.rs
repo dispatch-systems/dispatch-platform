@@ -564,7 +564,7 @@ fn run() -> Result<()> {
         },
         "merge" => merge::run(&line.root()?, &Native),
         "ci" => ci::run(&line.root()?, std::time::SystemTime::now(), &Native),
-        "landed" => ci::landed(&line.root()?, &Native, &std::thread::sleep),
+        "landed" => ci::landed(&line.root()?, &Native, &mut std::io::stdout()),
         "status" => status::run(&line.root()?, std::time::SystemTime::now(), &Native),
         "preview" => match line.arguments.first().map(String::as_str) {
             None => {

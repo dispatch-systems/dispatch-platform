@@ -2,7 +2,7 @@
 //! check passed on the pushed head, where its repository has one, the body on GitHub is the
 //! one written, and its review is done at that head, or at one that head only merges `main`
 //! into, or says why it had none. Then it prints what to tell the user.
-use crate::{Result, Runner, change::Repository, pr, require, review, workspace};
+use crate::{Result, Runner, change::Repository, github, pr, require, review, workspace};
 use serde_json::Value;
 use std::path::Path;
 
@@ -39,10 +39,10 @@ pub fn pull(
     branch: &str,
     runner: &dyn Runner,
 ) -> Result<Option<Pull>> {
-    let text = workspace::text(
+    let text = github::call(
         runner,
+        root,
         &[
-            "gh",
             "pr",
             "list",
             "--repo",
@@ -54,7 +54,6 @@ pub fn pull(
             "--json",
             "number,url,title,body,headRefOid,statusCheckRollup",
         ],
-        Some(root),
     )?;
     parsed(&text, required(repository))
 }
@@ -198,21 +197,7 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
     if let Some(why) = unreviewed(root, body, &head, runner)? {
         return Err(why.into());
     }
-    workspace::text(
-        runner,
-        &[
-            "gh",
-            "pr",
-            "merge",
-            &pull.number.to_string(),
-            "--repo",
-            repository.name(),
-            "--squash",
-            "--match-head-commit",
-            &head,
-        ],
-        Some(root),
-    )?;
+    squash(root, repository, pull.number, &head, runner)?;
     println!("**Merged: {}** (#{})", pull.title, pull.number);
     if let Some(line) = pr::review_line(body) {
         println!("Reviewed: {line}");
@@ -245,6 +230,54 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
     Ok(())
 }
 
+/// Squash-merges PR `number` of `repository` at `head`. A try whose answer was lost may have
+/// merged it, and GitHub refuses to merge it twice: before each try after the first, GitHub is
+/// asked whether it merged at `head`.
+fn squash(
+    root: &Path,
+    repository: Repository,
+    number: u64,
+    head: &str,
+    runner: &dyn Runner,
+) -> Result<()> {
+    let number = number.to_string();
+    let repo = repository.name();
+    let merged = || -> Result<Option<String>> {
+        let state = github::call(
+            runner,
+            root,
+            &[
+                "pr",
+                "view",
+                &number,
+                "--repo",
+                repo,
+                "--json",
+                "state,headRefOid",
+                "--jq",
+                r#".state + " " + .headRefOid"#,
+            ],
+        )?;
+        Ok((state == format!("MERGED {head}")).then(String::new))
+    };
+    github::once(
+        runner,
+        root,
+        &[
+            "pr",
+            "merge",
+            &number,
+            "--repo",
+            repo,
+            "--squash",
+            "--match-head-commit",
+            head,
+        ],
+        &merged,
+    )?;
+    Ok(())
+}
+
 pub fn short(sha: &str) -> &str {
     &sha[..sha.len().min(10)]
 }
@@ -252,6 +285,67 @@ pub fn short(sha: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+
+    /// GitHub as a merge asks it: the merge's answer, then that of each merge tried again, and
+    /// the PR's state and head as `gh pr view` tells them.
+    struct Merging {
+        merges: RefCell<Vec<&'static str>>,
+        state: &'static str,
+        asked: RefCell<Vec<String>>,
+    }
+    impl Runner for Merging {
+        fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+            self.asked.borrow_mut().push(args[1..3].join(" "));
+            match args[..3] {
+                ["gh", "pr", "merge"] => match self.merges.borrow_mut().pop() {
+                    Some("") | None => Ok(vec![]),
+                    Some(failure) => Err(failure.into()),
+                },
+                ["gh", "pr", "view"] => Ok(self.state.as_bytes().to_vec()),
+                _ => unreachable!("{args:?}"),
+            }
+        }
+        fn pause(&self, _: std::time::Duration) {}
+    }
+    #[test]
+    fn a_merge_whose_answer_was_lost_is_tried_again_only_if_it_did_not_merge() {
+        let lost = "gh pr merge failed: HTTP 502: Bad Gateway";
+        let merge = |merges: &[&'static str], state| {
+            let github = Merging {
+                merges: RefCell::new(merges.iter().rev().copied().collect()),
+                state,
+                asked: RefCell::new(vec![]),
+            };
+            let result = squash(Path::new("."), Repository::Platform, 7, "abc", &github);
+            (
+                result.map_err(|error| error.to_string()),
+                github.asked.take(),
+            )
+        };
+        // GitHub merged it before the answer was lost: it isn't merged again, which GitHub
+        // would refuse.
+        assert_eq!(
+            merge(&[lost], "MERGED abc"),
+            (Ok(()), vec!["pr merge".into(), "pr view".into()])
+        );
+        // It didn't: the merge is tried again.
+        assert_eq!(
+            merge(&[lost, ""], "OPEN abc"),
+            (
+                Ok(()),
+                vec!["pr merge".into(), "pr view".into(), "pr merge".into()]
+            )
+        );
+        // Merged at another head isn't this merge.
+        assert_eq!(merge(&[lost, ""], "MERGED def").1.len(), 3);
+        // A refusal, such as a conflict, is never tried again, nor asked about.
+        let conflict = "gh pr merge failed: Pull request #7 is not mergeable";
+        assert_eq!(
+            merge(&[conflict], "OPEN abc"),
+            (Err(conflict.into()), vec!["pr merge".into()])
+        );
+    }
     #[test]
     fn the_required_check_is_read_from_the_heads_rollup() {
         let rollup = |checks: &str| {
