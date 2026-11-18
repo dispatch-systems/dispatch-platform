@@ -33,6 +33,17 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   await link.click();
   await expect(page.getByRole('heading', { name: 'HR Line', level: 1 })).toBeVisible();
   const list = page.getByRole('region', { name: 'Conversations' });
+  // A group is Dispatch Phone's: an address naming one opens none here, nor reads one.
+  const groups: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/groups')) groups.push(request.url());
+  });
+  const origin = new URL(page.url()).origin;
+  await page.goto(`${origin}/#dsp/${north.id}/cjf87gqd-hr-line?group=grp_${'0'.repeat(32)}`);
+  await page.reload();
+  await expect(list.getByRole('button', { name: /About my paycheck/ })).toBeVisible();
+  await expect(page.getByRole('region', { name: '(425) 555-0199', exact: true })).toBeVisible();
+  expect(groups).toEqual([]);
   await list.getByRole('button', { name: /\(425\) 555-0199.*About my paycheck/ }).click();
 
   // A name alone is saved for the number, HR Line's own.
@@ -65,4 +76,5 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   await expect(page.getByText('About my paycheck')).toHaveCount(0);
   await expect(page.getByText('Payroll will call you')).toHaveCount(0);
   await expect(page.getByText('Jordan Ellis')).toHaveCount(0);
+
 });

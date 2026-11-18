@@ -12,7 +12,7 @@ import { groupsSection, lists, sectionOf, type Section } from '../inbox/sections
 import { started, type Target } from '../conversations/target.js';
 import type { Draft } from '../slack/groups/GroupDraft.js';
 import type { Pick } from '../slack/groups/groups.js';
-import { useLine } from '../line.js';
+import { own, useLine } from '../line.js';
 
 // Pane selection, its browser-history step and the turn allowed to finish opening a target.
 type Address = { conversation?: string; group?: string };
@@ -36,12 +36,12 @@ function atAddress(address: Address): Opened {
 const FROM_LIST = 'communicationsFromList';
 /** Whether the step of the browser's history now opened from the list. */
 const fromList = () => (history.state as Record<string, unknown> | null)?.[FROM_LIST] === true;
-/** What the address says is open. */
-function addressed(): Opened {
+/** What the address says is open: a group only while the page has `groups`. */
+function addressed(groups: boolean): Opened {
   const query = hashQuery();
   return atAddress({
     conversation: query.get('open') ?? undefined,
-    group: query.get('group') ?? undefined,
+    group: (groups && query.get('group')) || undefined,
   });
 }
 
@@ -62,8 +62,11 @@ export function useOpenedPane({
   chooseSection: (section: string) => void;
   showGroup: (group: Group) => void;
 }) {
-  const { page, texting } = useLine();
-  const [opened, setOpened] = useState<Opened>(addressed);
+  const line = useLine();
+  const { page, texting } = line;
+  // Groups are Dispatch Phone's own line's: another's page opens none, by the address or otherwise.
+  const groups = own(line);
+  const [opened, setOpened] = useState<Opened>(() => addressed(groups));
   const { conversation: open, group } = opened.address;
   const drafting = opened.kind === 'draft' ? true : undefined;
   const reading = open || group || drafting;
@@ -107,16 +110,21 @@ export function useOpenedPane({
   // named, the list.
   useEffect(() => {
     const followed = () => {
-      const next = addressed();
+      const next = addressed(groups);
       if (parseHash(location.hash).page !== page) return;
       const shows = Boolean(next.address.conversation || next.address.group);
       if (shows || phone) adopt(next);
     };
     addEventListener('hashchange', followed);
     return () => removeEventListener('hashchange', followed);
-  }, [adopt, phone, page]);
+  }, [adopt, phone, page, groups]);
   const select = useCallback((id?: string) => opening(atAddress({ conversation: id })), [opening]);
-  const openGroup = useCallback((id: string) => opening(atAddress({ group: id })), [opening]);
+  const openGroup = useCallback(
+    (id: string) => {
+      if (groups) opening(atAddress({ group: id }));
+    },
+    [opening, groups],
+  );
   const closed = useCallback(() => opening(atAddress({})), [opening]);
   // What's open, as last read, is pinned to the top of the list while the list doesn't show it:
   // a conversation holding no message yet, as New message opens it, one listed under a group, or
@@ -186,6 +194,7 @@ export function useOpenedPane({
     if (shownIn && !lists(section, shownIn) && sections.includes(shownIn)) chooseSection(shownIn);
   }, [shown, shownIn, section, sections, chooseSection]);
   const startGroup = () => {
+    if (!groups) return;
     setComposing(false);
     chooseSection(groupsSection);
     opening({ kind: 'draft', address: {} });
