@@ -8,8 +8,6 @@
 //! once, the browser a hook opens, how a DSP's reading goes as Settings shows it, its next
 //! read the one its task reads, and a read kept as its DSP is deleted recording nothing after.
 //! A program of its own, as its registry holds the stand-ins, and a program holds one registry.
-use chrono::{DateTime, NaiveDate, Timelike, Weekday::*};
-use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result, State,
     collection::{
@@ -20,7 +18,7 @@ use dispatch_core::{
     },
     db::{self, Kind, Migration, Migrations, Store, migrations::Apply},
     manifest::{
-        Capability, Collection, Collector, Counts, Feature, LiveReader, Schedule, feature,
+        Capability, Collection, Collector, Counts, Days, Feature, LiveReader, Schedule, feature,
         optional, perm, section,
         settings::{Section, number},
         time,
@@ -29,6 +27,8 @@ use dispatch_core::{
     tenancy::deletion,
     testing,
 };
+use jiff::civil::Date;
+use jiff::tz::TimeZone;
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -120,9 +120,9 @@ enum Seen {
     Dropped,
     /// A keeping dropped before it ended.
     Abandoned,
-    Started(NaiveDate),
+    Started(Date),
     Kept(u64),
-    Stopped(NaiveDate),
+    Stopped(Date),
     /// What the browser a read opened was, what the next opening answered meanwhile, and
     /// whether it was still open after a job at its revision ended.
     Browser {
@@ -245,9 +245,8 @@ impl LiveReader for Reader {
     }
     fn schedule(&self, db: &Store, dsp: &str) -> Result<Option<Schedule>> {
         let times: Times = settings::read(db, dsp, &WINDOW)?;
-        let days = [Mon, Tue, Wed, Thu, Fri, Sat, Sun];
         let every = Duration::from_secs(times.every * 60);
-        Schedule::new(&days, &times.start, &times.stop, every).map(Some)
+        Schedule::new(Days::ALL, &times.start, &times.stop, every).map(Some)
     }
     fn read<'a>(&'a self, reading: &'a Reading, held: &'a mut Held) -> Pending<'a, u64> {
         Box::pin(async move {
@@ -464,7 +463,7 @@ struct Server {
     owner: String,
     /// Where every DSP of the test is: where it's late morning now, so a test's windows keep
     /// to one day.
-    zone: Tz,
+    zone: TimeZone,
     probe: Arc<Probe>,
     revisions: Mutex<HashMap<String, i64>>,
     stop: tokio::sync::watch::Sender<bool>,
@@ -481,10 +480,10 @@ impl Server {
         let owner = testing::platform_owner(&store);
         let state = State::new(store.config.clone()).unwrap();
         drop(store);
-        let hour = DateTime::from_timestamp_millis(now()).unwrap().hour() as i32;
+        let hour = i32::from(dispatch_core::foundation::clock::local(&TimeZone::UTC, now()).hour());
         // Etc/GMT-N is N hours ahead of UTC: here it's eleven, and some minutes.
         let ahead = 11 - hour;
-        let zone = format!("Etc/GMT{:+}", -ahead).parse().unwrap();
+        let zone = dispatch_core::foundation::clock::zone(&format!("Etc/GMT{:+}", -ahead)).unwrap();
         let (stop, _) = tokio::sync::watch::channel(false);
         let mut server = Self {
             _root: root,
@@ -513,10 +512,11 @@ impl Server {
     }
     /// A new DSP of the test's, with the feature off, reading as `script` says once it's on.
     async fn dsp(&self, script: Script) -> String {
-        let (owner, zone) = (self.owner.clone(), self.zone.name());
+        let zone = self.zone.iana_name().unwrap_or_default().to_owned();
+        let owner = self.owner.clone();
         let dsp = self
             .state
-            .run(move |db| Ok(db.new_dsp("Probe DSP", zone, &owner, false)?.id))
+            .run(move |db| Ok(db.new_dsp("Probe DSP", &zone, &owner, false)?.id))
             .await
             .unwrap();
         scripts().push((dsp.clone(), self.probe.clone(), script));
@@ -557,17 +557,12 @@ impl Server {
     fn at(&self, minutes: i64) -> (String, Instant) {
         let now = now();
         let minute = now - now.rem_euclid(60_000) + minutes * 60_000;
-        let local = DateTime::from_timestamp_millis(minute)
-            .unwrap()
-            .with_timezone(&self.zone);
+        let local = dispatch_core::foundation::clock::local(&self.zone, minute);
         let when = Instant::now() + Duration::from_millis((minute - now) as u64);
-        (local.format("%H:%M").to_string(), when)
+        (local.strftime("%H:%M").to_string(), when)
     }
-    fn today(&self) -> NaiveDate {
-        DateTime::from_timestamp_millis(now())
-            .unwrap()
-            .with_timezone(&self.zone)
-            .date_naive()
+    fn today(&self) -> Date {
+        dispatch_core::foundation::clock::local(&self.zone, now()).date()
     }
     /// Connects the DSP to the stand-in collector, its password saying how signing in goes.
     async fn connect(&self, dsp: &str, password: &str) {
@@ -634,7 +629,7 @@ fn all_near(reads: &[(u64, Instant)], expected: &[Instant]) -> bool {
 }
 /// The instant an answer names, on the time the test moves.
 fn instant(at: &str) -> Instant {
-    let at = DateTime::parse_from_rfc3339(at).unwrap().timestamp_millis();
+    let at = dispatch_core::db::millis(at).unwrap();
     let ahead = at - now();
     let now = Instant::now();
     if ahead >= 0 {
@@ -688,7 +683,7 @@ async fn a_dsp_reads_on_its_grid_through_its_window_and_each_day_starts_and_stop
 
     // The next day starts anew, with its memory made anew.
     until(open + Duration::from_secs(24 * 60 * 60) + EVERY).await;
-    let tomorrow = day.succ_opt().unwrap();
+    let tomorrow = day.tomorrow().unwrap();
     let seen = server.probe.of(&dsp);
     let next = seen
         .iter()

@@ -5,10 +5,10 @@ use crate::api::{
     assessment::AssessedClock,
     types::{EmployeeTimecard, Timecard},
 };
-use chrono_tz::Tz;
-use dispatch_core::{Error, Result, db::Store, foundation::validate, manifest::people::Source};
+use dispatch_core::{Result, db::Store, foundation::validate, manifest::people::Source};
 use dispatch_paycom as paycom;
 use dispatch_timecard_contract::{Collected, Day, Days, Meal, Punch, PunchKind, Timecards};
+use jiff::tz::TimeZone;
 
 /// The most days one read covers.
 const LONGEST: i64 = 31;
@@ -37,7 +37,7 @@ impl Timecards for Exposed {
         Ok(periods
             .into_iter()
             .filter_map(|(from, to, at)| {
-                let through = to.min(local_day(&at, zone)?);
+                let through = to.min(local_day(&at, &zone)?);
                 (through >= from).then_some(Collected { from, through })
             })
             .reduce(|one, other| Collected {
@@ -67,7 +67,7 @@ impl Timecards for Exposed {
             let reached = source
                 .collected_at
                 .as_deref()
-                .and_then(|at| local_day(at, zone));
+                .and_then(|at| local_day(at, &zone));
             match reached {
                 Some(reached) if date < reached => {}
                 Some(reached) if date == reached => read.partial.push(date),
@@ -89,18 +89,16 @@ impl Timecards for Exposed {
 }
 
 /// The DSP's timezone, as its timecards' clocks are written in.
-fn zone(db: &Store, dsp: &str) -> Result<(String, Tz)> {
+fn zone(db: &Store, dsp: &str) -> Result<(String, TimeZone)> {
     let timezone = db.find_dsp(dsp)?.timezone;
-    let zone = timezone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
+    let zone = dispatch_core::foundation::clock::zone(&timezone)?;
     Ok((timezone, zone))
 }
 
 /// The day a collection's time falls on in the DSP's own time.
-fn local_day(at: &str, zone: Tz) -> Option<String> {
-    let at = chrono::DateTime::parse_from_rfc3339(at).ok()?;
-    Some(at.with_timezone(&zone).date_naive().to_string())
+fn local_day(at: &str, zone: &TimeZone) -> Option<String> {
+    let at = at.parse::<jiff::Timestamp>().ok()?;
+    Some(zone.to_datetime(at).date().to_string())
 }
 
 fn as_day(assessed: EmployeeTimecard) -> Day {

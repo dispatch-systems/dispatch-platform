@@ -2,7 +2,6 @@
 //! writeup and where each person stands, each writeup's person as the directory knows them now.
 use super::{categories, standing, writeups};
 use crate::api::types::{ConductDriver, ConductOverview, ConductPerson, ConductWriteup};
-use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result, State,
     accounts::Context,
@@ -10,16 +9,13 @@ use dispatch_core::{
     foundation::clock,
     manifest::people::{self, Everyone},
 };
+use jiff::civil::Date;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Today where the DSP is.
-fn day(c: &Context) -> Result<NaiveDate> {
-    let zone: chrono_tz::Tz = c
-        .dsp
-        .timezone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
-    Ok(clock::today(zone))
+fn day(c: &Context) -> Result<Date> {
+    let zone = dispatch_core::foundation::clock::zone(&c.dsp.timezone)?;
+    Ok(clock::today(&zone))
 }
 /// Today where the DSP is, YYYY-MM-DD.
 pub(crate) fn today(c: &Context) -> Result<String> {

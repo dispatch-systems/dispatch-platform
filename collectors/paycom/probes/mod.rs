@@ -12,6 +12,7 @@ use dispatch_core::{
     db::{self, s},
     ensure,
 };
+use jiff::ToSpan;
 use serde_json::{Value, json};
 use std::{
     path::PathBuf,
@@ -186,9 +187,9 @@ pub async fn measure_live_collection() -> Result<()> {
         if !differences.is_empty() {
             driver.new_page().await?;
             let from=s(&data,"from"); let to=s(&data,"to");
-            let day=chrono::NaiveDate::parse_from_str(from,"%Y-%m-%d").map_err(|_|Error::new("invalid_period",409))?;
+            let day=jiff::civil::Date::parse_from_str(from,"%Y-%m-%d").map_err(|_|Error::new("invalid_period",409))?;
             let period=json!({"start":from,"end":to,"key":format!("{from}_{to}"),
-                "dates":(0..14).map(|i|(day+chrono::Duration::days(i)).to_string()).collect::<Vec<_>>()});
+                "dates":(0..14).map(|i|(day+i.days()).to_string()).collect::<Vec<_>>()});
             let mut confirmed=0;
             for code in &differences {
                 let reference=reference_timecard(&driver,code,&period).await?;
@@ -257,10 +258,10 @@ async fn reference_timecard(driver: &Driver, code: &str, period: &Value) -> Resu
 async fn inspect_responses(driver: &Driver, data: &Value, samples: usize) -> Result<()> {
     let from = s(data, "from");
     let to = s(data, "to");
-    let day = chrono::NaiveDate::parse_from_str(from, "%Y-%m-%d")
+    let day = dispatch_core::foundation::clock::date(from)
         .map_err(|_| Error::new("invalid_period", 409))?;
     let period = json!({"start":from,"end":to,"key":format!("{from}_{to}"),
-        "dates":(0..14).map(|i|(day+chrono::Duration::days(i)).to_string()).collect::<Vec<_>>()});
+        "dates":(0..14).map(|i|(day+i.days()).to_string()).collect::<Vec<_>>()});
     let mut equal = 0;
     let mut validated = 0;
     let mut rejected = Vec::new();
@@ -563,9 +564,7 @@ pub async fn compare_api_collection() -> Result<()> {
     let variable = |name: &str| {
         std::env::var(name).map_err(|_| Error::new("benchmark_configuration_required", 400))
     };
-    let zone: chrono_tz::Tz = variable("DISPATCH_BENCHMARK_TIMEZONE")?
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
+    let zone = dispatch_core::foundation::clock::zone(&variable("DISPATCH_BENCHMARK_TIMEZONE")?)?;
     let credentials = json!({"sid":variable("DISPATCH_BENCHMARK_PAYCOM_SID")?,
         "token":variable("DISPATCH_BENCHMARK_PAYCOM_TOKEN")?});
     let database = db::Db(rusqlite::Connection::open_with_flags(
@@ -586,7 +585,7 @@ pub async fn compare_api_collection() -> Result<()> {
             card,
         );
     }
-    let from: chrono::NaiveDate = published
+    let from: jiff::civil::Date = published
         .keys()
         .map(|(_, date)| date.as_str())
         .min()
@@ -595,7 +594,7 @@ pub async fn compare_api_collection() -> Result<()> {
         .map_err(|_| Error::new("invalid_period", 409))?;
     let period = EmployeeTimecardPeriod {
         from: from.to_string(),
-        to: (from + chrono::Duration::days(PERIOD_DAYS - 1)).to_string(),
+        to: (from + (PERIOD_DAYS - 1).days()).to_string(),
     };
 
     // Each function's answer by its shape, from whichever data center takes the SID and

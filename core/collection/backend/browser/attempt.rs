@@ -66,7 +66,7 @@ impl Attempts {
     /// Interrupted submissions may only observe an existing authenticated session.
     pub fn check(&self, retry: bool) -> Result<bool> {
         ensure(
-            self.record.blocked_until <= chrono::Utc::now().timestamp_millis(),
+            self.record.blocked_until <= crate::db::now(),
             "attempt_cooldown",
             409,
         )?;
@@ -98,7 +98,7 @@ impl Attempts {
         if crate::Code::text_is_any(code, crate::Code::REJECTED_CREDENTIALS) {
             self.record.failures = (self.record.failures + 1).min(3);
             self.record.manual = self.record.failures == 3;
-            self.record.blocked_until = chrono::Utc::now().timestamp_millis()
+            self.record.blocked_until = crate::db::now()
                 + match self.record.failures {
                     1 => 300_000,
                     2 => 1_800_000,

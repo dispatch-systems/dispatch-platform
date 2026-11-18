@@ -55,8 +55,8 @@ fn facts(rows: &[(&str, String)]) -> (String, String) {
 }
 
 fn when(at: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(at)
-        .map(|at| at.format("%B %-d, %Y at %-I:%M %p UTC").to_string())
+    jiff::Timestamp::from_millisecond(at)
+        .map(|at| at.strftime("%B %-d, %Y at %-I:%M %p UTC").to_string())
         .unwrap_or_default()
 }
 

@@ -58,8 +58,11 @@ async fn texted_after_the_stop(state: &Arc<State>, dsp: &str, stop: i64) -> Stri
 async fn a_work_conversation_waits_only_on_the_live_day_from_before_its_first_read_into_the_stop() {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
-    let (now, then) = (|h, m| at(zone, day, h, m), |h, m| at(zone, yesterday, h, m));
+    let yesterday = day.yesterday().unwrap();
+    let (now, then) = (
+        |h, m| at(&zone, day, h, m),
+        |h, m| at(&zone, yesterday, h, m),
+    );
     // Yesterday, as saved: Avery had 0101, and texted at 5 PM, unanswered as the day stopped.
     let earlier = vec![saved(yesterday, &[("A1", "2065550101")])];
     phoned(&state, &dsp, None, Vec::new(), earlier.clone()).await;

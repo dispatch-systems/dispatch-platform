@@ -11,13 +11,13 @@ use crate::api::types::{
     DayOrigin, Message, MessageGroup, MessageNeighbor, MessageSenderIdentity, RunOrigin,
     SelectionOrigins, Sender, WindowOrigins,
 };
-use chrono_tz::Tz;
 use dispatch_core::{
     Result,
     db::{Db, FromRow, Row},
     ensure,
     foundation::observability,
 };
+use jiff::tz::TimeZone;
 use rusqlite::params;
 use serde_json::json;
 
@@ -367,7 +367,7 @@ fn selection(
 pub(crate) fn read(
     db: &Db,
     reference: &Reference,
-    zone: Tz,
+    zone: &TimeZone,
     selected: &[Message],
     latest: &[Message],
     people: &People,
@@ -377,13 +377,13 @@ pub(crate) fn read(
     let mut answer = WindowOrigins {
         version: 1,
         algorithm: algorithm(),
-        time_zone: zone.name().to_owned(),
+        time_zone: zone.iana_name().unwrap_or_default().to_owned(),
         ready: false,
         selected: None,
         latest: None,
     };
-    let Some(index) =
-        state(db, transport, reference.id())?.filter(|index| index.ready(zone.name()))
+    let Some(index) = state(db, transport, reference.id())?
+        .filter(|index| index.ready(zone.iana_name().unwrap_or_default()))
     else {
         return Ok(answer);
     };

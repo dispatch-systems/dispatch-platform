@@ -329,10 +329,11 @@ fn a_timezone_change_retimes_every_rule() {
     );
     db.retime_schedules(&id, "Asia/Tokyo").unwrap();
     let next = next_run(&db, &id, "paycom").unwrap();
-    let local = chrono::DateTime::parse_from_rfc3339(&next)
-        .unwrap()
-        .with_timezone(&chrono_tz::Asia::Tokyo);
-    assert_eq!(local.format("%H:%M").to_string(), "06:00");
+    let local = dispatch_core::foundation::clock::local(
+        &dispatch_core::foundation::clock::zone("Asia/Tokyo").unwrap(),
+        dispatch_core::db::millis(&next).unwrap(),
+    );
+    assert_eq!(local.strftime("%H:%M").to_string(), "06:00");
 }
 
 /// Timecard's `both` ran Paycom's timecards and Cortex's meal breaks at once. As a DSP opens,

@@ -10,13 +10,13 @@ use super::super::{
 };
 use super::{failed, placement::Filer};
 use crate::backend::{live, storage::DOMAIN};
-use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result, State,
     db::{Store, now},
     foundation::clock,
 };
 use dispatch_routes_contract as routes;
+use jiff::civil::Date;
 use serde_json::json;
 use std::{
     collections::{BTreeSet, HashMap},
@@ -76,7 +76,7 @@ pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> 
                 if filer.reads(&day.to_string()) {
                     db.refiled_communications_day(&at, &day.to_string())?;
                 }
-                if day != clock::today(filer.zone) {
+                if day != clock::today(&filer.zone) {
                     return Ok(moved);
                 }
                 if let Some(watched) = live_day::watched(db, &at, now())? {
@@ -177,7 +177,7 @@ pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
     }
     let at = dsp.to_owned();
     let today = state
-        .read(move |db| Ok(clock::today(zone(db, &at)?).to_string()))
+        .read(move |db| Ok(clock::today(&zone(db, &at)?).to_string()))
         .await?;
     let at = dsp.to_owned();
     match state
@@ -201,31 +201,22 @@ pub fn refiled(db: &Store, dsp: &str) -> Result<bool> {
 /// Each text of today, the DSP's day, filed elsewhere than it belongs now, with where it does.
 fn misfiled(db: &Store, dsp: &str) -> Result<Vec<(String, Filed)>> {
     let mut filer = Filer::new(db, dsp)?;
-    let today = clock::today(filer.zone);
+    let today = clock::today(&filer.zone);
     elsewhere(db, dsp, &mut filer, today)
 }
 /// Files every text of `day` again where `filer` says it belongs now: the conversations changed.
-fn refiled_by(
-    db: &Store,
-    dsp: &str,
-    filer: &mut Filer,
-    day: NaiveDate,
-) -> Result<BTreeSet<String>> {
+fn refiled_by(db: &Store, dsp: &str, filer: &mut Filer, day: Date) -> Result<BTreeSet<String>> {
     let moves = elsewhere(db, dsp, filer, day)?;
     db.refile_communications_texts(dsp, &moves)
 }
 /// Each text of `day`, from when it began until the next day did, filed elsewhere than `filer`
 /// says it belongs now, with where it does. One whose place can't be told yet stays where it is.
-fn elsewhere(
-    db: &Store,
-    dsp: &str,
-    filer: &mut Filer,
-    day: NaiveDate,
-) -> Result<Vec<(String, Filed)>> {
+fn elsewhere(db: &Store, dsp: &str, filer: &mut Filer, day: Date) -> Result<Vec<(String, Filed)>> {
     let next = day
-        .succ_opt()
+        .tomorrow()
+        .ok()
         .ok_or_else(|| Error::new("invalid_date", 400))?;
-    let (from, to) = (began(filer.zone, day)?, began(filer.zone, next)?);
+    let (from, to) = (began(&filer.zone, day)?, began(&filer.zone, next)?);
     let mut conversations: HashMap<Filed, Option<String>> = HashMap::new();
     let mut moves = Vec::new();
     for text in db.communications_texts_between(dsp, from, to)? {

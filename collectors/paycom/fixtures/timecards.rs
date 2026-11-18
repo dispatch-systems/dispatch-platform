@@ -1,19 +1,18 @@
-use dispatch_core::{Error, Result, db::iso};
+use dispatch_core::{Result, db::iso};
+use jiff::ToSpan;
 use serde_json::{Value, json};
 pub fn fixture(timezone: &str) -> Result<Value> {
     fixture_date(timezone, None)
 }
-pub fn fixture_date(timezone: &str, selected: Option<chrono::NaiveDate>) -> Result<Value> {
-    let tz: chrono_tz::Tz = timezone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
-    let today = selected.unwrap_or_else(|| dispatch_core::foundation::clock::today(tz));
+pub fn fixture_date(timezone: &str, selected: Option<jiff::civil::Date>) -> Result<Value> {
+    let tz = dispatch_core::foundation::clock::zone(timezone)?;
+    let today = selected.unwrap_or_else(|| dispatch_core::foundation::clock::today(&tz));
     // Demo periods follow the known Sep 6–19 cycle. Real collections use Paycom's bounds.
-    let anchor = chrono::NaiveDate::from_ymd_opt(2026, 9, 6).unwrap();
-    let start = anchor + chrono::Duration::days((today - anchor).num_days().div_euclid(14) * 14);
-    let end = start + chrono::Duration::days(13);
+    let anchor = jiff::civil::date(2026, 9, 6);
+    let start = anchor + (i64::from((today - anchor).get_days()).div_euclid(14) * 14).days();
+    let end = start + 13.days();
     let dates: Vec<_> = (0..7)
-        .map(|i| today - chrono::Duration::days(6 - i))
+        .map(|i| today - (6 - i).days())
         .filter(|date| *date >= start)
         .map(|date| date.to_string())
         .collect();

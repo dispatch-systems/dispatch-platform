@@ -14,8 +14,6 @@ use super::super::{
 };
 use super::failed;
 use crate::backend::sender;
-use chrono::NaiveDate;
-use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result,
     db::{Store, now},
@@ -24,6 +22,8 @@ use dispatch_core::{
 use dispatch_routes_contract::{
     self as routes, DayPhones, DriverPhone, DriverRoutes, LiveRouteData,
 };
+use jiff::civil::Date;
+use jiff::tz::TimeZone;
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -99,7 +99,7 @@ pub(super) fn sender_name(
 pub(super) struct Filer<'a> {
     db: &'a Store,
     dsp: &'a str,
-    pub(super) zone: Tz,
+    pub(super) zone: TimeZone,
     live: Option<&'static dyn LiveRouteData>,
     live_day: Option<String>,
     routes: Option<&'static dyn DriverRoutes>,
@@ -110,7 +110,7 @@ pub(super) struct Filer<'a> {
     /// Whether each number, by its ten digits, was ever a work phone.
     work_phones: HashMap<String, bool>,
     /// When the two hours after the day before each day stopped end, while they run into it.
-    after_stop: HashMap<NaiveDate, Option<i64>>,
+    after_stop: HashMap<Date, Option<i64>>,
 }
 /// A day's work phones, as Routes reads them: the driver each is the latest phone of, by its ten
 /// digits, with the source naming them; none for one that's two drivers' latest, and no one's.
@@ -206,14 +206,14 @@ impl<'a> Filer<'a> {
     /// The day a text written at `at` is filed by: its own, where the DSP is, but in the two hours
     /// after a stop that run past midnight, the day stopped, as a driver is answered then at the
     /// work phone they had at the stop (`live_day::Stopped`), so the answer is theirs too.
-    fn day_of(&mut self, at: i64) -> Result<NaiveDate> {
-        let day = clock::day(self.zone, at);
+    fn day_of(&mut self, at: i64) -> Result<Date> {
+        let day = clock::day(&self.zone, at);
         if !self.after_stop.contains_key(&day) {
-            let until = live_day::after_stop_into(self.db, self.dsp, self.zone, day)?;
+            let until = live_day::after_stop_into(self.db, self.dsp, &self.zone, day)?;
             self.after_stop.insert(day, until);
         }
         Ok(match self.after_stop[&day] {
-            Some(until) if at < until => day.pred_opt().unwrap_or(day),
+            Some(until) if at < until => day.yesterday().ok().unwrap_or(day),
             _ => day,
         })
     }

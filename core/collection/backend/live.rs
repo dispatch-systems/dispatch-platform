@@ -2,7 +2,7 @@
 //! for history; failed/cancelled/replaced attempts never overwrite them. Each collector
 //! stages its own items; this is the store they are staged in and read from.
 use crate::{
-    Error, Result,
+    Result,
     collection::registry::Provider,
     db::{self, Db, Store, s},
 };
@@ -41,10 +41,7 @@ impl Store {
         from: &str,
         to: &str,
     ) -> Result<BTreeMap<String, LiveResults>> {
-        let parse = |date: &str| {
-            chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
-                .map_err(|_| Error::new("invalid_date", 400))
-        };
+        let parse = |date: &str| crate::foundation::clock::date(date);
         let start = parse(from)?;
         let end = parse(to)?;
         let db = self.collector(dsp, provider)?;
@@ -82,7 +79,7 @@ impl Store {
                             .or_default()
                             .push((metadata.clone(), items.remove(&day).unwrap_or_default()));
                     }
-                    let Some(next) = date.succ_opt() else { break };
+                    let Ok(next) = date.tomorrow() else { break };
                     date = next;
                 }
             }

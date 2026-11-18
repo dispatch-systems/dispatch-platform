@@ -20,15 +20,14 @@ WEBAUTHN_RSA = (
     "private key. Goes once rsa releases a fix or webauthn-rs moves off it."
 )
 CHRONO = (
-    "chrono and chrono-tz are declared unmaintained, with no vulnerability named and no release "
-    "to move to. Dispatch keeps every time and timezone with them, across its crates, so leaving "
-    "them is a migration of its own to jiff or time. Goes once Dispatch moves off chrono, or a "
-    "maintained release supersedes these."
+    "chrono is declared unmaintained, with no vulnerability named and no release to move to. "
+    "Dispatch's own crates keep their times with jiff; rmcp, which the MCP server is built on, "
+    "still builds chrono for its own types and has schemars build it for theirs. Goes once rmcp "
+    "releases without it."
 )
 ALLOWED_ADVISORIES = {
     ("RUSTSEC-2023-0071", "rsa", "0.10.0-rc.19"): WEBAUTHN_RSA,
     ("RUSTSEC-2026-0543", "chrono", "0.4.45"): CHRONO,
-    ("RUSTSEC-2026-0555", "chrono-tz", "0.10.4"): CHRONO,
 }
 
 

@@ -47,10 +47,10 @@ pub async fn pass(state: &Arc<State>, vault: &Vault) -> Result<()> {
             )?;
             for (dsp,) in dsps {
                 let tz = schedule::timezone(db, &dsp)?;
-                schedule::start(db, &dsp, tz)?;
+                schedule::start(db, &dsp, &tz)?;
                 db.platform.transaction(|| {
                     let at = now();
-                    for rule in schedule::due(&db.platform, &dsp, tz, at)? {
+                    for rule in schedule::due(&db.platform, &dsp, &tz, at)? {
                         history::ask(
                             &db.platform,
                             &dsp,

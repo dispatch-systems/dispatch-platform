@@ -6,15 +6,12 @@ use crate::{
     Result,
     db::Store,
     manifest::settings::{
-        Field, Kept, Options, Section, choice, days, many, number, pick, section, text, time,
+        Days, Field, Kept, Options, Section, choice, days, many, number, pick, section, text, time,
         timezone, toggle,
     },
     testing,
 };
-use chrono::{
-    Weekday::{self, *},
-    WeekdaySet,
-};
+use jiff::civil::Weekday::*;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -42,7 +39,7 @@ const FIELDS: &[Field] = &[
     days(
         "on",
         "Collects on",
-        WeekdaySet::from_array([Mon, Tue, Wed, Thu, Fri]),
+        Days::of(&[Monday, Tuesday, Wednesday, Thursday, Friday]),
     ),
     number("days", "Keep", 30, 3650, None)
         .unit("days")
@@ -61,7 +58,7 @@ struct Policy {
     mode: String,
     department: Option<String>,
     columns: Vec<String>,
-    on: Vec<Weekday>,
+    on: Days,
     days: Option<i64>,
     code: String,
     at: String,
@@ -86,7 +83,7 @@ fn defaults_fill_what_is_unsaved_and_a_save_changes_only_what_it_sends() {
         mode: "final".into(),
         department: None,
         columns: vec!["in".into(), "out".into()],
-        on: vec![Mon, Tue, Wed, Thu, Fri],
+        on: Days::of(&[Monday, Tuesday, Wednesday, Thursday, Friday]),
         days: None,
         code: String::new(),
         at: "18:00".into(),
@@ -108,7 +105,7 @@ fn defaults_fill_what_is_unsaved_and_a_save_changes_only_what_it_sends() {
         Policy {
             department: Some("ops".into()),
             columns: vec!["in".into(), "total".into()],
-            on: vec![Mon, Sun],
+            on: Days::of(&[Monday, Sunday]),
             days: Some(90),
             code: "NL1".into(),
             ..defaults

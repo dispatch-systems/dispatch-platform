@@ -2,10 +2,10 @@
 //! first, those it can't read among them.
 use super::*;
 use crate::backend::{scope::routes_today, tests::publish};
-use chrono::Duration;
 use dispatch_core::testing;
 use dispatch_cortex::routes::Mode;
 use dispatch_routes_contract::{DayPhones, DriverPhone};
+use jiff::ToSpan;
 
 #[tokio::test]
 async fn a_pass_tries_at_most_its_batch_of_days_counting_those_it_cant_read() {
@@ -22,7 +22,7 @@ async fn a_pass_tries_at_most_its_batch_of_days_counting_those_it_cant_read() {
         .unwrap()
         .expect("Routes is on");
     let today = routes_today(&db, &dsp).unwrap();
-    let day = |back| (today - Duration::days(back)).to_string();
+    let day = |back: i64| (today - back.days()).to_string();
     let phones = |back| routes.day_phones(&db, &dsp, &day(back)).unwrap();
 
     // Days kept by the version before: the newest, then more than a pass tries whose stored

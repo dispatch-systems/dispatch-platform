@@ -98,10 +98,7 @@ async fn apps_ask_to_connect_only_while_the_pairing_window_is_open() {
     let opened = server.as_owner(&earlier, "POST", pairing, json!({})).await;
     assert_eq!(opened.status, 200, "{}", opened.body);
     let until = s(&opened.body, "openUntil").to_owned();
-    let left = chrono::DateTime::parse_from_rfc3339(&until)
-        .unwrap()
-        .timestamp_millis()
-        - db::now();
+    let left = dispatch_core::db::millis(&until).unwrap() - db::now();
     assert!(left > 9 * 60_000 && left <= 10 * 60_000, "{until}");
     let shown = server.as_owner(&owner, "GET", pairing, json!({})).await;
     assert_eq!(shown.body, json!({"openUntil":until}));

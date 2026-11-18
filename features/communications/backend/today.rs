@@ -148,7 +148,7 @@ pub fn driven(
     if ids.is_empty() {
         return Ok(None);
     }
-    let day = clock::today(zone(db, dsp)?).to_string();
+    let day = clock::today(&zone(db, dsp)?).to_string();
     let driven = busiest(reader.routes(db, dsp, &ids, &day, &day)?.routes, driver);
     Ok(driven.into_values().max_by_key(|route| route.stops))
 }

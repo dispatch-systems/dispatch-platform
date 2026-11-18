@@ -143,3 +143,51 @@ async fn report_downloads_use_validators_bound_bodies_and_never_follow_redirects
     );
     server.abort();
 }
+
+#[test]
+fn an_inspections_key_holds_its_start_as_first_written_however_many_zeros_end_it() {
+    let key = |start: &str| {
+        dvic::Inspection {
+            start_date: "2026-09-26".into(),
+            dsp: "FXTR".into(),
+            station: "TST1".into(),
+            transporter_id: "driver-1".into(),
+            transporter_name: "Fixture Driver".into(),
+            vin: "1FIXTURE000000001".into(),
+            fleet_type: "CV".into(),
+            inspection_type: "PRE_TRIP_DVIC".into(),
+            inspection_status: "PASSED".into(),
+            start_time: start.into(),
+            end_time: "2026-09-26 09:01:15".into(),
+            duration: 75.0,
+        }
+        .key()
+    };
+    // The rows kept already are found by these: to the second, and in thousandths of one.
+    let (whole, half) = (
+        "6e0f870ae15a5020c852eac25087db37293f88d38e0ee1b21a541c2950113471",
+        "a0aed3b7b5c9ba15557f0bf727e6f947b4c1892e3f541f637da7b32686f0f887",
+    );
+    for (start, expected) in [
+        ("2026-09-26 09:00:00", whole),
+        ("2026-09-26 09:00:00.000", whole),
+        ("2026-09-26 09:00:00.5", half),
+        ("2026-09-26 09:00:00.500", half),
+        ("2026-09-26 09:00:00.500000000", half),
+    ] {
+        assert_eq!(key(start), expected, "{start}");
+    }
+    // A finer fraction is kept to the millionth or the billionth it needs.
+    assert_eq!(
+        key("2026-09-26 09:00:00.25"),
+        key("2026-09-26 09:00:00.250")
+    );
+    assert_eq!(
+        key("2026-09-26 09:00:00.000001"),
+        key("2026-09-26 09:00:00.000001000")
+    );
+    assert_ne!(
+        key("2026-09-26 09:00:00.000001"),
+        key("2026-09-26 09:00:00.000000001")
+    );
+}

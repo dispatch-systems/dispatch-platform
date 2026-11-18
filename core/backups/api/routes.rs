@@ -105,7 +105,7 @@ async fn now(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<R
             let dsp = input.param("id");
             v::fields(&input.body, &[])?;
             crate::ensure(db.config.backups.is_some(), "backups_not_configured", 409)?;
-            schedule::start(db, dsp, schedule::timezone(db, dsp)?)?;
+            schedule::start(db, dsp, &schedule::timezone(db, dsp)?)?;
             history::ask_by_hand(&db.platform, dsp, &owner.user.id)?;
             db.audit(Some(&owner.user.id), Some(dsp), "dsp.backup_requested", "")?;
             shown(db, dsp)

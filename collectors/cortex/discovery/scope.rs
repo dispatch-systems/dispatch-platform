@@ -1,6 +1,5 @@
 //! The station and day a Cortex collection covers: resolved, or what discovery needs
 //! to resolve it.
-use chrono::NaiveDate;
 use dispatch_core::{Error, Result, db::s, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -67,16 +66,12 @@ impl Discovery {
 }
 impl Scope {
     pub fn validate(&self) -> Result<()> {
-        let tz: chrono_tz::Tz = self
-            .timezone
-            .parse()
-            .map_err(|_| Error::new("invalid_timezone", 400))?;
-        let date = NaiveDate::parse_from_str(&self.date, "%Y-%m-%d")
-            .map_err(|_| Error::new("invalid_date", 400))?;
+        let tz = dispatch_core::foundation::clock::zone(&self.timezone)?;
+        let date = dispatch_core::foundation::clock::date(&self.date)?;
         ensure(
             date.to_string() == self.date
                 && self.date.as_str() >= "2000-01-01"
-                && date <= dispatch_core::foundation::clock::today(tz),
+                && date <= dispatch_core::foundation::clock::today(&tz),
             "invalid_date",
             400,
         )?;

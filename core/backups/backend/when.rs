@@ -5,8 +5,7 @@ use crate::{
     Error, Result, ensure,
     foundation::{timing, validate as v},
 };
-use chrono::{Datelike, Duration, NaiveDate};
-use chrono_tz::Tz;
+use jiff::{ToSpan, civil::Date, tz::TimeZone};
 use serde_json::Value;
 
 pub use crate::foundation::timing::{EVERY_DAY, Timing, text, time};
@@ -65,12 +64,12 @@ impl When {
 
     /// Whether it runs on `day`: one of its days of the week, or one of its dates, a date past
     /// the month's end on its last day.
-    pub fn runs_on(&self, day: NaiveDate) -> bool {
+    pub fn runs_on(&self, day: Date) -> bool {
         match self.on {
-            On::Week(days) => days & (1 << day.weekday().num_days_from_monday()) != 0,
+            On::Week(days) => days & (1 << day.weekday().to_monday_zero_offset()) != 0,
             On::Month { dates, last } => {
-                let date = day.day() as i64;
-                let length = day.num_days_in_month() as i64;
+                let date = i64::from(day.day());
+                let length = i64::from(day.days_in_month());
                 dates & (1 << date) != 0 || (date == length && (last || dates >> (length + 1) != 0))
             }
         }
@@ -78,7 +77,7 @@ impl When {
 
     /// The first time it runs after `after` (milliseconds since the epoch) in `tz`. A local time
     /// a clock change repeats runs once, at its first; one it skips doesn't run.
-    pub fn next(&self, tz: Tz, after: i64) -> Option<i64> {
+    pub fn next(&self, tz: &TimeZone, after: i64) -> Option<i64> {
         // Through two months and a week, so a date only some months have, or a time a clock
         // change skips, finds its next.
         self.timing.next(tz, after, 70, |day| self.runs_on(day))
@@ -86,7 +85,7 @@ impl When {
 }
 
 /// The next `count` times `rules` run after `after`, in `tz`, each once.
-pub fn upcoming(rules: &[When], tz: Tz, after: i64, count: usize) -> Vec<i64> {
+pub fn upcoming(rules: &[When], tz: &TimeZone, after: i64, count: usize) -> Vec<i64> {
     timing::upcoming(after, count, |from| {
         rules.iter().filter_map(|rule| rule.next(tz, from)).min()
     })
@@ -94,9 +93,9 @@ pub fn upcoming(rules: &[When], tz: Tz, after: i64, count: usize) -> Vec<i64> {
 
 /// Which of `rules` run on each of the `days` days from `today` where the DSP is: each day's
 /// date, and the places of the rules that run on it.
-pub fn calendar(rules: &[When], today: NaiveDate, days: i64) -> Vec<(NaiveDate, Vec<usize>)> {
+pub fn calendar(rules: &[When], today: Date, days: i64) -> Vec<(Date, Vec<usize>)> {
     (0..days)
-        .map(|offset| today + Duration::days(offset))
+        .map(|offset| today + offset.days())
         .map(|day| {
             let running = rules
                 .iter()

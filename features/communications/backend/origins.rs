@@ -22,7 +22,10 @@ pub(crate) use source::{Place, Transport};
 
 /// Bump the prefix when writer/day semantics change. A tzdata update changes this key too.
 pub(crate) fn algorithm() -> String {
-    format!("conversation-origins-1:{}", chrono_tz::IANA_TZDB_VERSION)
+    format!(
+        "conversation-origins-1:{}",
+        dispatch_core::foundation::clock::rules()
+    )
 }
 
 #[derive(Clone)]

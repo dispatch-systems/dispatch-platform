@@ -8,7 +8,6 @@ use crate::{
     },
     discovery::Scope,
 };
-use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result,
     collection::{
@@ -23,6 +22,7 @@ use dispatch_core::{
     manifest::registry,
 };
 use futures_util::{StreamExt, stream};
+use jiff::civil::DateTime;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
@@ -142,19 +142,11 @@ fn listing(
             .iter()
             .map(|v| v.as_i64().ok_or_else(invalid))
             .collect::<Result<_>>()?;
-        let converted = parts
-            .iter()
-            .map(|n| u32::try_from(*n).map_err(|_| invalid()))
-            .collect::<Result<Vec<_>>>()?;
-        let modified_at = NaiveDate::from_ymd_opt(
-            i32::try_from(parts[0]).map_err(|_| invalid())?,
-            converted[1],
-            converted[2],
-        )
-        .and_then(|date| date.and_hms_opt(converted[3], converted[4], converted[5]))
-        .ok_or_else(invalid)?
-        .and_utc()
-        .timestamp_millis();
+        let part = |place: usize| i8::try_from(parts[place]).map_err(|_| invalid());
+        let year = i16::try_from(parts[0]).map_err(|_| invalid())?;
+        let created = DateTime::new(year, part(1)?, part(2)?, part(3)?, part(4)?, part(5)?, 0)
+            .map_err(|_| invalid())?;
+        let modified_at = dispatch_core::foundation::clock::utc(created);
         ensure(
             seen.insert(url.path().to_owned()),
             "dvic_listing_invalid",

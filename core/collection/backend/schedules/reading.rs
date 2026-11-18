@@ -86,7 +86,7 @@ impl Store {
     /// Today, where the DSP is.
     pub fn local_date(&self, id: &str) -> Result<String> {
         let tz = timezone(&self.find_dsp(id)?.timezone)?;
-        Ok(crate::foundation::clock::today(tz).to_string())
+        Ok(crate::foundation::clock::today(&tz).to_string())
     }
 
     /// The collections whose schedules `c` sets, as the Collectors page shows them.

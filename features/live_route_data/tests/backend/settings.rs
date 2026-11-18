@@ -1,8 +1,9 @@
 //! Live Route Data's settings as its backend reads them, against a real store in a temporary
 //! directory: what Settings saves for a DSP, each field by its id, and the schedules it refuses.
 use super::*;
-use chrono::Weekday::*;
+use dispatch_core::manifest::Days;
 use dispatch_core::{settings, testing};
+use jiff::civil::Weekday::{self, *};
 use serde_json::json;
 
 #[test]
@@ -17,11 +18,19 @@ fn reads_what_settings_saves_and_refuses_no_day_or_a_window_past_midnight() {
         (collection.schedule().unwrap(), collection.save_to_history)
     };
     let schedule = |days: &[Weekday], start, stop, minutes: u64| {
-        Schedule::new(days, start, stop, Duration::from_secs(minutes * 60)).unwrap()
+        Schedule::new(
+            Days::of(days),
+            start,
+            stop,
+            Duration::from_secs(minutes * 60),
+        )
+        .unwrap()
     };
     // Its defaults, until the DSP saves one: every day from eight until nine, every five
     // minutes, each day saved.
-    let every_day = [Mon, Tue, Wed, Thu, Fri, Sat, Sun];
+    let every_day = [
+        Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday,
+    ];
     let defaults = (schedule(&every_day, "08:00", "21:00", 5), true);
     assert_eq!(read(), defaults);
     let owner = testing::a_user(&store);
@@ -55,5 +64,8 @@ fn reads_what_settings_saves_and_refuses_no_day_or_a_window_past_midnight() {
         "save_to_history": false,
     });
     settings::save(&store, &dsp, &owner, &COLLECTION, &values, 0, false).unwrap();
-    assert_eq!(read(), (schedule(&[Mon, Sat], "05:30", "23:59", 60), false));
+    assert_eq!(
+        read(),
+        (schedule(&[Monday, Saturday], "05:30", "23:59", 60), false)
+    );
 }

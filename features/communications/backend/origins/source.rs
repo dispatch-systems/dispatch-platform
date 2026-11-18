@@ -1,12 +1,11 @@
 //! The source tables as origins read them: each transport's SQL dialect, a source row's topology
 //! and the seeks that find one row by its ID or beside another.
 use super::super::model::{Direction, Reference};
-use chrono::{DateTime, Utc};
-use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result,
     db::{Db, FromRow, Row},
 };
+use jiff::{Timestamp, tz::TimeZone};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
@@ -130,15 +129,19 @@ impl Topology {
         self.sent_by.is_some() || self.phone_id.is_some()
     }
 }
-/// Use actual timestamp dates, never clock::day's fixture-today override. Invalid chrono dates
-/// cannot be indexed; their conversation's index stays unready, and `read` answers its windows
+/// Use actual timestamp dates, never clock::day's fixture-today override. An instant no calendar
+/// reaches cannot be indexed; their conversation's index stays unready, and `read` answers its windows
 /// without origins. This does not normalize stored time.
-fn day(zone: Tz, at: i64) -> Result<chrono::NaiveDate> {
-    DateTime::<Utc>::from_timestamp_millis(at)
-        .map(|at| at.with_timezone(&zone).date_naive())
-        .ok_or_else(|| Error::new("communications_origins_date", 409))
+fn day(zone: &TimeZone, at: i64) -> Result<jiff::civil::Date> {
+    Timestamp::from_millisecond(at)
+        .map(|at| zone.to_datetime(at).date())
+        .map_err(|_| Error::new("communications_origins_date", 409))
 }
-pub(super) fn flags(previous: Option<&Topology>, row: &Topology, zone: Tz) -> Result<(bool, bool)> {
+pub(super) fn flags(
+    previous: Option<&Topology>,
+    row: &Topology,
+    zone: &TimeZone,
+) -> Result<(bool, bool)> {
     let date = day(zone, row.at)?;
     let Some(previous) = previous else {
         return Ok((true, true));

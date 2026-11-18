@@ -138,17 +138,21 @@ impl From<Refusal> for WireError {
     }
 }
 
+/// An HTTP date, as `Tue, 17 Nov 2026 08:12:31 GMT`, in milliseconds since the epoch.
+fn http_date(value: &str) -> Option<i64> {
+    let at = jiff::fmt::rfc2822::DateTimeParser::new().parse_timestamp(value);
+    at.ok().map(jiff::Timestamp::as_millisecond)
+}
+
 /// Retry-After's seconds or HTTP date. A date already passed permits an immediate retry.
 fn retry_after(value: Option<&reqwest::header::HeaderValue>) -> Option<Duration> {
     let value = value?.to_str().ok()?.trim();
     if !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) {
         return value.parse::<u64>().ok().map(Duration::from_secs);
     }
-    let at = chrono::DateTime::parse_from_rfc2822(value).ok()?;
+    let at = http_date(value)?;
     Some(Duration::from_millis(
-        at.timestamp_millis()
-            .saturating_sub(crate::db::now())
-            .max(0) as u64,
+        at.saturating_sub(crate::db::now()).max(0) as u64,
     ))
 }
 
@@ -332,9 +336,7 @@ impl Http {
                 .map(str::to_owned)
         };
         let etag = header(reqwest::header::ETAG).filter(|e| e.len() <= 256);
-        let modified_at = header(reqwest::header::LAST_MODIFIED)
-            .and_then(|s| chrono::DateTime::parse_from_rfc2822(&s).ok())
-            .map(|t| t.timestamp_millis());
+        let modified_at = header(reqwest::header::LAST_MODIFIED).and_then(|date| http_date(&date));
         if status == StatusCode::NOT_MODIFIED {
             return Ok(Download {
                 body: None,

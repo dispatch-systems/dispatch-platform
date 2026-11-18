@@ -25,6 +25,7 @@ use dispatch_paycom::{
     self as paycom,
     timecards::{EmployeeTimecardPeriod, PERIOD_DAYS, PeriodSync},
 };
+use jiff::ToSpan;
 use rusqlite::params;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -188,12 +189,10 @@ fn status(
     let paycom = summarize(store, id, paycom::PROVIDER, paycom_rows)?;
     let cortex = summarize(store, id, cortex::PROVIDER, cortex_rows)?;
     let kinds: Vec<_> = Provider::all().flat_map(Provider::job_kinds).collect();
-    let elapsed = (through
-        .parse::<chrono::NaiveDate>()
-        .map_err(|_| dispatch_core::Error::new("invalid_date", 400))?
-        - period.start()?)
-    .num_days()
-        + 1;
+    let last = through
+        .parse::<jiff::civil::Date>()
+        .map_err(|_| dispatch_core::Error::new("invalid_date", 400))?;
+    let elapsed = i64::from((last - period.start()?).get_days()) + 1;
     let complete = paycom.total == 1
         && cortex.total > 0
         && cortex.total as i64 == elapsed
@@ -283,7 +282,7 @@ pub(crate) fn enqueue_employee_sync(
         serde_json::to_value(paycom_request)?,
     )];
     for offset in 0..PERIOD_DAYS {
-        let date = (start + chrono::Duration::days(offset)).to_string();
+        let date = (start + offset.days()).to_string();
         if date > through {
             break;
         }

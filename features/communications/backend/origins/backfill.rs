@@ -8,7 +8,6 @@ use super::{
     state,
 };
 use crate::backend::texts;
-use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result, State,
     db::{Db, FromRow, Row},
@@ -16,6 +15,7 @@ use dispatch_core::{
     foundation::{crypto, observability},
     manifest::{Maintenance, Upkeep},
 };
+use jiff::tz::TimeZone;
 use rusqlite::params;
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
@@ -100,7 +100,12 @@ fn prune(
 
 /// A production upkeep unit and its resumable public-to-owner entry point. Returns true only
 /// after atomic publication (or if already current). Never called by the window route.
-pub(crate) fn chunk(db: &Db, transport: Transport, conversation: &str, zone: Tz) -> Result<bool> {
+pub(crate) fn chunk(
+    db: &Db,
+    transport: Transport,
+    conversation: &str,
+    zone: &TimeZone,
+) -> Result<bool> {
     db.transaction(|| {
         lock(db)?;
         ensure_state(db, transport, conversation)?;
@@ -128,7 +133,7 @@ pub(crate) fn chunk(db: &Db, transport: Transport, conversation: &str, zone: Tz)
             return Ok(true);
         }
         let index = state(db, transport, conversation)?.ok_or_else(invariant)?;
-        if index.ready(zone.name()) {
+        if index.ready(zone.iana_name().unwrap_or_default()) {
             prune(
                 db,
                 transport,
@@ -141,7 +146,7 @@ pub(crate) fn chunk(db: &Db, transport: Transport, conversation: &str, zone: Tz)
         }
         let current = build(db, transport, conversation)?.filter(|build| {
             build.epoch == index.epoch
-                && build.zone == zone.name()
+                && build.zone == zone.iana_name().unwrap_or_default()
                 && build.algorithm == algorithm()
         });
         let mut build = match current {
@@ -149,7 +154,7 @@ pub(crate) fn chunk(db: &Db, transport: Transport, conversation: &str, zone: Tz)
             None => Build {
                 generation: crypto::id("origin")?,
                 epoch: index.epoch,
-                zone: zone.name().to_owned(),
+                zone: zone.iana_name().unwrap_or_default().to_owned(),
                 algorithm: algorithm(),
                 previous: None,
             },
@@ -348,7 +353,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
                             }
                             let zone = texts::zone(db, &asked)?;
                             let connection = db.dsp(&asked)?;
-                            chunk(&connection, transport, &conversation, zone)
+                            chunk(&connection, transport, &conversation, &zone)
                         })
                         .await;
                     if let Err(error) = result {

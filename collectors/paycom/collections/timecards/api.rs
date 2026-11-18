@@ -9,8 +9,6 @@ use crate::{
     codes,
     connection::rest::{Client, unreadable},
 };
-use chrono::{Duration, NaiveDate, TimeZone};
-use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result,
     collection::browser::Run,
@@ -19,6 +17,9 @@ use dispatch_core::{
     foundation::{clock, validate as v},
     manifest::registry,
 };
+use jiff::ToSpan;
+use jiff::civil::Date;
+use jiff::tz::TimeZone;
 use serde_json::{Value, json};
 use std::future::Future;
 
@@ -33,7 +34,7 @@ pub(crate) struct Source<'a> {
     /// Which labor allocation category holds the delivery station.
     pub station: usize,
     /// The first day of one of the DSP's pay periods.
-    pub anchor: NaiveDate,
+    pub anchor: Date,
     /// Paycom's site, where a timecard's link opens.
     pub site: &'a str,
 }
@@ -62,12 +63,12 @@ pub(crate) fn station_category(rows: &[Value]) -> Option<usize> {
 }
 
 /// The pay period `date` falls in, counted in fortnights from `anchor`.
-pub(crate) fn period_of(anchor: NaiveDate, date: NaiveDate) -> EmployeeTimecardPeriod {
-    let start =
-        anchor + Duration::days((date - anchor).num_days().div_euclid(PERIOD_DAYS) * PERIOD_DAYS);
+pub(crate) fn period_of(anchor: Date, date: Date) -> EmployeeTimecardPeriod {
+    let start = anchor
+        + (i64::from((date - anchor).get_days()).div_euclid(PERIOD_DAYS) * PERIOD_DAYS).days();
     EmployeeTimecardPeriod {
         from: start.to_string(),
-        to: (start + Duration::days(PERIOD_DAYS - 1)).to_string(),
+        to: (start + (PERIOD_DAYS - 1).days()).to_string(),
     }
 }
 
@@ -109,10 +110,9 @@ pub(crate) fn position(rows: &[Value]) -> Result<&str> {
 }
 
 /// The start of `date` where the DSP is, in seconds since the epoch.
-fn midnight(zone: Tz, date: NaiveDate) -> Result<i64> {
-    zone.from_local_datetime(&date.and_hms_opt(0, 0, 0).expect("midnight"))
-        .earliest()
-        .map(|at| at.timestamp())
+fn midnight(zone: &TimeZone, date: Date) -> Result<i64> {
+    clock::instant(zone, date.at(0, 0, 0, 0))
+        .map(|at| at / 1000)
         .ok_or_else(|| Error::new("invalid_period", 400))
 }
 
@@ -121,18 +121,18 @@ fn midnight(zone: Tz, date: NaiveDate) -> Result<i64> {
 /// punches from the day after it began, so the last day's shift is read to its end, and a
 /// shift that began the evening before brings its IN DAY, which keeps its punches off the
 /// first day's card.
-pub(crate) fn window(zone: Tz, period: &EmployeeTimecardPeriod) -> Result<(i64, i64)> {
+pub(crate) fn window(zone: &TimeZone, period: &EmployeeTimecardPeriod) -> Result<(i64, i64)> {
     let start = period.start()?;
     Ok((
-        midnight(zone, start - Duration::days(1))?,
-        midnight(zone, start + Duration::days(PERIOD_DAYS + 1))?,
+        midnight(zone, start - 1.days())?,
+        midnight(zone, start + (PERIOD_DAYS + 1).days())?,
     ))
 }
 
 /// An employee's cards for `period`.
 async fn cards(
     source: &Source<'_>,
-    zone: Tz,
+    zone: &TimeZone,
     code: &str,
     period: &EmployeeTimecardPeriod,
 ) -> Result<Vec<Value>> {
@@ -176,10 +176,7 @@ fn workforce(
 /// Collects what the job asks for: one employee's period, or everyone's.
 pub(crate) async fn collect(source: &Source<'_>, run: &Run<'_>) -> Result<Value> {
     run.metrics.method("api");
-    let zone: Tz = run
-        .timezone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
+    let zone = clock::zone(run.timezone)?;
     if let Some(scope) = EmployeeSync::parse(run.request)? {
         // Timecard keeps the employee the sync reads.
         let employee = kept(run, json!({"employeeCode":scope.employee_code})).await?;
@@ -188,7 +185,7 @@ pub(crate) async fn collect(source: &Source<'_>, run: &Run<'_>) -> Result<Value>
         run.progress(20, format!("Reading timecard for {code}"))
             .await?;
         let period = scope.period();
-        let timecards = cards(source, zone, &code, &period).await?;
+        let timecards = cards(source, &zone, &code, &period).await?;
         return workforce(source, vec![employee], timecards, &period);
     }
     let scope = PeriodSync::parse(run.request)?;
@@ -199,7 +196,7 @@ pub(crate) async fn collect(source: &Source<'_>, run: &Run<'_>) -> Result<Value>
         }
         None => period_of(
             source.anchor,
-            collection_date(run.request, run.timezone)?.unwrap_or_else(|| clock::today(zone)),
+            collection_date(run.request, run.timezone)?.unwrap_or_else(|| clock::today(&zone)),
         ),
     };
     let known = match &scope {
@@ -217,7 +214,7 @@ pub(crate) async fn collect(source: &Source<'_>, run: &Run<'_>) -> Result<Value>
         None => None,
     };
     run.progress(10, "Reading employee roster".into()).await?;
-    let data = everyone(source, zone, &period, known, |done, total| {
+    let data = everyone(source, &zone, &period, known, |done, total| {
         run.progress(
             10 + (80 * done / total) as i64,
             format!("Reading timecards ({done} of {total})"),
@@ -234,7 +231,7 @@ pub(crate) async fn collect(source: &Source<'_>, run: &Run<'_>) -> Result<Value>
 /// out, read a few at a time. `progress` hears how many of them are read after each few.
 pub(crate) async fn everyone<F, Fut>(
     source: &Source<'_>,
-    zone: Tz,
+    zone: &TimeZone,
     period: &EmployeeTimecardPeriod,
     known: Option<&[Value]>,
     mut progress: F,

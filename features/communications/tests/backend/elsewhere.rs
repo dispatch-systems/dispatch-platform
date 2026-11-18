@@ -30,12 +30,12 @@ fn avery(ids: &[&str], phones: &[&str]) -> Person {
 async fn the_work_chip_goes_to_the_id_with_a_work_phone_now_not_an_earlier_aliases() {
     let (_root, state, dsp) = support::started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
+    let yesterday = day.yesterday().unwrap();
     // Avery, one person to Driver Match, drove as A1 yesterday and as A2 today.
     let avery = avery(&["A1", "A2"], &["(253) 555-0177"]);
     support::know(&state, &dsp, vec![avery.clone()], Vec::new(), Vec::new());
     // Yesterday, as A1, they texted from 0101; today, as A2, they have 0202 and haven't texted.
-    let then = at(zone, yesterday, 9, 0);
+    let then = at(&zone, yesterday, 9, 0);
     let today = day.to_string();
     let earlier = saved(yesterday, &[("A1", "2065550101")]);
     let now = phones(&[("A2", "2065550202")]);
@@ -58,7 +58,7 @@ async fn the_work_chip_goes_to_the_id_with_a_work_phone_now_not_an_earlier_alias
 
     // As A1 too they have a phone of their own today, 0303, on a route with fewer stops than A2's:
     // the chip goes to A2's, on the route their day shows.
-    let wave = at(zone, day, 9, 0);
+    let wave = at(&zone, day, 9, 0);
     routed(
         &dsp,
         vec![
@@ -78,7 +78,7 @@ async fn the_work_chip_goes_to_the_id_with_a_work_phone_now_not_an_earlier_alias
 async fn a_driver_off_today_has_no_work_chip() {
     let (_root, state, dsp) = support::started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
+    let yesterday = day.yesterday().unwrap();
     let avery = avery(&["A1"], &["(253) 555-0177"]);
     support::know(&state, &dsp, vec![avery.clone()], Vec::new(), Vec::new());
     // Yesterday, as A1, they texted from 0101; today only someone else has a work phone.
@@ -90,7 +90,7 @@ async fn a_driver_off_today_has_no_work_chip() {
         &dsp,
         "+12065550101",
         "Leaving the station",
-        at(zone, yesterday, 9, 0),
+        at(&zone, yesterday, 9, 0),
     )
     .await;
 
@@ -128,7 +128,7 @@ async fn the_personal_chip_goes_to_the_default_number_not_the_one_last_written_f
         Vec::new(),
     )
     .await;
-    let then = at(zone, day.pred_opt().unwrap(), 9, 0);
+    let then = at(&zone, day.yesterday().unwrap(), 9, 0);
     texted(&state, &dsp, "+12535550177", "New phone soon", then).await;
 
     let at_dsp = dsp.clone();
@@ -154,7 +154,7 @@ async fn many_ids(state: &Arc<State>, dsp: &str) -> (Person, String, String) {
     let named: Vec<&str> = ids.iter().map(String::as_str).collect();
     let avery = avery(&named, &["(253) 555-0177"]);
     support::know(state, dsp, vec![avery.clone()], Vec::new(), Vec::new());
-    let wave = at(zone, day, 9, 0);
+    let wave = at(&zone, day, 9, 0);
     let routed_on = |n: usize, id: &str| {
         let stops = if n == most { 100 } else { 10 };
         route(
@@ -223,7 +223,7 @@ async fn the_profile_shows_the_route_and_work_phone_of_the_id_the_work_chip_goes
 async fn their_work_conversation_by_an_earlier_id_has_them_working_on_todays_route_by_another() {
     let (_root, state, dsp) = support::started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
+    let yesterday = day.yesterday().unwrap();
     let avery = Person {
         code: "avery".into(),
         name: "Avery Diaz".into(),
@@ -243,7 +243,7 @@ async fn their_work_conversation_by_an_earlier_id_has_them_working_on_todays_rou
     let today = day.to_string();
     let earlier = saved(yesterday, &[("A1", "2065550101")]);
     phoned(&state, &dsp, Some(&today), Vec::new(), vec![earlier]).await;
-    let then = at(zone, yesterday, 9, 0);
+    let then = at(&zone, yesterday, 9, 0);
     let text = texted(&state, &dsp, "+12065550101", "Leaving the station", then).await;
     let a1 = support::filed(&state, &dsp, &text).await.id;
     routed(
@@ -254,7 +254,7 @@ async fn their_work_conversation_by_an_earlier_id_has_them_working_on_todays_rou
             "CX14",
             "1FTVAN214",
             168,
-            at(zone, day, 9, 0),
+            at(&zone, day, 9, 0),
         )],
     );
     phoned(&state, &dsp, Some(&today), Vec::new(), Vec::new()).await;

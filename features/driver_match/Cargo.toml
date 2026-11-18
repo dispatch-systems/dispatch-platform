@@ -19,8 +19,7 @@ ts = ["dep:ts-rs", "dispatch-core/ts"]
 # Core alone: every feature that names people reaches it through core's people slot.
 [dependencies]
 dispatch-core = { path = "../../core" }
-chrono = { workspace = true }
-chrono-tz = { workspace = true }
+jiff = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 # Its answers keep the order their fields are written in.

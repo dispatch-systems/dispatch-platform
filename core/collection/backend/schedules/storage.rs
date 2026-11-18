@@ -1,5 +1,6 @@
 //! Schedule rows and the current/preceding-release encoding written to them.
 use super::{Scheduled, next_run};
+use crate::foundation::clock;
 use crate::{
     Error, Result,
     collection::{
@@ -10,8 +11,7 @@ use crate::{
     ensure,
     foundation::crypto,
 };
-use chrono::{NaiveTime, TimeZone};
-use chrono_tz::Tz;
+use jiff::{ToSpan, civil::Time, tz::TimeZone};
 use rusqlite::params;
 
 // Keep the name and legacy timing writes for the preceding release.
@@ -78,7 +78,7 @@ impl FromRow for ScheduleRow {
 
 /// The times of a times rule as this release wrote them, while the previous release kept its
 /// first.
-fn written_times(written: Option<&str>, first: NaiveTime) -> Option<Timing> {
+fn written_times(written: Option<&str>, first: Time) -> Option<Timing> {
     let times: Vec<String> = serde_json::from_str(written?).ok()?;
     let times = times
         .iter()
@@ -95,7 +95,7 @@ struct Written {
 }
 fn written_repeat(
     written: Option<&str>,
-    first: NaiveTime,
+    first: Time,
     interval: i64,
     until: Option<String>,
 ) -> Option<Timing> {
@@ -111,7 +111,7 @@ fn written_repeat(
 }
 /// How the previous release runs a row: once a day at its time, or every `interval` minutes all
 /// day from it, which, longer than a rule repeats, are the times it falls at.
-fn legacy_timing(first: NaiveTime, interval: Option<i64>) -> Result<Timing> {
+fn legacy_timing(first: Time, interval: Option<i64>) -> Result<Timing> {
     let Some(every) = interval else {
         return Ok(Timing::At(vec![first]));
     };
@@ -123,10 +123,10 @@ fn legacy_timing(first: NaiveTime, interval: Option<i64>) -> Result<Timing> {
             to: first,
         });
     }
-    let mut times: Vec<NaiveTime> = (0..)
+    let mut times: Vec<Time> = (0..)
         .map(|run| run * every)
         .take_while(|offset| *offset < 24 * 60)
-        .map(|offset| first + chrono::Duration::minutes(offset))
+        .map(|offset| first.wrapping_add(offset.minutes()))
         .collect();
     times.sort();
     Ok(Timing::At(times))
@@ -134,22 +134,17 @@ fn legacy_timing(first: NaiveTime, interval: Option<i64>) -> Result<Timing> {
 
 /// When a rule first runs, as the previous release times a schedule: its first time today,
 /// or the next day that has it.
-pub fn anchor(time: NaiveTime, tz: Tz, after: i64) -> Result<i64> {
-    let date = chrono::DateTime::from_timestamp_millis(after)
-        .ok_or_else(|| Error::new("invalid_schedule", 400))?
-        .with_timezone(&tz)
-        .date_naive();
+pub fn anchor(time: Time, tz: &TimeZone, after: i64) -> Result<i64> {
+    let after = jiff::Timestamp::from_millisecond(after)
+        .map_err(|_| Error::new("invalid_schedule", 400))?;
+    let date = tz.to_datetime(after).date();
     (0..4)
-        .find_map(|days| {
-            tz.from_local_datetime(&(date + chrono::Duration::days(days)).and_time(time))
-                .earliest()
-        })
-        .map(|first| first.timestamp_millis())
+        .find_map(|days| clock::instant(tz, (date + days.days()).to_datetime(time)))
         .ok_or_else(|| Error::new("schedule_unresolvable", 400))
 }
 /// The single time and interval the previous release runs a rule by: its first time, or the
 /// start of its repeat.
-pub(super) fn legacy(rule: &Rule) -> (&'static str, Option<i64>, NaiveTime) {
+pub(super) fn legacy(rule: &Rule) -> (&'static str, Option<i64>, Time) {
     match &rule.timing {
         Timing::At(times) => ("daily", None, times[0]),
         Timing::Repeat { every, from, .. } => ("interval", Some(*every), *from),
@@ -174,7 +169,7 @@ pub(super) fn save_rule(
     rule: &Rule,
     position: usize,
     enabled: bool,
-    tz: Tz,
+    tz: &TimeZone,
 ) -> Result<String> {
     let same = row.filter(|row| row.collection == *collects && row.rule == *rule);
     let (cadence, interval, first) = legacy(rule);

@@ -72,7 +72,7 @@ fn deleted(db: &Store, dsp: &str, after: &Value, at: i64) -> Result<Option<Strin
     Ok(passed.map(|_| {
         format!(
             "Route data from before {} will be deleted within the hour. This can’t be undone.",
-            start.format("%b %-d, %Y")
+            start.strftime("%b %-d, %Y")
         )
     }))
 }

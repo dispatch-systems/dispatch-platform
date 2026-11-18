@@ -4,6 +4,7 @@
 use super::*;
 use crate::collections::meals::collect as collection;
 use dispatch_core::collection::browser::page::call;
+use jiff::ToSpan;
 use tokio::time::sleep;
 
 /// A probe's authority to read: the operator's, who ran it.
@@ -38,10 +39,10 @@ fn tab_pair(value: &str) -> Result<Vec<usize>> {
 }
 fn adjacent_week(week: &str, delta: i64) -> Result<String> {
     let (year, number) = dispatch_core::foundation::weeks::parse_week(week)?;
-    let day = chrono::NaiveDate::from_isoywd_opt(year, number, chrono::Weekday::Mon)
+    let day = jiff::civil::Date::from_isoywd_opt(year, number, jiff::civil::Weekday::Monday)
         .ok_or_else(|| Error::new("invalid_week", 400))?;
     let shifted = day
-        .checked_add_signed(chrono::Duration::weeks(delta))
+        .checked_add_signed(delta.weeks())
         .ok_or_else(|| Error::new("invalid_week", 400))?;
     Ok(crate::dvic::report_week(shifted))
 }
@@ -626,18 +627,18 @@ async fn probe_scorecard_api() -> Result<()> {
         let (year, number) = week
             .split_once("-W")
             .ok_or_else(|| Error::new("benchmark_configuration_required", 400))?;
-        let monday = chrono::NaiveDate::from_isoywd_opt(
+        let monday = jiff::civil::Date::from_isoywd_opt(
             year.parse()
                 .map_err(|_| Error::new("benchmark_configuration_required", 400))?,
             number
                 .parse()
                 .map_err(|_| Error::new("benchmark_configuration_required", 400))?,
-            chrono::Weekday::Mon,
+            jiff::civil::Weekday::Monday,
         )
         .ok_or_else(|| Error::new("benchmark_configuration_required", 400))?;
         (
-            (monday - chrono::Duration::days(1)).to_string(),
-            (monday + chrono::Duration::days(5)).to_string(),
+            (monday - 1.days()).to_string(),
+            (monday + 5.days()).to_string(),
         )
     };
     let profile = dsp.join("state/browsers/cortex-browseros");

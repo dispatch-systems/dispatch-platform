@@ -13,6 +13,7 @@ use dispatch_cortex::{
     routes::{self, Capture, Detail, Mode, Request},
 };
 use dispatch_routes::{RoutesStore, save_day};
+use jiff::ToSpan;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -119,9 +120,9 @@ fn count(db: &Store, id: &str, sql: &str) -> i64 {
     db.routes_db(id).unwrap().count(sql, []).unwrap()
 }
 /// Today where the DSP is, as its window counts back from.
-fn today(db: &Store, id: &str) -> chrono::NaiveDate {
-    let zone: chrono_tz::Tz = db.find_dsp(id).unwrap().timezone.parse().unwrap();
-    dispatch_core::foundation::clock::today(zone)
+fn today(db: &Store, id: &str) -> jiff::civil::Date {
+    let zone = dispatch_core::foundation::clock::zone(&db.find_dsp(id).unwrap().timezone).unwrap();
+    dispatch_core::foundation::clock::today(&zone)
 }
 /// How long the DSP keeps its route data, as Routes declares it.
 fn retention() -> &'static Section {
@@ -368,9 +369,9 @@ async fn a_packages_history_across_many_old_days_reads_the_same_without_their_ro
     // The package picked up and delivered on two itineraries of each of 125 days, four
     // events a day, and on one itinerary of the newest: the answer's five hundred then end
     // with the two pickups of one day, one on each of its itineraries.
-    let newest = chrono::NaiveDate::from_ymd_opt(2026, 9, 25).unwrap();
+    let newest = jiff::civil::date(2026, 9, 25);
     for back in 0..126 {
-        let day = (newest - chrono::Duration::days(back)).to_string();
+        let day = (newest - back.days()).to_string();
         let mut capture = routes::fixture(&request(&day, Mode::Final)).unwrap();
         if back == 0 {
             let first = capture.summaries["itinerarySummaries"][0].clone();
@@ -418,8 +419,10 @@ async fn an_old_days_rows_go_only_once_they_read_the_same_from_its_responses() {
     let (_root, db, id) = ready();
     let state = State::new(db.config.clone()).unwrap();
     // The bootstrapped DSP keeps UTC, so its days are UTC days.
-    let today = chrono::Utc::now().date_naive();
-    let day = |back: i64| (today - chrono::Duration::days(back)).to_string();
+    let today =
+        dispatch_core::foundation::clock::local(&jiff::tz::TimeZone::UTC, dispatch_core::db::now())
+            .date();
+    let day = |back: i64| (today - back.days()).to_string();
     // Two days older than a month and one inside it.
     let (old, odd, recent) = (day(40), day(41), day(5));
     for (key, day) in [("old", &old), ("odd", &odd), ("recent", &recent)] {
@@ -1128,10 +1131,7 @@ async fn another_features_read_of_a_day_is_saved_whole_when_read_later() {
     zoned.scope.timezone = "America/Chicago".into();
     // A day's final read once it ended, its snapshot while it lasts.
     let mut unfinished = latest.clone();
-    unfinished.finished_at = format!("{day}T20:00:00Z")
-        .parse::<chrono::DateTime<chrono::Utc>>()
-        .unwrap()
-        .timestamp_millis();
+    unfinished.finished_at = dispatch_core::db::millis(&format!("{day}T20:00:00Z")).unwrap();
     unfinished.started_at = unfinished.finished_at - hour;
     let mut past = latest.clone();
     past.mode = Mode::Snapshot;
@@ -1163,8 +1163,10 @@ async fn a_schedule_queues_recent_days_without_a_final_publication() {
     let (_root, db, id) = ready();
     let state = State::new(db.config.clone()).unwrap();
     // The bootstrapped DSP keeps UTC, so its days are UTC days.
-    let today = chrono::Utc::now().date_naive();
-    let day = |back: i64| (today - chrono::Duration::days(back)).to_string();
+    let today =
+        dispatch_core::foundation::clock::local(&jiff::tz::TimeZone::UTC, dispatch_core::db::now())
+            .date();
+    let day = |back: i64| (today - back.days()).to_string();
     let jobs = db.routes_jobs(&id, Mode::Final).unwrap();
     // Yesterday first, then the days before, at most four per run.
     assert_eq!(jobs.len(), dispatch_routes::MAX_JOBS_PER_RUN);
@@ -1199,8 +1201,10 @@ async fn a_schedule_of_today_reads_it_so_far_and_leaves_its_final_read_to_the_ne
     let state = State::new(db.config.clone()).unwrap();
     db.enable_all_features(&id).unwrap();
     // The bootstrapped DSP keeps UTC, so its days are UTC days.
-    let today = chrono::Utc::now().date_naive();
-    let day = |back: i64| (today - chrono::Duration::days(back)).to_string();
+    let today =
+        dispatch_core::foundation::clock::local(&jiff::tz::TimeZone::UTC, dispatch_core::db::now())
+            .date();
+    let day = |back: i64| (today - back.days()).to_string();
     // A DSP's daily schedule of `collection`, run once as it falls due: the requests it
     // queued, newest day first.
     let run = |collection: &str| -> Vec<Value> {
@@ -1258,7 +1262,10 @@ fn collection_requests_need_a_station_and_an_allowed_day() {
     .unwrap();
     assert!(db.routes_schedule_ready(&id).is_ok());
     // Today cannot be read as final, and a snapshot reads today only, one day at a time.
-    let today = chrono::Utc::now().date_naive().to_string();
+    let today =
+        dispatch_core::foundation::clock::local(&jiff::tz::TimeZone::UTC, dispatch_core::db::now())
+            .date()
+            .to_string();
     assert_eq!(
         db.enqueue_routes(&id, None, "k", Some(&today), Mode::Final, 1)
             .unwrap_err()
@@ -1354,8 +1361,8 @@ async fn a_retention_window_retires_older_days_only_while_routes_are_on() {
     let actor = common::a_user(&db);
     db.set_feature(&id, "routes", true, &actor).unwrap();
     let today = today(&db, &id);
-    let old = (today - chrono::Duration::days(40)).to_string();
-    let recent = (today - chrono::Duration::days(1)).to_string();
+    let old = (today - 40.days()).to_string();
+    let recent = (today - 1.days()).to_string();
     for (key, day) in [("old", &old), ("recent", &recent)] {
         let capture = routes::fixture(&request(day, Mode::Final)).unwrap();
         publish(&state, &db, &id, key, day, &capture).await;

@@ -16,6 +16,7 @@ use dispatch_core::{
     foundation::names,
     manifest::people::{Kind, Source},
 };
+use jiff::ToSpan;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// How many days a person's sheet shows of their work, ending today.
@@ -89,15 +90,12 @@ pub(super) fn details(store: &Store, dsp: &str, code: &str) -> Result<PersonDeta
 
 /// The last `DAYS` days, oldest first, in the DSP's time zone.
 fn last_days(store: &Store, dsp: &str) -> Result<Vec<String>> {
-    let zone: chrono_tz::Tz = store
-        .find_dsp(dsp)?
-        .timezone
-        .parse()
-        .unwrap_or(chrono_tz::UTC);
-    let today = dispatch_core::foundation::clock::today(zone);
+    let zone = dispatch_core::foundation::clock::zone(&store.find_dsp(dsp)?.timezone)
+        .unwrap_or(jiff::tz::TimeZone::UTC);
+    let today = dispatch_core::foundation::clock::today(&zone);
     Ok((0..DAYS)
         .rev()
-        .map(|back| (today - chrono::Duration::days(back)).to_string())
+        .map(|back| (today - back.days()).to_string())
         .collect())
 }
 

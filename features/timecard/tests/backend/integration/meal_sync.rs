@@ -6,6 +6,7 @@ use dispatch_core::{
 use dispatch_cortex::{self as cortex, discovery::Scope, meals};
 use dispatch_paycom as paycom;
 use dispatch_timecard::TimecardStore;
+use jiff::ToSpan;
 use serde_json::{Value, json};
 
 /// Timecard, the Driver Match it joins drivers through, and both collectors it keeps.
@@ -200,7 +201,7 @@ fn employee_period_batches_all_proven_scopes_without_an_employee_or_station_job_
     // No single day holds all scope identities. Every day in the period must collect
     // their union, including a station not yet collected for this period.
     for index in 1..=5 {
-        let date = (period.start().unwrap() + chrono::Duration::days(index as i64)).to_string();
+        let date = (period.start().unwrap() + (index as i64).days()).to_string();
         seed(&db, &id, &date, index);
     }
     seed(&db, &id, &period.shift(-1).unwrap().from, 6);
@@ -304,9 +305,8 @@ fn employee_period_sync_reserves_both_sources_and_retains_cutoff_and_all_day_out
         .unwrap();
     let today = db.local_date(&id).unwrap();
     assert_eq!(queued.through, today);
-    let days = (today.parse::<chrono::NaiveDate>().unwrap() - period.start().unwrap()).num_days()
-        as usize
-        + 1;
+    let through = today.parse::<jiff::civil::Date>().unwrap();
+    let days = (through - period.start().unwrap()).get_days() as usize + 1;
     assert_eq!(queued.cortex.total, days);
     let dates: Vec<_> = queued
         .cortex
@@ -375,7 +375,13 @@ fn successful_station_does_not_hide_a_failed_station_in_the_same_sync() {
 fn status_reads_allow_a_viewer_date_ahead_of_the_dsp_but_collection_does_not() {
     install();
     let (_root, db, id, actor) = fixture();
-    let tomorrow = (chrono::Utc::now().date_naive() + chrono::Duration::days(1)).to_string();
+    let tomorrow = (dispatch_core::foundation::clock::local(
+        &jiff::tz::TimeZone::UTC,
+        dispatch_core::db::now(),
+    )
+    .date()
+        + 1.days())
+    .to_string();
     assert_eq!(
         serde_json::to_value(db.meal_sync_status(&id, &tomorrow).unwrap()).unwrap()["date"],
         tomorrow

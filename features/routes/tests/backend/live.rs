@@ -1,7 +1,7 @@
 //! Keeping a live read: today is judged as it's written, not as its reading started.
 use super::*;
 use crate::testing;
-use chrono::Duration;
+use jiff::ToSpan;
 use serde_json::json;
 
 #[test]
@@ -14,7 +14,7 @@ fn a_read_whose_day_ended_before_it_was_written_is_refused_changing_nothing() {
     )
     .unwrap();
     // Read and shaped as yesterday's snapshot, as one is until its day ends where the DSP is.
-    let yesterday = (routes_today(&db, &dsp).unwrap() - Duration::days(1)).to_string();
+    let yesterday = (routes_today(&db, &dsp).unwrap() - 1.days()).to_string();
     let request = day_request(&db, &dsp, &yesterday, Mode::Snapshot).unwrap();
     let read = dispatch_cortex::routes::fixture(&request).unwrap();
     let mut shaped = Shaped::new(read, &request).unwrap();

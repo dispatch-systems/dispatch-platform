@@ -265,7 +265,7 @@ impl Store {
     }
     pub fn new_dsp(&self, name: &str, timezone: &str, actor: &str, permanent: bool) -> Result<Dsp> {
         ensure(
-            timezone.parse::<chrono_tz::Tz>().is_ok(),
+            crate::foundation::clock::zone(timezone).is_ok(),
             "invalid_timezone",
             400,
         )?;
@@ -483,7 +483,7 @@ impl Store {
             !name.trim().is_empty()
                 && name.len() <= 256
                 && !name.chars().any(char::is_control)
-                && timezone.parse::<chrono_tz::Tz>().is_ok()
+                && crate::foundation::clock::zone(timezone).is_ok()
                 && (abbreviation.is_empty()
                     || crate::foundation::validate::token(abbreviation, 32))
                 && (station.is_empty()
@@ -569,7 +569,7 @@ impl Store {
         ensure(
             !name.trim().is_empty()
                 && name.chars().count() <= 100
-                && timezone.parse::<chrono_tz::Tz>().is_ok()
+                && crate::foundation::clock::zone(timezone).is_ok()
                 && station_code.is_none_or(|code| {
                     (3..=8).contains(&code.len())
                         && code

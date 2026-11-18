@@ -443,15 +443,12 @@ async fn a_deleted_dsps_objects_go_none_an_upload_begun_before_leaves_nor_anothe
     fake.put(&format!("dsps/{north}/communications/{sha}"), b"late");
     finish(&state).await;
     assert_eq!((fake.keys(), pending().await), (vec![kept.clone()], 1));
-    let (at, long_ago) = (
-        north.clone(),
-        chrono::Utc::now() - chrono::Duration::minutes(12),
-    );
+    let (at, long_ago) = (north.clone(), crate::db::at(crate::db::now() - 12 * 60_000));
     state
         .run(move |db| {
             db.platform.exec(
                 "UPDATE dsp_deletions SET started_at=? WHERE dsp_id=?",
-                [long_ago.to_rfc3339(), at],
+                [long_ago, at],
             )?;
             Ok(())
         })

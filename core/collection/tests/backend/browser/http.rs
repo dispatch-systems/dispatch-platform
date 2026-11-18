@@ -1,4 +1,5 @@
 use super::*;
+use jiff::ToSpan;
 
 #[test]
 fn a_chunk_crossing_the_body_limit_is_refused_before_copying() {
@@ -26,8 +27,9 @@ fn retry_after_accepts_seconds_and_http_dates_without_guessing_a_delay() {
     ] {
         assert_eq!(retry_after(Some(&HeaderValue::from_static(text))), expected);
     }
-    let future = chrono::Utc::now() + chrono::Duration::hours(1);
-    let date = HeaderValue::from_str(&future.to_rfc2822()).unwrap();
+    let future = jiff::Timestamp::now() + 1.hours();
+    let written = future.strftime("%a, %d %b %Y %H:%M:%S +0000").to_string();
+    let date = HeaderValue::from_str(&written).unwrap();
     assert!(retry_after(Some(&date)).is_some_and(|delay| !delay.is_zero()));
     assert_eq!(retry_after(None), None);
 }

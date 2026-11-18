@@ -12,8 +12,6 @@ use budget::fit;
 use summary::summary;
 
 use crate::toolbox::{Answer, Cx, Refusal, Reply, Tool};
-use chrono::{Datelike, Duration, NaiveDate};
-use chrono_tz::Tz;
 use dispatch_core::{
     Result,
     accounts::api::types::Dsp,
@@ -28,6 +26,7 @@ use dispatch_routes_contract::{self as route, DriverRoutes};
 use dispatch_slack_contract::{self as slack, ChatAccounts};
 use dispatch_timecard_contract as timecard;
 use dispatch_weekly_scorecard_contract::{self as scorecard, DriverScorecards};
+use jiff::{ToSpan, civil::Date, tz::TimeZone};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -94,7 +93,7 @@ impl Tool for Driver {
     type Output = Found;
     async fn call(cx: Cx, input: Lookup) -> Answer<Reply<Found>> {
         let dsp = cx.dsp().clone();
-        let span = range(&input, clock::today(zone(&dsp)))?;
+        let span = range(&input, clock::today(&zone(&dsp)))?;
         let people = cx.everyone(&dsp).await?;
         let person = find(&people, &dsp.name, &input.driver)?.clone();
         let wanted = input.sections.unwrap_or_else(|| Section::ALL.to_vec());
@@ -108,21 +107,21 @@ impl Tool for Driver {
 }
 
 /// The DSP's time zone.
-fn zone(dsp: &Dsp) -> Tz {
-    dsp.timezone.parse().unwrap_or(chrono_tz::UTC)
+fn zone(dsp: &Dsp) -> TimeZone {
+    dispatch_core::foundation::clock::zone(&dsp.timezone).unwrap_or(TimeZone::UTC)
 }
 
 /// The days asked about, the first and the last.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Span {
-    from: NaiveDate,
-    to: NaiveDate,
+    from: Date,
+    to: Date,
 }
 impl Span {
     /// Each day, the first first, YYYY-MM-DD.
     fn each(self) -> impl Iterator<Item = String> {
         self.from
-            .iter_days()
+            .series(1.day())
             .take_while(move |day| *day <= self.to)
             .map(|day| day.to_string())
     }
@@ -133,12 +132,11 @@ impl Span {
     /// The scorecard weeks overlapping the days, Sunday to Saturday, the oldest first, as core
     /// names Amazon's weeks.
     fn weeks(self) -> Vec<String> {
-        let sunday =
-            |day: NaiveDate| day - Duration::days(day.weekday().num_days_from_sunday().into());
+        let sunday = |day: Date| day - day.weekday().to_sunday_zero_offset().days();
         let (first, last) = (sunday(self.from), sunday(self.to));
         // The week holding `to` is the last to end before the Sunday after it.
-        let newest = weeks::last_completed_week(last + Duration::weeks(1));
-        let count = usize::try_from((last - first).num_weeks()).unwrap_or_default();
+        let newest = weeks::last_completed_week(last + 1.weeks());
+        let count = usize::try_from((last - first).get_days() / 7).unwrap_or_default();
         let mut named = weeks::weeks_before(&newest, count).unwrap_or_default();
         named.reverse();
         named
@@ -147,7 +145,7 @@ impl Span {
 
 /// The days `input` names: from `from` to `to` or today, or the last `last_days` or 7, each day a
 /// real one, none after today, and 31 at most.
-fn range(input: &Lookup, today: NaiveDate) -> std::result::Result<Span, Refusal> {
+fn range(input: &Lookup, today: Date) -> std::result::Result<Span, Refusal> {
     let invalid = |message: &str| Refusal::new("invalid_input", message);
     if input.last_days.is_some() && (input.from.is_some() || input.to.is_some()) {
         return Err(invalid("Give `from` and `to`, or `last_days`, not both."));
@@ -166,7 +164,7 @@ fn range(input: &Lookup, today: NaiveDate) -> std::result::Result<Span, Refusal>
         if !(1..=LONGEST).contains(&days) {
             return Err(invalid("`last_days` is 1 to 31."));
         }
-        (today - Duration::days(days - 1), today)
+        (today - (days - 1).days(), today)
     };
     if from > to {
         return Err(invalid("`from` comes after `to`."));
@@ -174,14 +172,14 @@ fn range(input: &Lookup, today: NaiveDate) -> std::result::Result<Span, Refusal>
     if to > today {
         return Err(invalid(&format!("The range ends after today, {today}.")));
     }
-    if (to - from).num_days() >= LONGEST {
+    if i64::from((to - from).get_days()) >= LONGEST {
         return Err(invalid("Ask for 31 days at most."));
     }
     Ok(Span { from, to })
 }
 
-fn parse(value: &str) -> Option<NaiveDate> {
-    NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d").ok()
+fn parse(value: &str) -> Option<Date> {
+    clock::date(value.trim()).ok()
 }
 
 /// Whom `asked` names at the DSP `dsp`: by their code first, alone or as a choice names it, else
@@ -298,7 +296,7 @@ struct Reading<'a> {
     span: Span,
     from: String,
     to: String,
-    zone: Tz,
+    zone: TimeZone,
 }
 impl Reading<'_> {
     /// The person's IDs of `source` a feature is asked about, the first linked first: none it
@@ -354,7 +352,7 @@ impl Reading<'_> {
             routes: driven
                 .routes
                 .into_iter()
-                .map(|it| Route::from_day(it, self.zone))
+                .map(|it| Route::from_day(it, &self.zone))
                 .collect(),
             more_routes: 0,
             more_undelivered: 0,

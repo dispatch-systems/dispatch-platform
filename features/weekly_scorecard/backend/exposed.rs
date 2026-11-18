@@ -6,8 +6,6 @@ use super::{
     publication::{flag, text},
     storage::WeeklyScorecardStore,
 };
-use chrono::{DateTime, Datelike, Duration};
-use chrono_tz::Tz;
 use dispatch_core::{
     Result,
     db::{Store, s},
@@ -17,6 +15,8 @@ use dispatch_core::{
 use dispatch_weekly_scorecard_contract::{
     Collected, DriverScorecards, Metric, Package, PackageKind, Scorecard,
 };
+use jiff::ToSpan;
+use jiff::{Timestamp, tz::TimeZone};
 use serde_json::Value;
 
 /// The most days one read covers, and the most IDs it names.
@@ -150,7 +150,7 @@ impl DriverScorecards for Exposed {
             (PackageKind::Feedback, "customer_feedback"),
         ] {
             for row in rows(db, dsp, table, ids, &weeks)? {
-                packages.push(package(kind, &row, tz)?);
+                packages.push(package(kind, &row, &tz)?);
             }
         }
         packages.sort_by(|a, b| (&a.week, &a.date).cmp(&(&b.week, &b.date)));
@@ -184,15 +184,16 @@ fn scorecard(row: &Value) -> Result<Scorecard> {
     })
 }
 /// A package of `kind`, from its row, its day in `tz`.
-fn package(kind: PackageKind, row: &Value, tz: Tz) -> Result<Package> {
+fn package(kind: PackageKind, row: &Value, tz: &TimeZone) -> Result<Package> {
     let fields: Value = serde_json::from_str(s(row, "row"))?;
     let (date, reasons) = match kind {
         // Its `data_date` is the day the concession was recorded, often days after the delivery,
         // which Amazon times in UTC.
         PackageKind::Concession => (
-            DateTime::parse_from_rfc3339(s(&fields, "delivery_datetime_iso"))
-                .ok()
-                .map(|at| at.with_timezone(&tz).date_naive().to_string()),
+            (s(&fields, "delivery_datetime_iso")
+                .parse::<Timestamp>()
+                .ok())
+            .map(|at| tz.to_datetime(at).date().to_string()),
             marked(&fields, CONCESSION_FLAGS)
                 .map(|field| field.trim_end_matches("_flag").to_owned())
                 .collect(),
@@ -257,12 +258,12 @@ fn rows(
 fn overlapping(ids: &[String], from: &str, to: &str) -> Result<Vec<String>> {
     let (first, last) = validate::days(from, to, LONGEST)?;
     validate::ids(ids, MOST_IDS)?;
-    let mut sunday = first - Duration::days(first.weekday().num_days_from_sunday().into());
+    let mut sunday = first - first.weekday().to_sunday_zero_offset().days();
     let mut weeks = Vec::new();
     while sunday <= last {
-        let iso = (sunday + Duration::days(6)).iso_week();
+        let iso = (sunday + 6.days()).iso_week_date();
         weeks.push(format!("{}-W{:02}", iso.year(), iso.week()));
-        sunday += Duration::weeks(1);
+        sunday += 1.weeks();
     }
     Ok(weeks)
 }

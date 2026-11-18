@@ -122,8 +122,8 @@ pub fn invitation(i: &Invitation) -> Message {
     } else {
         "a"
     };
-    let expires = chrono::DateTime::from_timestamp_millis(i.expires_at)
-        .map(|at| at.format("%B %-d, %Y").to_string())
+    let expires = jiff::Timestamp::from_millisecond(i.expires_at)
+        .map(|at| at.strftime("%B %-d, %Y").to_string())
         .unwrap_or_default();
     // A DSP awaiting onboarding still has its placeholder name, so that copy never shows it.
     let (subject, label) = if i.onboarding {

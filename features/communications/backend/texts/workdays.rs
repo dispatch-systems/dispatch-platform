@@ -3,16 +3,19 @@
 //! day's as Routes kept it (`driver_routes`), with what the DSP calls the van (`amazon_fleet`).
 use super::{live_day::LiveDay, model::Text, zone};
 use crate::{api::types::Workday, backend::today};
-use chrono::NaiveDate;
 use dispatch_core::{Result, db::Store, foundation::clock};
 use dispatch_routes_contract::{self as routes, MOST_DAYS, RouteDay};
+use jiff::civil::Date;
 use std::collections::BTreeSet;
 
 /// The days `texts` were written on, each with the route and van the driver `id` of the source
 /// `source` drove that day, as far as Routes knows.
 pub fn of(db: &Store, dsp: &str, source: &str, id: &str, texts: &[Text]) -> Result<Vec<Workday>> {
     let zone = zone(db, dsp)?;
-    let days: BTreeSet<NaiveDate> = texts.iter().map(|text| clock::day(zone, text.at)).collect();
+    let days: BTreeSet<Date> = texts
+        .iter()
+        .map(|text| clock::day(&zone, text.at))
+        .collect();
     if days.is_empty() {
         return Ok(Vec::new());
     }
@@ -36,7 +39,7 @@ pub fn of(db: &Store, dsp: &str, source: &str, id: &str, texts: &[Text]) -> Resu
         }
     }
     // Only the days written on are shown, and their vans named.
-    let shown: BTreeSet<String> = days.iter().map(NaiveDate::to_string).collect();
+    let shown: BTreeSet<String> = days.iter().map(Date::to_string).collect();
     driven.retain(|route| shown.contains(&route.day));
     let mut busiest = today::busiest(driven, |route| route.day.clone());
     let vans = today::vans(
@@ -60,11 +63,11 @@ pub fn of(db: &Store, dsp: &str, source: &str, id: &str, texts: &[Text]) -> Resu
 
 /// The reads of Routes that reach every one of `days`, in order: each from a day to the last
 /// within its reach.
-fn reaches(days: &BTreeSet<NaiveDate>) -> Vec<(NaiveDate, NaiveDate)> {
-    let mut reaches: Vec<(NaiveDate, NaiveDate)> = Vec::new();
+fn reaches(days: &BTreeSet<Date>) -> Vec<(Date, Date)> {
+    let mut reaches: Vec<(Date, Date)> = Vec::new();
     for &day in days {
         match reaches.last_mut() {
-            Some((from, to)) if (day - *from).num_days() < MOST_DAYS => *to = day,
+            Some((from, to)) if i64::from((day - *from).get_days()) < MOST_DAYS => *to = day,
             _ => reaches.push((day, day)),
         }
     }

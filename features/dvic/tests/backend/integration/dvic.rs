@@ -20,10 +20,12 @@ fn request(weeks: &[&str]) -> Request {
 /// The request a station and DSP's collection of `weeks` would carry.
 fn request_for(weeks: &[&str], station: &str, dsp: &str) -> Request {
     // Publication binds the DSP's current local date, so the expected scope must too.
-    let date = chrono::Utc::now()
-        .with_timezone(&chrono_tz::America::Los_Angeles)
-        .date_naive()
-        .to_string();
+    let date = dispatch_core::foundation::clock::local(
+        &dispatch_core::foundation::clock::zone("America/Los_Angeles").unwrap(),
+        dispatch_core::db::now(),
+    )
+    .date()
+    .to_string();
     Request::parse(&json!({"collection":"dvic","station":station,"weeks":weeks,
         "date":date,"timezone":"America/Los_Angeles",
         "dspName":"Fixture Delivery","dspAbbreviation":dsp}))
@@ -404,7 +406,7 @@ fn thresholds_are_strict_and_publication_weeks_follow_iso_including_year_rollove
         ("2027-01-01", "2026-W53"),
     ] {
         assert_eq!(
-            dvic::report_week(chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap()),
+            dvic::report_week(dispatch_core::foundation::clock::date(date).unwrap()),
             week
         );
     }
@@ -419,7 +421,10 @@ fn a_schedule_checks_only_the_current_and_previous_publication_weeks() {
     install();
     let (_root, db, id) = ready();
     // No older week was ever checked, and still none is asked for.
-    let latest = dvic::report_week(chrono::Utc::now().date_naive());
+    let latest = dvic::report_week(
+        dispatch_core::foundation::clock::local(&jiff::tz::TimeZone::UTC, dispatch_core::db::now())
+            .date(),
+    );
     let jobs = db.dvic_jobs(&id).unwrap();
     assert_eq!(jobs[0].1["weeks"], json!(weeks_before(&latest, 1).unwrap()));
 }
@@ -436,7 +441,9 @@ fn a_manual_sync_also_checks_the_publication_weeks_holding_the_week_shown() {
             serde_json::from_str(&db.job_row(s(&job, "id"), Some(&id)).unwrap().request).unwrap();
         serde_json::from_value::<Vec<String>>(queued["weeks"].clone()).unwrap()
     };
-    let today = chrono::Utc::now().date_naive();
+    let today =
+        dispatch_core::foundation::clock::local(&jiff::tz::TimeZone::UTC, dispatch_core::db::now())
+            .date();
     let latest = weeks_before(&dvic::report_week(today), 1).unwrap();
     // Sunday, August 23 to Saturday, August 29, 2026 is in the reports published from
     // Monday, August 24 to Sunday, September 6, whichever of its days is shown.

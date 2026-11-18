@@ -5,7 +5,7 @@ use crate::api::types::{
     ConductCategory, ConductStanding, ConductStepDown, ConductStepKind, ConductTier, ConductUnit,
     ConductWriteupRow,
 };
-use chrono::{Days, Months, NaiveDate};
+use jiff::{ToSpan, civil::Date};
 use std::collections::BTreeMap;
 
 /// Where everyone stands, and where each writeup's person stood just before it.
@@ -18,7 +18,7 @@ pub(crate) struct Worked {
 #[derive(Clone, Copy)]
 struct Held {
     tier: ConductTier,
-    since: NaiveDate,
+    since: Date,
 }
 
 /// Each person's record in each category as of `today`. A writeup puts them at its tier, or
@@ -28,7 +28,7 @@ struct Held {
 pub(crate) fn work_out(
     categories: &[ConductCategory],
     writeups: &[ConductWriteupRow],
-    today: NaiveDate,
+    today: Date,
 ) -> Worked {
     let steps: BTreeMap<_, _> = categories
         .iter()
@@ -39,7 +39,7 @@ pub(crate) fn work_out(
     let mut stood_before = BTreeMap::new();
     // The oldest first, the order they were written in.
     for writeup in writeups.iter().rev() {
-        let Ok(on) = NaiveDate::parse_from_str(&writeup.written_on, "%Y-%m-%d") else {
+        let Ok(on) = dispatch_core::foundation::clock::date(&writeup.written_on) else {
             continue;
         };
         if on > today {
@@ -84,7 +84,7 @@ pub(crate) fn work_out(
 }
 
 /// `held` once every step down due by `on` is taken: none once the record is clean.
-fn stepped(held: Held, step: Option<ConductStepDown>, on: NaiveDate) -> Option<Held> {
+fn stepped(held: Held, step: Option<ConductStepDown>, on: Date) -> Option<Held> {
     let mut now = held;
     let Some(step) = step else {
         return Some(now);
@@ -108,12 +108,12 @@ fn after(tier: ConductTier, step: &ConductStepDown) -> Option<ConductTier> {
 
 /// The day a wait begun on `since` ends: the same day of the month for months, or the month's
 /// last where it has none.
-fn due(since: NaiveDate, step: &ConductStepDown) -> Option<NaiveDate> {
+fn due(since: Date, step: &ConductStepDown) -> Option<Date> {
     let after = u32::try_from(step.after).ok()?;
     match step.unit {
-        ConductUnit::Days => since.checked_add_days(Days::new(after.into())),
-        ConductUnit::Weeks => since.checked_add_days(Days::new(u64::from(after) * 7)),
-        ConductUnit::Months => since.checked_add_months(Months::new(after)),
+        ConductUnit::Days => since.checked_add(i64::from(after).days()).ok(),
+        ConductUnit::Weeks => since.checked_add(i64::from(after).weeks()).ok(),
+        ConductUnit::Months => since.checked_add(i64::from(after).months()).ok(),
     }
 }
 
