@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { assessmentFixture } from '../testing/ci-tools.js';
-import { WORKERS, browserTests, shards } from './browser-shards.js';
+import { WORKERS, browserTests, shards, untimed } from './browser-shards.js';
 import { nodeTests, pythonTests, type Command } from './execution-plan.js';
 import { workspaceCrates } from './workspace.js';
 
@@ -218,7 +218,15 @@ async function browser() {
   // Meanwhile, this shard's share of a split by the tests' recorded times, which every shard
   // computes alike: Playwright's own sharding splits by count, and one long test made one
   // shard the slowest of every run.
-  const tests = shards(browserTests(), count)[index - 1]!;
+  const listed = browserTests();
+  const tests = shards(listed, count)[index - 1]!;
+  // An untimed test costs the split only balance, so a catalogue gone stale fails nothing:
+  // main's run says so, for browser-durations.py to refresh it from main's runs.
+  const missing = untimed(listed).length;
+  if (index === 1 && process.env.GITHUB_REF === 'refs/heads/main' && missing > listed.length / 10)
+    console.log(
+      `::warning::${missing} of ${listed.length} browser tests have no recorded time: refresh tooling/ci/browser-durations.json with browser-durations.py`,
+    );
   const list = path.join(os.tmpdir(), `dispatch-browser-shard-${index}-of-${count}.txt`);
   fs.writeFileSync(list, `${tests.join('\n')}\n`);
   if (!(await setup).every(Boolean)) return;

@@ -82,16 +82,20 @@ export async function startPreview({
   cwd = process.cwd(),
   host = process.env.DISPATCH_DEV_HOST || '127.0.0.1',
   port = Number(process.env.DISPATCH_DEV_PORT || 0),
+  // The last server's, given again, so the links it printed open on this one.
+  entry = process.env.DISPATCH_DEV_ENTRY || randomUUID(),
   binary,
-}: { cwd?: string; host?: string; port?: number; binary?: string } = {}) {
+}: { cwd?: string; host?: string; port?: number; entry?: string; binary?: string } = {}) {
   if (['0.0.0.0', '::', '[::]', '*'].includes(host))
     throw new Error(`DISPATCH_DEV_HOST must name one address, not ${host}`);
   if (!Number.isInteger(port) || port < 0 || port > 65535)
     throw new Error('DISPATCH_DEV_PORT must be an integer between 0 and 65535');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(entry))
+    throw new Error('DISPATCH_DEV_ENTRY must be a random UUID');
 
   let ui: ViteDevServer | undefined;
   let app: Awaited<ReturnType<typeof fixture>> | undefined;
-  const entryPath = `/__preview/${randomUUID()}`;
+  const entryPath = `/__preview/${entry}`;
   const privateSource = privateSources(cwd);
   // Bind once and retain the socket. Concurrent worktrees cannot claim the same
   // free port between discovery and startup, and HMR shares this exact server.

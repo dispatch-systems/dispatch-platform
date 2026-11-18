@@ -14,6 +14,8 @@ pub struct Workspace {
     crates: BTreeMap<String, String>,
     /// Each crate's name, with the names of the crates that name it as a dependency.
     dependents: BTreeMap<String, BTreeSet<String>>,
+    /// Each crate's name, with the Cargo features it declares.
+    features: BTreeMap<String, BTreeSet<String>>,
 }
 impl Workspace {
     pub fn read(root: &Path) -> Result<Self> {
@@ -32,6 +34,7 @@ impl Workspace {
             .filter_map(toml::Value::as_str);
         let mut crates = BTreeMap::new();
         let mut manifests = BTreeMap::new();
+        let mut features = BTreeMap::new();
         for member in members {
             for dir in member_dirs(root, member)? {
                 if !root.join(&dir).join("Cargo.toml").is_file() {
@@ -44,6 +47,13 @@ impl Workspace {
                     .and_then(toml::Value::as_str)
                     .ok_or_else(|| format!("{dir}/Cargo.toml names no package"))?
                     .to_owned();
+                let declared = read
+                    .get("features")
+                    .and_then(toml::Value::as_table)
+                    .into_iter()
+                    .flat_map(|table| table.keys().cloned())
+                    .collect();
+                features.insert(name.clone(), declared);
                 crates.insert(dir.clone(), name);
                 manifests.insert(dir, read);
             }
@@ -80,7 +90,19 @@ impl Workspace {
                 }
             }
         }
-        Ok(Self { crates, dependents })
+        Ok(Self {
+            crates,
+            dependents,
+            features,
+        })
+    }
+    /// The crates that declare the Cargo feature `feature`, by name.
+    pub fn declaring(&self, feature: &str) -> Vec<&String> {
+        self.features
+            .iter()
+            .filter(|(_, declared)| declared.contains(feature))
+            .map(|(name, _)| name)
+            .collect()
     }
     /// The crates that depend on `name`, directly or through others: those whose code or
     /// tests a change in it can break.

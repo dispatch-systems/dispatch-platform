@@ -327,6 +327,7 @@ async fn names_and_blocks_are_each_lines_own_and_logged_as_its_own() {
     );
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test(start_paused = true)]
 async fn another_lines_page_waiting_or_answering_is_refused_once_dispatch_phone_is_off() {
     let (_root, state, dsp) = started();
