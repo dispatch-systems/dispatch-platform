@@ -400,9 +400,10 @@ pub enum Outcome {
     Passed,
     Failed,
 }
-/// What `landed` last left for the change named `name`, if anything.
+/// What `landed` last left for the change named `name`, if anything, in its scratch folder as it
+/// is now.
 pub fn landing(name: &str) -> Result<Option<Landed>> {
-    match fs::read_to_string(workspace::scratch(name).join(LANDED)) {
+    match fs::read_to_string(workspace::current_scratch(name)?.join(LANDED)) {
         Ok(text) => Ok(Some(serde_json::from_str(&text)?)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
@@ -627,7 +628,7 @@ mod tests {
         let name = format!("landed-test-{}", std::process::id());
         let root = temp.path().join(&name);
         fs::create_dir(&root).unwrap();
-        let marker = workspace::scratch(&name).join(LANDED);
+        let marker = workspace::scratch(&name).unwrap().join(LANDED);
         let left = || {
             let text = fs::read_to_string(&marker).ok();
             let _ = fs::remove_file(&marker);
@@ -687,7 +688,7 @@ mod tests {
         assert!(result.unwrap_err().contains("change has no merged PR"));
         assert_eq!(github.paused.get(), 0);
         assert_eq!(left(), None);
-        let _ = fs::remove_dir_all(workspace::scratch(&name));
+        let _ = fs::remove_dir_all(workspace::scratch(&name).unwrap());
     }
     /// GitHub with one run of the checks on commit `abc`, as `gh run list` and `gh run view`
     /// tell it.
