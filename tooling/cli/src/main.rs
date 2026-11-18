@@ -98,7 +98,7 @@ const COMMANDS: &[Spec] = &[
         "A worktree for the change beside the clone, in worktrees/<name>, or in \
          <clone>-worktrees/<name> for the agent docs' clone, on a branch of its name off \
          origin/main or --from, with its packages installed and its scratch folder, \
-         /tmp/dispatch-<name>, made for its decisions and its PR's body.",
+         ~/dispatch-platform/scratch/<name>, made for its decisions and its PR's body.",
     )
     .options(&["--from"])
     .arguments(1),

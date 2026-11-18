@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { unwired, wire } from './wire.js';
@@ -105,11 +106,25 @@ export function failedOtherwise(log: string) {
   return failed;
 }
 
-/** Where a checkout keeps what it makes outside itself: its change's scratch folder. */
+/**
+ * Where a checkout keeps what it makes outside itself: its change's scratch folder, or the one it
+ * kept in /tmp until a dispatchdev command moves it. Making the new one first would strand that.
+ */
 function scratch(root: string) {
-  const dir = `/tmp/dispatch-${path.basename(root)}`;
+  const name = path.basename(root);
+  const dir = path.join(os.homedir(), 'dispatch-platform/scratch', name);
+  const old = `/tmp/dispatch-${name}`;
+  // Only a folder of this user's that no one else can open: /tmp is shared.
+  const kept = fs.lstatSync(old, { throwIfNoEntry: false });
+  if (
+    !fs.existsSync(dir) &&
+    kept?.isDirectory() &&
+    kept.uid === process.getuid?.() &&
+    (kept.mode & 0o077) === 0
+  )
+    return fs.realpathSync(old);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return dir;
+  return fs.realpathSync(dir);
 }
 
 /** Whether this user can run a command in a systemd scope of its own, as on Dev's machine. */

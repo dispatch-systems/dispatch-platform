@@ -268,7 +268,7 @@ mod tests {
                 .to_lowercase()
         );
         start(&docs, &name, "origin/main", &NoPackages).unwrap();
-        let scratch = workspace::scratch(&name);
+        let scratch = workspace::scratch(&name).unwrap();
         let made = scratch.is_dir();
         let _ = fs::remove_dir_all(&scratch);
         assert!(made, "its scratch folder");

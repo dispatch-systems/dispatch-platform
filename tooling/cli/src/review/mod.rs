@@ -318,6 +318,24 @@ pub fn discard(clone: &Path, scratch: &Path, runner: &dyn Runner) -> Result<()> 
     }
     Ok(())
 }
+/// Reconnects the reviewers' checkouts in the scratch folder `scratch` to their clone, once the
+/// folder moved: git keeps where each is, and `take` and `finish` remove them through it.
+pub fn reconnect(scratch: &Path, runner: &dyn Runner) -> Result<()> {
+    let Ok(folders) = fs::read_dir(scratch.join("review")) else {
+        return Ok(());
+    };
+    for folder in folders {
+        let root = reading(&folder?.path());
+        if root.join(".git").is_file() {
+            Checkout {
+                root: &root,
+                runner,
+            }
+            .git(&["worktree", "repair"])?;
+        }
+    }
+    Ok(())
+}
 fn read_json<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<Option<T>> {
     match fs::read_to_string(path) {
         Ok(text) => Ok(Some(serde_json::from_str(&text)?)),

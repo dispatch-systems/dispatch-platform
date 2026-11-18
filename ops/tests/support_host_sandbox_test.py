@@ -16,6 +16,33 @@ spec.loader.exec_module(module)
 
 
 @unittest.skipUnless(sys.platform == "linux", "the support sandbox is bubblewrap, which runs on Linux alone")
+class BridgeTests(unittest.TestCase):
+    def test_the_host_reaches_a_bridge_socket_deeper_than_an_address_holds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bridge = Path(directory).resolve() / ("deep-" * 24) / "browser-bridge-x"
+            bridge.mkdir(parents=True)
+            self.assertGreater(len(str(bridge / "application.sock")), 108)
+            here = os.getcwd()
+            os.chdir(bridge)
+            try:
+                server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                server.bind("application.sock")
+            finally:
+                os.chdir(here)
+            server.listen(1)
+            descriptor, address = module.bridge_address(bridge)
+            try:
+                self.assertLess(len(address), 104)
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.connect(address)
+                    accepted, _ = server.accept()
+                    accepted.close()
+            finally:
+                server.close()
+                os.close(descriptor)
+
+
+@unittest.skipUnless(sys.platform == "linux", "the support sandbox is bubblewrap, which runs on Linux alone")
 class SandboxTests(unittest.TestCase):
     def test_collection_child_starts_with_its_canonical_pin_mounted_read_only(self):
         launchers = Path(__file__).resolve().parents[2] / "ops/launchers"
@@ -130,7 +157,7 @@ python3 -c 'import socket; sock=socket.socket(); sock.settimeout(1); assert sock
             self.assertEqual((root / "source.txt").read_text(), "changed")
             self.assertEqual((dev / ".git/config").read_bytes(), host_config)
             self.assertEqual(secret.read_text(), "must never enter changed code")
-            shutil.rmtree(Path(f"/tmp/dispatch-{root.name}"), ignore_errors=True)
+            shutil.rmtree(module.assigned_scratch(root))
 
 
 if __name__ == "__main__":
