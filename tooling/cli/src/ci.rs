@@ -1016,6 +1016,29 @@ mod tests {
         );
     }
     #[test]
+    fn ci_says_how_to_start_checks_github_never_started() {
+        // Queued at 20:49:10 on 11 November 2026, which is 1794430150, and given no job.
+        let queued = r#""status":"queued","conclusion":"","startedAt":"2026-11-11T20:49:10Z""#;
+        let dropped = Pushed {
+            jobs: r#"{"jobs":[]}"#,
+            ..Pushed::new(Some(queued), false)
+        };
+        let now = UNIX_EPOCH + Duration::from_secs(1_794_430_150 + 2 * 3_600);
+        assert_eq!(
+            dropped.ci(None, now).unwrap(),
+            [
+                "GitHub never started the checks on bbbb111122: run 5 has been queued without a \
+                 job for 120m 00s."
+                    .to_owned(),
+                "Next:".to_owned(),
+                "  - GitHub refuses to cancel that run or run it again, and it never starts: \
+                 `gh pr close change && gh pr reopen change` starts the checks again on the same \
+                 commit, once"
+                    .to_owned(),
+            ]
+        );
+    }
+    #[test]
     fn a_failed_job_names_the_step_it_failed_in() {
         // A job whose sandbox could not be installed never reached its tests: the step says so.
         let jobs = r#"{"jobs":[{"name":"api (1)","databaseId":9,"conclusion":"failure","steps":[
