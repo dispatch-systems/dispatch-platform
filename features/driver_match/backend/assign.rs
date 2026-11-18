@@ -1,6 +1,6 @@
 //! A pass over the DSP's collections: every ID they hold that has no person yet gets one,
 //! joining someone only on a certain match.
-use super::codes::new_person;
+use super::codes::{Draw, new_person};
 use super::matching::{self, Target};
 use super::sources::{self, Identity, Key};
 use super::{CHECKED, Collected, IdRow};
@@ -21,8 +21,9 @@ pub(super) fn read(store: &Store, dsp: &str) -> Result<Collected> {
     })
 }
 /// Writes what a pass found: a person for every new ID. Who already holds what is read
-/// again here, so a decision made since the read stands.
-pub(super) fn write(store: &Store, dsp: &str, collected: Collected) -> Result<usize> {
+/// again here, so a decision made since the read stands. A `demo` pass, as a demo's data is
+/// made, draws each new person's code from their first ID rather than at random.
+pub(super) fn write(store: &Store, dsp: &str, collected: Collected, demo: bool) -> Result<usize> {
     let Collected {
         found,
         contacts_only,
@@ -51,18 +52,24 @@ pub(super) fn write(store: &Store, dsp: &str, collected: Collected) -> Result<us
         let now = iso();
         let mut fresh: BTreeMap<usize, String> = BTreeMap::new();
         for decision in &decided {
+            let x = &incoming[decision.index];
             let code = match &decision.target {
                 Target::Person(code) => code.clone(),
                 Target::New(n) => match fresh.get(n) {
                     Some(code) => code.clone(),
                     None => {
-                        let code = new_person(store, &db, dsp, &now, None, None)?;
+                        let seed = format!("{} {}", x.source.as_str(), x.id);
+                        let draw = if demo {
+                            Draw::Demo(&seed)
+                        } else {
+                            Draw::Random
+                        };
+                        let code = new_person(store, &db, dsp, &now, None, None, draw)?;
                         fresh.insert(*n, code.clone());
                         code
                     }
                 },
             };
-            let x = &incoming[decision.index];
             db.exec(
                 "INSERT INTO person_ids(source,external_id,code,linked_by,linked_at) \
                  VALUES (?,?,?,?,?)",

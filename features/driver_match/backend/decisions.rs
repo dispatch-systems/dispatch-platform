@@ -3,7 +3,7 @@
 //! their sources say. Each is audited by codes, never names: what a collection says about
 //! someone stays in its database.
 use super::audit::both;
-use super::codes::{new_person, valid_code};
+use super::codes::{Draw, new_person, valid_code};
 use crate::api::types::{GivenRole, IdLink};
 use dispatch_core::{
     Result,
@@ -115,7 +115,15 @@ pub(super) fn split(
             409,
         )?;
         let now = iso();
-        let fresh = new_person(store, &db, dsp, &now, Some(code), Some(c.actor()))?;
+        let fresh = new_person(
+            store,
+            &db,
+            dsp,
+            &now,
+            Some(code),
+            Some(c.actor()),
+            Draw::Random,
+        )?;
         db.exec(
             "UPDATE person_ids SET code=?1,linked_by='person',linked_at=?2,actor_id=?3 \
              WHERE source=?4 AND external_id=?5",

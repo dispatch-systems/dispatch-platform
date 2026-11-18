@@ -1,10 +1,13 @@
-//! What the development fixtures start with: each DSP under the same ID whenever they start
-//! afresh at the same address, and its drivers written up in Conduct, signed and not.
+//! What the development fixtures start with: each DSP and each of its drivers under the same
+//! ID and code whenever they start afresh at the same address, and its drivers written up in
+//! Conduct, signed and not.
 use dispatch_core::{
     db::Store,
+    manifest::registry,
     server::{operations, startup},
     testing,
 };
+use dispatch_driver_match::DriverMatchStore;
 
 /// The fixtures' DSPs, by name, with their IDs.
 fn dsps(db: &Store) -> Vec<(String, String)> {
@@ -13,13 +16,49 @@ fn dsps(db: &Store) -> Vec<(String, String)> {
         .unwrap()
 }
 
+/// Every ID the DSP `name`'s people hold, with its source and its holder's code.
+fn codes(db: &Store, name: &str) -> Vec<(String, String, String)> {
+    db.dsp(&testing::dsp_named(db, name))
+        .unwrap()
+        .query_as(
+            "SELECT source,external_id,code FROM person_ids ORDER BY source,external_id",
+            [],
+        )
+        .unwrap()
+}
+
 #[test]
-fn the_fixtures_keep_their_dsp_ids_at_one_address_and_others_at_another() {
+fn the_fixtures_keep_their_dsp_ids_and_codes_at_one_address_and_others_at_another() {
     crate::install();
     let (_first, first) = testing::seeded();
     let (_again, again) = testing::seeded();
     assert_eq!(dsps(&first), dsps(&again));
-    // Fixtures at another address, as a test server's, keep their DSPs apart from these.
+    let northline = codes(&first, "Northline Logistics");
+    assert!(!northline.is_empty());
+    assert_eq!(northline, codes(&again, "Northline Logistics"));
+    // A real pass draws its codes at random, even at a DSP whose ID holds: Summit has no demo
+    // data, so the same timecards reach it in each, as a collection would bring them.
+    let timecards = registry()
+        .features
+        .iter()
+        .find(|f| f.switch.id == "timecard")
+        .and_then(|f| f.demo)
+        .unwrap();
+    let collected = |db: &Store| {
+        let summit = testing::dsp_named(db, "Summit Delivery");
+        timecards(db, &summit, "America/Denver").unwrap();
+        db.write_pass(&summit, db.read_pass(&summit).unwrap())
+            .unwrap();
+        codes(db, "Summit Delivery")
+    };
+    let (summit, summit_again) = (collected(&first), collected(&again));
+    assert!(!summit.is_empty());
+    assert_eq!(summit.len(), summit_again.len());
+    for ((source, id, code), (.., again)) in summit.iter().zip(&summit_again) {
+        assert_ne!(code, again, "{source} {id}");
+    }
+    // Fixtures at another address, as a test server's, keep their DSPs and people apart from
+    // these.
     let (_other, store) = testing::store();
     let mut config = store.config.clone();
     config.origin = "http://127.0.0.1:5174".into();
@@ -30,6 +69,13 @@ fn the_fixtures_keep_their_dsp_ids_at_one_address_and_others_at_another() {
     assert_eq!(theirs.len(), 3);
     for (name, id) in dsps(&first) {
         assert!(!theirs.iter().any(|(_, other)| *other == id), "{name}");
+    }
+    let theirs = codes(&other, "Northline Logistics");
+    for (source, id, code) in &northline {
+        assert!(
+            !theirs.iter().any(|(.., other)| other == code),
+            "{source} {id}"
+        );
     }
 }
 

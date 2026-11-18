@@ -42,7 +42,9 @@ what was decided.
   (`person_changed`), as is splitting a person's only ID (`person_single_id`).
 - **Codes:** six letters and digits that can't be mistaken for one another, unique across the
   platform (`driver_codes`). A person keeps their code for good; merged, both keep the code
-  merged into.
+  merged into. Drawn at random, but for a development or preview DSP's demo data: its people's
+  codes come from the DSP's ID and their first ID, so a demo made afresh under the same DSP ID
+  gives them the same codes.
 - **Matching:** after every collection that finishes and whenever the people a feature names change
   outside one, as a feature whose data names people being switched on (it hears
   `collection.succeeded` and `people.changed`); hourly to catch up anything missed; and as a
