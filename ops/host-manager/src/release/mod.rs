@@ -39,8 +39,9 @@ const HELP: &str = "Dispatch release [publish|status|backup|dry-run] [X.Y.Z] --r
             --backup takes that backup when it's missing, as backup does, once Production
             passes its checks, then publishes. It stops Production for about a second, so pass
             it only with the owner's approval.
-            --after COMMIT first waits for Dev to serve COMMIT, then hands the release to the
-            host tool Dev installed with it, when that isn't the one running.
+            --after COMMIT first waits for Dev to serve COMMIT, its hash or the start of it,
+            then hands the release to the host tool Dev installed with it, when that isn't the
+            one running.
   status    Inspect GitHub, saved assets and public health without changing release state.
   backup    Back Production up for the release over ssh, stopping it for about a second,
             restore and check it on Dev with the prepared candidate, and record it.
@@ -543,12 +544,13 @@ const DEV_INSTALLS: u64 = 1800;
 /// `--after`: waits until Dev serves `commit` with the host tool its build brings, then hands
 /// the release, its arguments less `--after`, to that tool when it isn't the one running: Dev
 /// replaces its tool on each install, and one already running stays the one it started as.
-fn after(commit: &str, args: &[String], options: &Options, system: &dyn System) -> Result<()> {
+fn after(given: &str, args: &[String], options: &Options, system: &dyn System) -> Result<()> {
     let dev = Updater::new(&options.root, Environment::Dev, system).map_err(|error| {
         format!("--after waits for Dev, so --root must be Dev's checkout: {error}")
     })?;
+    let commit = whole(&dev, given)?;
     say(format!("Waiting for Dev to serve {commit}"));
-    dev.wait(commit, DEV_INSTALLS)?;
+    dev.wait(&commit, DEV_INSTALLS)?;
     let installed = management::directory(&dev).join("dispatch-host");
     if artifact::file_hash(&installed)? == artifact::file_hash(&system.current_exe()?)? {
         return Ok(());
@@ -572,6 +574,28 @@ fn after(commit: &str, args: &[String], options: &Options, system: &dyn System) 
         installed.display()
     )
     .into())
+}
+
+/// The whole hash of the commit `given` names: `given` itself when it is one, or the one commit
+/// it starts in Dev's checkout once that fetched main. None when it starts no commit there, or
+/// more than one.
+fn whole(dev: &Updater, given: &str) -> Result<String> {
+    if artifact::hex(given, 40) {
+        return Ok(given.to_owned());
+    }
+    require(
+        given.len() >= 4 && given.bytes().all(|b| b.is_ascii_hexdigit()),
+        "--after takes a commit's hash, or its first four characters or more",
+    )?;
+    dev.git(&["fetch", "origin", "main"])?;
+    dev.git(&["rev-parse", "--verify", &format!("{given}^{{commit}}")])
+        .map_err(|error| {
+            match error.to_string().contains("is ambiguous") {
+                true => format!("--after {given} starts more than one commit: give more of it"),
+                false => format!("--after {given} names no commit Dev's checkout has"),
+            }
+            .into()
+        })
 }
 
 pub fn run(args: &[String], system: &dyn System) -> Result<Value> {
