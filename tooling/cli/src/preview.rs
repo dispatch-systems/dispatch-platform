@@ -3,7 +3,8 @@
 //! each with a link that opens on that page; the server runs on in a session of its own, at the
 //! same address each time it starts again, until `preview stop` or `finish` stops it;
 //! `preview approve` keeps the UI files the user was shown, by their contents, once they
-//! approved them, and `pr` opens no PR for a change to what a page shows until those are the
+//! approved them, or with `--unchanged` and why, those of a change that shows nothing new, which
+//! the PR then says; and `pr` opens no PR for a change to what a page shows until those are the
 //! files it would push.
 use crate::{Result, Runner, api, dev, require, review, shot, workspace};
 use serde::{Deserialize, Serialize};
@@ -21,6 +22,8 @@ use std::{
 const APPROVED: &str = "preview/approved.json";
 /// The UI files as the last `preview` showed them, so a change it showed is the user's to answer.
 const SHOWN: &str = "preview/shown.json";
+/// Why the approved files show nothing new, when they were approved without being shown.
+const UNCHANGED: &str = "preview/unchanged.txt";
 
 /// A change's UI files against what the user approved.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,6 +32,8 @@ pub enum Approval {
     None,
     /// The files are the ones approved.
     Approved,
+    /// The files are the ones approved, unseen, as showing nothing new, for the reason given.
+    Unchanged(String),
     /// Nothing was approved yet.
     Missing,
     /// These differ from what was approved.
@@ -118,9 +123,13 @@ pub fn approval(root: &Path, runner: &dyn Runner) -> Result<Approval> {
         }
     }
     changed.sort();
-    Ok(match changed.is_empty() {
-        true => Approval::Approved,
-        false => Approval::Changed(changed),
+    if !changed.is_empty() {
+        return Ok(Approval::Changed(changed));
+    }
+    let scratch = workspace::checkout_scratch(root)?;
+    Ok(match fs::read_to_string(scratch.join(UNCHANGED)) {
+        Ok(why) => Approval::Unchanged(why.trim().to_owned()),
+        Err(_) => Approval::Approved,
     })
 }
 
@@ -136,19 +145,39 @@ pub fn shown(root: &Path, runner: &dyn Runner) -> Result<bool> {
 }
 
 /// `dispatchdev preview approve`: the UI files as the worktree holds them, kept as what the user
-/// approved. Run only once they said so.
-pub fn approve(root: &Path, runner: &dyn Runner) -> Result<()> {
+/// approved. Run only once they said so; or, `unchanged`, kept unseen with why they show
+/// nothing new, for `pr` to tell the user in the PR.
+pub fn approve(root: &Path, unchanged: Option<&str>, runner: &dyn Runner) -> Result<()> {
     let files = files(root, true, runner)?;
     require(
         !files.is_empty(),
         "The change touches nothing a page shows: there is nothing to approve.",
     )?;
-    let path = workspace::checkout_scratch(root)?.join(APPROVED);
-    workspace::write_private(&path, &serde_json::to_string_pretty(&files)?)?;
+    let scratch = workspace::checkout_scratch(root)?;
+    let why = scratch.join(UNCHANGED);
+    match unchanged.map(str::trim) {
+        Some(reason) => {
+            require(
+                !reason.is_empty() && !reason.contains('\n'),
+                "--unchanged says on one line why nothing a page shows changed.",
+            )?;
+            workspace::write_private(&why, reason)?;
+        }
+        None if why.exists() => fs::remove_file(&why)?,
+        None => {}
+    }
+    workspace::write_private(
+        &scratch.join(APPROVED),
+        &serde_json::to_string_pretty(&files)?,
+    )?;
     println!(
-        "Kept {} UI file{} as approved: {}.",
+        "Kept {} UI file{} as {}: {}.",
         files.len(),
         if files.len() == 1 { "" } else { "s" },
+        match unchanged {
+            Some(_) => "showing nothing new",
+            None => "approved",
+        },
         files.keys().cloned().collect::<Vec<_>>().join(", ")
     );
     println!(

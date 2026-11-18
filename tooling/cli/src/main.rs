@@ -181,7 +181,7 @@ const COMMANDS: &[Spec] = &[
         "preview",
         &[
             "preview [--pages <page[/tab],...>]",
-            "preview approve",
+            "preview approve [--unchanged <why>]",
             "preview stop",
         ],
         "Show the change as it is: serve it, restarting the dev server when it serves other \
@@ -190,9 +190,11 @@ const COMMANDS: &[Spec] = &[
          own, wide and on a phone, each with a link that opens on it. The server runs apart from \
          the command, at the same address each time it starts again, until stop or finish stops \
          it. Once the user approved how it looks, approve keeps its UI files: pr opens no PR for \
-         a change to what a page shows until those are the files it pushes.",
+         a change to what a page shows until those are the files it pushes. --unchanged keeps \
+         them unshown, for a change that shows nothing new, such as a refactor, and pr says why \
+         in the PR's Verification.",
     )
-    .options(&["--pages"])
+    .options(&["--pages", "--unchanged"])
     .arguments(1),
     spec(
         "finish",
@@ -601,7 +603,7 @@ fn run() -> Result<()> {
                 preview::run(&line.root()?, &pages, &Native)
             }
             Some("approve") if line.option("--pages").is_none() => {
-                preview::approve(&line.root()?, &Native)
+                preview::approve(&line.root()?, line.option("--unchanged"), &Native)
             }
             Some("stop") if line.option("--pages").is_none() => {
                 preview::stop_serving(&line.root()?, &Native)

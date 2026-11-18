@@ -978,7 +978,7 @@ fn a_change_to_what_a_page_shows_is_held_to_what_the_user_approved() {
         "export const week = 2;\n",
     );
     write(root, "features/dvic/frontend/week.css", ".week {}\n");
-    preview::approve(root, &Native).unwrap();
+    preview::approve(root, None, &Native).unwrap();
     commit(root, "as shown");
     assert_eq!(approval(), Approval::Approved);
     // A file approved and since put back as main has it no longer looks as approved.
@@ -1215,6 +1215,39 @@ fn the_agent_docs_pr_is_published_reviewed_and_merged_with_no_check() {
             &fixture.head(),
         ]
     );
+}
+
+#[test]
+fn a_change_approved_as_showing_nothing_new_says_why_in_its_pr() {
+    use preview::Approval;
+    let fixture = Fixture::new();
+    let (root, github) = (&fixture.root, &fixture.github);
+    write(
+        root,
+        "features/dvic/frontend/Week.tsx",
+        "export const week = () => 1;\n",
+    );
+    let why = "a refactor: the week's page draws as it did";
+    preview::approve(root, Some(why), &Native).unwrap();
+    commit(root, "the week, refactored");
+    assert_eq!(
+        preview::approval(root, &Native).unwrap(),
+        Approval::Unchanged(why.to_owned())
+    );
+    let verification = || {
+        pr::publish(root, false, &Environment::default(), github).unwrap();
+        let (_, body) = github.edited.lock().unwrap().clone().unwrap();
+        pr::section(&body, "Verification").unwrap().to_owned()
+    };
+    assert_eq!(verification(), format!("UI unchanged: {why}\n\nx"));
+    // Shown and approved since, it claims so no longer.
+    preview::approve(root, None, &Native).unwrap();
+    assert_eq!(
+        preview::approval(root, &Native).unwrap(),
+        Approval::Approved
+    );
+    assert_eq!(verification(), "x");
+    assert!(preview::approve(root, Some(" "), &Native).is_err());
 }
 
 #[test]

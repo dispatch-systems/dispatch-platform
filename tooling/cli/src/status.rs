@@ -269,6 +269,7 @@ pub fn run(root: &Path, now: SystemTime, runner: &dyn Runner) -> Result<()> {
         match &approval {
             Approval::None => "nothing a page shows".to_owned(),
             Approval::Approved => "approved".to_owned(),
+            Approval::Unchanged(why) => format!("unchanged, not shown: {why}"),
             Approval::Missing => "not shown to the user yet".to_owned(),
             Approval::Changed(paths) => format!("changed since approved: {}", paths.join(", ")),
         }
