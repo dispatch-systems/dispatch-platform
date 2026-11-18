@@ -1,4 +1,5 @@
-import { getPushKey, keepPushing, stopPushing } from '../../api/client.js';
+import type { LineTexting } from '../../api/client.js';
+import { DISPATCH_PHONE, keptAt, type TextingLine } from '../line.js';
 import type { InFront } from './arrivals.js';
 
 // Telling the member of new messages with Dispatch closed, or on a phone (Web Push): while they
@@ -10,8 +11,8 @@ import type { InFront } from './arrivals.js';
 // server let go of, is kept again.
 //
 // A browser has one subscription for its address, which every DSP opened there shares, as a
-// platform owner opens many at the admin's: the browser remembers which DSPs keep it, and lets
-// go of it only once none does.
+// platform owner opens many at the admin's, and each line of a DSP's phones apart: the browser
+// remembers which DSPs' lines keep it, and lets go of it only once none does.
 
 /** Dispatch's service worker, at the address's root, so it serves every page. */
 const WORKER = '/service-worker.js';
@@ -55,13 +56,21 @@ function inTurn(ends: AbortSignal, work: () => Promise<void>) {
 }
 
 /**
- * Has this browser pushed to as `wanted` by the DSP `dsp`, where it can be: in its turn among
- * every tab's changes, reading the subscription and which DSPs keep it as the turn starts. Once
- * `ends` ends it, as the page moved on to another DSP or member, or the member chose again, it
- * changes nothing more, on the server or in the browser.
+ * Has this browser pushed to as `wanted` by the DSP `dsp` for `line`, where it can be: in its turn
+ * among every tab's changes, reading the subscription and which DSPs' lines keep it as the turn
+ * starts. Once `ends` ends it, as the page moved on to another DSP or member, or the member chose
+ * again, it changes nothing more, on the server or in the browser.
  */
-export function followPush(wanted: boolean, dsp: string, ends: AbortSignal) {
+export function followPush(
+  wanted: boolean,
+  dsp: string,
+  ends: AbortSignal,
+  line: TextingLine = DISPATCH_PHONE,
+) {
   if (!canPush()) return Promise.resolve();
+  const { texting } = line;
+  // Each line of the DSP keeps it apart.
+  const keeper = keptAt(line, dsp);
   /** What `doing` comes to, unless it ended meanwhile. */
   const still = async <T>(doing: Promise<T>) => {
     const done = await doing;
@@ -69,7 +78,7 @@ export function followPush(wanted: boolean, dsp: string, ends: AbortSignal) {
     return done;
   };
   return inTurn(ends, async () => {
-    const { key } = await still(getPushKey(ends));
+    const { key } = await still(texting.getPushKey(ends));
     // Subscribed only once the worker is active, as browsers ask.
     const worker = await still(
       wanted && key
@@ -80,28 +89,28 @@ export function followPush(wanted: boolean, dsp: string, ends: AbortSignal) {
       worker ? worker.pushManager.getSubscription() : Promise.resolve(null),
     );
     const under = current?.options.applicationServerKey;
-    const keeping = current ? keepers(current.endpoint).filter((each) => each !== dsp) : [];
+    const keeping = current ? keepers(current.endpoint).filter((each) => each !== keeper) : [];
     switch (
       step(wanted, key, current ? (under ? encode(under) : '') : undefined, keeping.length > 0)
     ) {
       case 'leave':
-        await still(stopPushing(current!.endpoint, ends));
+        await still(texting.stopPushing(current!.endpoint, ends));
         return keep(current!.endpoint, keeping);
       case 'remove':
-        await still(stopPushing(current!.endpoint, ends));
+        await still(texting.stopPushing(current!.endpoint, ends));
         await current!.unsubscribe();
         return keep(current!.endpoint, []);
       // Each DSP is remembered as keeping it before the server is told, as an answer cut short
       // may come after the server kept it: one remembered that the server doesn't keep only keeps
       // the browser subscribed.
       case 'keep':
-        keep(current!.endpoint, [...keeping, dsp]);
-        await still(kept(current!, ends));
+        keep(current!.endpoint, [...keeping, keeper]);
+        await still(kept(texting, current!, ends));
         return;
       case 'subscribe': {
         // Under the server's new key, the DSPs that kept the old one keep this once opened again.
         if (current) {
-          await still(stopPushing(current.endpoint, ends));
+          await still(texting.stopPushing(current.endpoint, ends));
           await still(current.unsubscribe());
         }
         const made = await still(
@@ -110,23 +119,23 @@ export function followPush(wanted: boolean, dsp: string, ends: AbortSignal) {
             applicationServerKey: decode(key!),
           }),
         );
-        keep(made.endpoint, [dsp]);
-        await still(kept(made, ends));
+        keep(made.endpoint, [keeper]);
+        await still(kept(texting, made, ends));
         return;
       }
     }
   });
 }
 
-/** Tells the server of `subscription`, as the member's. */
-function kept(subscription: PushSubscription, ends: AbortSignal) {
+/** Tells the server of `subscription`, as the member's, for the line `texting` calls. */
+function kept(texting: LineTexting, subscription: PushSubscription, ends: AbortSignal) {
   const { endpoint, keys } = subscription.toJSON();
-  return keepPushing(endpoint!, { p256dh: keys!.p256dh!, auth: keys!.auth! }, ends);
+  return texting.keepPushing(endpoint!, { p256dh: keys!.p256dh!, auth: keys!.auth! }, ends);
 }
 
 /** Where this browser remembers which DSPs keep its subscription, by its endpoint. */
 const KEEPERS = 'dispatch-communications-push';
-/** The DSPs that keep the subscription at `endpoint`, as this browser remembers them. */
+/** The DSPs' lines that keep the subscription at `endpoint`, as this browser remembers them. */
 function keepers(endpoint: string): string[] {
   try {
     const kept = JSON.parse(localStorage.getItem(KEEPERS) ?? 'null') as {
@@ -179,13 +188,15 @@ export function alertsInFront(
 
 /**
  * Answers the service worker asking whether this page alerts of a push itself, by `alerts`, until
- * the answer is called.
+ * the answer is called; none for a push `alerts` leaves to another line's, as the worker takes
+ * the first answer.
  */
-export function answerWorker(alerts: (push: Pushed) => boolean) {
+export function answerWorker(alerts: (push: Pushed) => boolean | undefined) {
   if (!('serviceWorker' in navigator)) return () => {};
   const asked = (event: MessageEvent) => {
     const push = (event.data as { push?: Pushed } | null)?.push;
-    if (push) event.ports[0]?.postMessage({ alerts: alerts(push) });
+    const answer = push && alerts(push);
+    if (answer !== undefined) event.ports[0]?.postMessage({ alerts: answer });
   };
   navigator.serviceWorker.addEventListener('message', asked);
   return () => navigator.serviceWorker.removeEventListener('message', asked);

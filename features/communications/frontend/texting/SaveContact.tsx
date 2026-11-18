@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, UserPlus } from 'lucide-react';
 import type { Conversation, Correspondent, RouteDriver } from '../../api/index.js';
-import { addToPerson, saveContact, useTextPeople } from '../../api/client.js';
+import { addToPerson, useTextPeople } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import {
   Loading,
@@ -12,6 +12,7 @@ import {
 import { Face } from '../shared/Face.js';
 import { ListEmpty } from '../shared/List.js';
 import { Segments } from '../shared/Segments.js';
+import { own, useLine } from '../line.js';
 import '../shared/people.css';
 import './save-contact.css';
 
@@ -24,10 +25,12 @@ type Saving = 'driver' | 'contact';
 
 /**
  * Save contact, or Edit contact once a name is saved: the number added to someone Driver Match
- * knows, today's drivers first, or a name saved for it. It closes on Cancel, Escape (focus going
- * back to the button), a press anywhere else or the button again. A driver picked or a name
- * changed and not saved, in either tab, is never just closed: it asks "Save changes?" with only
- * Save and Discard first, as the role sheet does, saving the open tab's, else the other's.
+ * knows, today's drivers first, or a name saved for it, on the page's line; on another feature's
+ * line, a name alone, as adding a number to someone is Dispatch Phone's own. It closes on Cancel,
+ * Escape (focus going back to the button), a press anywhere else or the button again. A driver
+ * picked or a name changed and not saved, in either tab, is never just closed: it asks "Save
+ * changes?" with only Save and Discard first, as the role sheet does, saving the open tab's, else
+ * the other's.
  */
 export function SaveContact({
   conversation,
@@ -39,6 +42,8 @@ export function SaveContact({
   drivers: readonly RouteDriver[];
   show: (conversation: Conversation) => void;
 }) {
+  const line = useLine();
+  const adds = own(line);
   const saved = conversation.contact ? conversation.with.name : '';
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState<Saving>('driver');
@@ -63,7 +68,7 @@ export function SaveContact({
     show(
       which === 'driver'
         ? await addToPerson(conversation.id, picked!.code!)
-        : await saveContact(conversation.id, name.trim()),
+        : await line.texting.saveContact(conversation.id, name.trim()),
     );
     closed();
   });
@@ -85,7 +90,7 @@ export function SaveContact({
         }
         open={open}
         onRequestOpen={() => {
-          setSaving(conversation.contact ? 'contact' : 'driver');
+          setSaving(conversation.contact || !adds ? 'contact' : 'driver');
           setName(saved);
           setOpen(true);
         }}
@@ -99,15 +104,17 @@ export function SaveContact({
               if (saveable(saving)) void save.run(saving);
             }}
           >
-            <Segments
-              label={label}
-              value={saving}
-              onChange={(value) => setSaving(value as Saving)}
-              items={[
-                ['driver', 'Add to driver'],
-                ['contact', conversation.contact ? 'Contact' : 'New contact'],
-              ]}
-            />
+            {adds && (
+              <Segments
+                label={label}
+                value={saving}
+                onChange={(value) => setSaving(value as Saving)}
+                items={[
+                  ['driver', 'Add to driver'],
+                  ['contact', conversation.contact ? 'Contact' : 'New contact'],
+                ]}
+              />
+            )}
             {saving === 'driver' ? (
               <People drivers={drivers} picked={picked} pick={setPicked} />
             ) : (

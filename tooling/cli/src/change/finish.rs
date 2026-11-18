@@ -145,7 +145,7 @@ pub fn finish_plan(
         (reference == branch).then(|| head.to_owned())
     });
     let worktree = clone.worktrees.join(name);
-    let scratch = workspace::scratch(name);
+    let scratch = workspace::current_scratch(name)?;
     let mut plan = FinishPlan {
         name: name.to_owned(),
         root: clone.root.clone(),
@@ -294,6 +294,7 @@ pub fn finish(from: &Path, name: &str, abandon: bool, runner: &dyn Runner) -> Re
         review::discard(&clone.root, &plan.scratch, runner)?;
         fs::remove_dir_all(&plan.scratch)?;
     }
+    workspace::forget_left_in_tmp(name, &plan.scratch)?;
     println!(
         "Finished {name}: its worktree, branches and scratch folder are gone{}.",
         if abandon { ", unmerged" } else { "" }

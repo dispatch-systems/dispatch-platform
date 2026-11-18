@@ -276,7 +276,14 @@ def main():
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
     if metadata["commit"] != head:
         raise ValueError("Build the current assigned branch before collection verification")
-    scratch = Path("/tmp") / f"dispatch-{worktree.name}"
+    # The branch's scratch folder as the CLI keeps a change's, by its real path: the one it kept
+    # in /tmp until the CLI moves it, which making the new one would strand.
+    scratch = (Path.home() / "dispatch-platform/scratch").resolve() / worktree.name
+    old = Path(f"/tmp/dispatch-{worktree.name}")
+    kept = old.lstat() if old.is_dir() and not old.is_symlink() else None
+    # Only a folder of this user's that no one else can open: /tmp is shared.
+    if not scratch.exists() and kept and kept.st_uid == os.getuid() and not kept.st_mode & 0o077:
+        scratch = old.resolve()
     scratch.mkdir(mode=0o700, parents=True, exist_ok=True)
     metadata = scratch.lstat()
     if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:

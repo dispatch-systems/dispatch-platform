@@ -3,7 +3,7 @@ import test, { type TestContext } from 'node:test';
 import type { SettingsAnswer } from '../../../../core/settings/api/index.js';
 import { cacheLimits, dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { settingsRead, type Watching } from '../../../../core/shell/frontend/runtime/slots.js';
-import { waitingUrl } from '../../api/client.js';
+import { dispatchTexting } from '../../api/client.js';
 import type { DispatchPhone, WaitingMessage } from '../../api/index.js';
 import { alertMember } from '../../frontend/alerts/alerting.js';
 import {
@@ -274,7 +274,7 @@ test('what a tab reads for a turn that ended alerts no one', async (t) => {
   start();
   await sees('m2');
   // Half a minute on, it reads what waits again; meanwhile the member focuses another tab.
-  const asked = hold(waitingUrl);
+  const asked = hold(dispatchTexting.waitingUrl);
   t.mock.timers.tick(30_000);
   const give = await asked;
   const close = await other(true);
@@ -316,7 +316,7 @@ test('a message alerts as the member chose once it is read, not as the tab began
   start();
   await sees('m1');
   // Half a minute on, it reads what waits again; meanwhile the member turns notifications on.
-  const asked = hold(waitingUrl);
+  const asked = hold(dispatchTexting.waitingUrl);
   t.mock.timers.tick(30_000);
   const give = await asked;
   dataCache.put(settingsRead, chose(true));
@@ -379,6 +379,28 @@ test('a phone alerts once as it goes down, and not one down before Dispatch was 
     'casey: Running late',
     'sam: Running late',
   ]);
+});
+
+test("another line's phones down say its name, a phone's own beside it while it has several", () => {
+  const line = { id: 'front_desk', name: 'Front Desk', phone: 'Front Desk phone' };
+  const offline = (id: string, name: string): DispatchPhone => ({
+    id,
+    name,
+    online: false,
+    lastSeenAt: 0,
+    cantSend: false,
+  });
+  const words = (phones: DispatchPhone[]) =>
+    down(phones, OFFLINE_MS, line).map((each) => each.words);
+  assert.deepEqual(words([offline('p1', 'Pixel')]), ['Front Desk phone offline for 10 min']);
+  // Renamed, a phone is still the line's; one named for it says so already.
+  assert.deepEqual(
+    words([
+      offline('p1', 'Pixel'),
+      { ...offline('p2', 'Front Desk 2'), online: true, cantSend: true },
+    ]),
+    ['Front Desk · Pixel offline for 10 min', "Front Desk 2 can't send texts"],
+  );
 });
 
 test('a phone down alerts once, though a tab taking its turn still reads it as it was before', () => {

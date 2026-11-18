@@ -47,6 +47,7 @@ dispatchdev review prepare --pass 1   # its tier, and the pass's brief unless it
 dispatchdev merge          # once its checks pass and its review is done
 dispatchdev landed         # waits for main's own run of the merge, which is yours until it passes
 dispatchdev finish <name>  # once that passed: the worktree, its branches and scratch folder go
+dispatchdev owed           # each change in progress: where it stands, what's next, whose move
 ```
 
 The PR's checks run every suite on GitHub, and it's squash-merged by hand once they pass; Dev

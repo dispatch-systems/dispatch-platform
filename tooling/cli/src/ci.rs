@@ -4,8 +4,10 @@
 //! again once it merged. A run GitHub created and never gave a job is told apart from one that
 //! goes on. `dispatchdev landed`: how `main`'s own run of a merged change ended.
 use crate::{REPOSITORY, Result, Runner, github, merge::short, review, workspace};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
+    fs,
     io::Write,
     path::Path,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -385,6 +387,33 @@ fn report(root: &Path, run: &Run, runner: &dyn Runner) {
     }
 }
 
+/// What `landed` leaves in the change's scratch folder once `main`'s run of its merge ended, so
+/// `owed` tells a merge whose run is yet to be waited for from one ready to finish.
+pub const LANDED: &str = "landed.json";
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Landed {
+    /// The commit the PR merged as.
+    pub commit: String,
+    /// `main`'s run of the checks on it.
+    pub run: u64,
+    pub result: Outcome,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Outcome {
+    Passed,
+    Failed,
+}
+/// What `landed` last left for the change named `name`, if anything, in its scratch folder as it
+/// is now.
+pub fn landing(name: &str) -> Result<Option<Landed>> {
+    match fs::read_to_string(workspace::current_scratch(name)?.join(LANDED)) {
+        Ok(text) => Ok(Some(serde_json::from_str(&text)?)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 /// `dispatchdev landed`: `main`'s run of the checks on the commit the branch's PR merged as,
 /// waited for to its end, and an error when it failed. Whoever merged a change answers for that
 /// run: once a later merge's passes, nothing else reads it. While it waits it says how the run
@@ -423,7 +452,19 @@ pub fn landed(root: &Path, runner: &dyn Runner, out: &mut dyn Write) -> Result<(
             Err(error) => wait.through(error, &merge)?,
         }
     };
-    if run.conclusion == "success" {
+    let landed = Landed {
+        commit: commit.to_owned(),
+        run: run.id,
+        result: match run.conclusion.as_str() {
+            "success" => Outcome::Passed,
+            _ => Outcome::Failed,
+        },
+    };
+    workspace::write_private(
+        &workspace::checkout_scratch(root)?.join(LANDED),
+        &serde_json::to_string(&landed)?,
+    )?;
+    if landed.result == Outcome::Passed {
         println!("main's checks passed on {merge}.");
         return Ok(());
     }
@@ -628,6 +669,9 @@ mod tests {
         started: Instant,
         clock: Cell<Duration>,
         asked: RefCell<Vec<Vec<String>>>,
+        /// The checkout's name, its own for each fixture, so the marker `landed` leaves goes to
+        /// a scratch folder no other test writes.
+        name: String,
     }
     impl Github {
         fn new(merged: &'static str, (conclusion, jobs): (&'static str, String)) -> Self {
@@ -641,12 +685,26 @@ mod tests {
                 started: Instant::now(),
                 clock: Cell::new(Duration::ZERO),
                 asked: RefCell::new(vec![]),
+                name: {
+                    static MADE: std::sync::atomic::AtomicUsize =
+                        std::sync::atomic::AtomicUsize::new(0);
+                    let made = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    format!("landed-test-{}-{made}", std::process::id())
+                },
             }
+        }
+        /// What `landed` left in the fixture's scratch folder, taken away.
+        fn left(&self) -> Option<String> {
+            let marker = workspace::scratch(&self.name).unwrap().join(LANDED);
+            let text = fs::read_to_string(&marker).ok();
+            let _ = fs::remove_dir_all(workspace::scratch(&self.name).unwrap());
+            text
         }
         /// What `landed` answers, and what it said while it waited.
         fn landed(&self) -> (std::result::Result<(), String>, Vec<String>) {
             let mut out = vec![];
-            let result = landed(Path::new("."), self, &mut out).map_err(|error| error.to_string());
+            let result =
+                landed(Path::new(&self.name), self, &mut out).map_err(|error| error.to_string());
             let said = String::from_utf8(out).unwrap();
             (result, said.lines().map(str::to_owned).collect())
         }
@@ -717,20 +775,28 @@ mod tests {
                  2m 00s so far: run 5 is in_progress."
             ]
         );
+        // It leaves how the run ended for `owed`, by the commit the PR merged as.
+        let passed = r#"{"commit":"abc","run":5,"result":"passed"}"#;
+        assert_eq!(github.left().as_deref(), Some(passed));
         // A run that failed is an error, so what waits on the command hears of it: one that
         // failed before it had a job to fail in too.
-        let (result, _) = Github::new(MERGED, jobs("failure")).landed();
+        let github = Github::new(MERGED, jobs("failure"));
+        let (result, _) = github.landed();
         assert_eq!(
             result.unwrap_err(),
             "main's checks ended in failure on abc, the commit #7 merged as."
         );
+        let failed = r#"{"commit":"abc","run":5,"result":"failed"}"#;
+        assert_eq!(github.left().as_deref(), Some(failed));
         let startup = ("startup_failure", r#"{"jobs":[]}"#.to_owned());
-        let (result, _) = Github::new(MERGED, startup).landed();
+        let github = Github::new(MERGED, startup);
+        let (result, _) = github.landed();
         assert_eq!(
             result.unwrap_err(),
             "main's checks ended in startup_failure on abc, the commit #7 merged as."
         );
-        // A branch whose PR hasn't merged has no such run to wait for.
+        assert_eq!(github.left().as_deref(), Some(failed));
+        // A branch whose PR hasn't merged has no such run to wait for, and leaves nothing.
         let github = Github::new("[]", jobs("success"));
         assert!(
             github
@@ -740,6 +806,7 @@ mod tests {
                 .contains("change has no merged PR")
         );
         assert_eq!(github.clock.get(), Duration::ZERO);
+        assert_eq!(github.left(), None);
     }
     #[test]
     fn landed_says_how_the_run_goes_waits_through_github_not_answering_and_stops_on_its_own() {
@@ -781,6 +848,11 @@ mod tests {
              GitHub."
         );
         assert!(github.clock.get() < 26 * MINUTE);
+        assert_eq!(
+            github.left(),
+            None,
+            "a run that hasn't ended leaves nothing"
+        );
         let progress: Vec<_> = said
             .iter()
             .filter_map(|line| Some(line.split_once("merged as, ")?.1.split_once(" so far")?.0))

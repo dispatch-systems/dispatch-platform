@@ -3,6 +3,7 @@ import { Choice } from './controls.js';
 import { widths, type Display } from './display.js';
 import { ACTUAL_LEAST, frame } from './frame.js';
 import { Preview } from './Preview.js';
+import { own, useLine } from '../line.js';
 
 /** The size of what `box` holds, as it changes. */
 function useRoom(box: RefObject<HTMLElement | null>) {
@@ -63,6 +64,8 @@ export function DisplayPreview({
   phone: boolean;
   timeZone: string;
 }) {
+  // Another feature's line's conversations are all by text, with no profile.
+  const texts = !own(useLine());
   const [size, setSize] = useState<'actual' | 'fit'>('fit');
   const [profile, setProfile] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
@@ -78,15 +81,17 @@ export function DisplayPreview({
   return (
     <div className="display-preview">
       <div className="display-bar">
-        <label className="settings-toggle display-bar-switch">
-          <span>Profile</span>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={profile}
-            onChange={(event) => setProfile(event.target.checked)}
-          />
-        </label>
+        {!texts && (
+          <label className="settings-toggle display-bar-switch">
+            <span>Profile</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={profile}
+              onChange={(event) => setProfile(event.target.checked)}
+            />
+          </label>
+        )}
         {!phone && room.width >= ACTUAL_LEAST && (
           <Choice
             label="Size"
@@ -115,7 +120,7 @@ export function DisplayPreview({
               <Preview
                 display={shown}
                 phone={phone}
-                profile={profile}
+                profile={profile && !texts}
                 width={width}
                 height={height}
                 timeZone={timeZone}

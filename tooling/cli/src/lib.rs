@@ -14,6 +14,7 @@ pub mod github;
 pub mod machine;
 pub mod merge;
 pub mod observation;
+pub mod owed;
 pub mod pr;
 pub mod preview;
 pub mod review;

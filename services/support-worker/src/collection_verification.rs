@@ -157,7 +157,7 @@ pub(crate) async fn collect(
             )
             .canonicalize()?;
             require(
-                root.starts_with(tree.scratch()),
+                root.starts_with(tree.scratch()?),
                 "Collection state leaves the assigned scratch directory",
             )?;
             collected.state = Some(root);
