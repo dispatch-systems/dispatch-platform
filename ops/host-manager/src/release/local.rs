@@ -119,12 +119,11 @@ impl Release<'_> {
             let input = work.join("input");
             let (content, config, manifest) = extract(&archive, &input)?;
             fs::remove_file(&archive)?;
-            let taken_at = chrono::DateTime::parse_from_rfc3339(
-                manifest["createdAt"]
-                    .as_str()
-                    .ok_or("Backup has no original capture timestamp")?,
-            )?
-            .timestamp_millis() as f64
+            let taken_at = manifest["createdAt"]
+                .as_str()
+                .ok_or("Backup has no original capture timestamp")?
+                .parse::<jiff::Timestamp>()?
+                .as_millisecond() as f64
                 / 1000.0;
             backup::fresh(self.system.now(), taken_at)?;
             if check == Check::Inventory {
