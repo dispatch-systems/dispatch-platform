@@ -144,7 +144,7 @@ export function WidgetRow({
       )}
       <span className="widget-row-main">
         <strong>
-          {title}
+          <span className="widget-title">{title}</span>
           {badge && <span className="widget-badge">{badge}</span>}
         </strong>
         {detail && <small>{detail}</small>}

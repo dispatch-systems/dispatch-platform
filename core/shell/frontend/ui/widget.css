@@ -28,6 +28,7 @@ a.widget:focus-visible {
   white-space: nowrap;
 }
 .widget[data-columns='1'] > header {
+  gap: 4px;
   font-size: 12px;
 }
 .widget > header svg {
@@ -166,12 +167,17 @@ a.widget:focus-visible {
   min-width: 0;
   flex: 1;
 }
+/* A title too long for its row ends in an ellipsis, before its badge, which shows whole. */
 .widget-row-main strong {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   font-weight: 600;
   white-space: nowrap;
+}
+.widget-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -183,6 +189,7 @@ a.widget:focus-visible {
   text-overflow: ellipsis;
 }
 .widget-badge {
+  flex: none;
   padding: 0 6px;
   border-radius: 999px;
   background: var(--muted);
