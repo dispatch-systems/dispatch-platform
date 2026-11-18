@@ -69,8 +69,10 @@ again as each wait ends, which keeps it online.
 - `number`: the phone's own, empty when it doesn't know it. `model`: at most 100 characters
   (`MODEL_MOST`). `version`: the app's, at most 40 (`VERSION_MOST`).
 
-Answers `{ "key": "<64 hex>", "phone": { "id", "name" }, "dsp": { "name" } }`: the phone is
-named Dispatch, or Phone 2 and so on, until someone renames it. A code works once, for ten
+Answers `{ "key": "<64 hex>", "phone": { "id", "name" }, "dsp": { "name" }, "line": { "name" } }`:
+the phone is named Dispatch, or Phone 2 and so on, until someone renames it, and `line` is the
+line it serves by its feature's name, Dispatch Phone or another feature's, such as HR Line, whose
+phones are named after it. A code works once, for ten
 minutes, and only while no newer one replaced it: else `phones_pairing_invalid` (401), and
 someone at the DSP makes a new one. Once an address tried ten wrong codes in ten minutes
 (`ADDRESS_GUESSES`), or the DSP was tried with a hundred from every address (`DSP_GUESSES`),

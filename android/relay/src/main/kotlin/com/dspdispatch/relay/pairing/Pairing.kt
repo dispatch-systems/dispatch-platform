@@ -14,7 +14,8 @@ import kotlinx.serialization.json.Json
 /**
  * The DSP this phone is paired with, as which of its phones, and when it paired ([at]): [number]
  * is the phone's own as it paired, empty when Android didn't say, and [subscription] its SIM's,
- * none when the phone asked each time; they pick the SIM its texts go out from.
+ * none when the phone asked each time; they pick the SIM its texts go out from. [line] is the
+ * line it serves, empty for a pairing made before Dispatch said it.
  */
 @Serializable
 data class Paired(
@@ -25,7 +26,11 @@ data class Paired(
     val at: Long,
     val number: String = "",
     val subscription: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID,
-)
+    val line: String = "",
+) {
+    /** What the phone is at its DSP: the line it serves and its own name, each said once. */
+    val serves: String get() = listOf(line, phoneName).filter { it.isNotEmpty() }.distinct().joinToString(" · ")
+}
 
 /** What [open] answers once the keystore can be read: asked again after a growing pause while it can't. */
 internal suspend fun <T> reached(open: () -> T): T {

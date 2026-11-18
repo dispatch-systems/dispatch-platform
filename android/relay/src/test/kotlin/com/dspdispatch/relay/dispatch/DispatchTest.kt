@@ -31,11 +31,17 @@ class DispatchTest {
 
     @Test
     fun pairsByTheCodeAndAnswersTheKey() = runTest {
-        server.enqueue(json(200, """{"key":"${"a".repeat(64)}","phone":{"id":"phone_1","name":"Dispatch"},"dsp":{"name":"Blue Heron"},"new":1}"""))
+        server.enqueue(
+            json(
+                200,
+                """{"key":"${"a".repeat(64)}","phone":{"id":"phone_1","name":"HR Line"},"dsp":{"name":"Blue Heron"},"line":{"name":"HR Line"},"new":1}""",
+            ),
+        )
         val answer = dispatch.pair(site, PairRequest("K7Q2M9XA", "+12065550100", "Pixel 8a", "0.1.0"))
         assertEquals("a".repeat(64), answer.key)
-        assertEquals(PairedPhone("phone_1", "Dispatch"), answer.phone)
+        assertEquals(PairedPhone("phone_1", "HR Line"), answer.phone)
         assertEquals("Blue Heron", answer.dsp.name)
+        assertEquals(PairedLine("HR Line"), answer.line)
         val request = server.takeRequest()
         assertEquals("POST", request.method)
         assertEquals("/api/communications/phone/pair", request.url.encodedPath)

@@ -117,7 +117,7 @@ private fun SwitchCard(@StringRes label: Int, on: Boolean, set: (Boolean) -> Uni
     }
 }
 
-/** The DSP, and the phone's name at it. */
+/** The DSP, and the line the phone serves there and its name. */
 @Composable
 internal fun DspLine(paired: Paired) = Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
     Box(
@@ -128,7 +128,7 @@ internal fun DspLine(paired: Paired) = Row(Modifier.padding(vertical = 12.dp), v
     }
     Column(Modifier.padding(start = 10.dp)) {
         Text(paired.dsp, fontWeight = FontWeight.SemiBold)
-        Text(paired.phoneName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(paired.serves, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -244,7 +244,7 @@ private fun time(at: Long) = DateFormat.getTimeFormat(LocalContext.current).form
 @Preview
 @Composable
 private fun ConnectedPreview() = ConnectedScreen(
-    Paired("https://bh.dispatch.test", "Blue Heron Logistics", "phone_1", "Dispatch", 0),
+    Paired("https://bh.dispatch.test", "Blue Heron Logistics", "phone_1", "Dispatch", 0, line = "Dispatch Phone"),
     Link.Connected(0),
     Today(received = 42, sent = 37, waiting = 0, latest = 0),
     Item(Step.BATTERY, false, listOf(Fix.BATTERY_REQUEST)),
