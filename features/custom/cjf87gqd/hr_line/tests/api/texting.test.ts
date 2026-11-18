@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { demo, fixture, until } from '../../../../../../core/shell/tests/support/support.js';
-import { dispatchPhone, hrLine, paired, withHrLine } from '../support/line.js';
+import { dispatchPhone, hrLine, paired, texting, withHrLine } from '../support/line.js';
 
 // HR Line's page reads and answers HR Line's texts alone, from its own phone, behind Use HR Line:
 // a number texting both lines has a conversation on each, and neither page lists, opens, answers,
@@ -14,8 +14,9 @@ test("HR Line's page has HR Line's texts alone, and Dispatch Phone's page none o
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
-  await withHrLine(owner);
+  const north = await withHrLine(owner);
   const hr = await paired(f, owner, hrLine, '(206) 555-0111');
+  texting(f, north.id, hr);
   const dispatch = await paired(f, owner, dispatchPhone, '(206) 555-0177');
   await hr.texted('4255550199', 'About my paycheck');
   await dispatch.texted('4255550199', 'Is this dispatch?');

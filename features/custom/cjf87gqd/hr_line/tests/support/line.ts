@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import type { fixture } from '../../../../../../core/shell/tests/support/support.js';
 
 // Northline with HR Line on: its custom ID given, the feature switched on, and a phone paired to
-// each of HR Line and Dispatch Phone, which a test texts as a number would.
+// each of HR Line and Dispatch Phone, which a test texts as a number would. HR Line pairs its
+// phones with its texts unfiled until a later release turns its texting on (`LINE.texting`): a
+// test that reads them turns it on for its phone, as that release will (`texting`).
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 type Client = Awaited<ReturnType<Fixture['client']>>;
@@ -12,6 +14,7 @@ export const dispatchPhone = '/api/dsp/dispatch-phone';
 
 /** A phone of the line at `base`, paired at Northline's address: texted as `number` texts it. */
 export type Phone = {
+  id: string;
   key: Record<string, string>;
   texted: (number: string, body: string) => Promise<void>;
 };
@@ -43,6 +46,7 @@ export async function paired(f: Fixture, owner: Client, base: string, number: st
   const key = { ...at, authorization: `Bearer ${pair.value.key}` };
   let sent = 0;
   return {
+    id: pair.value.phone.id as string,
     key,
     texted: async (from: string, body: string) => {
       const text = {
@@ -56,4 +60,12 @@ export async function paired(f: Fixture, owner: Client, base: string, number: st
       assert.equal(reported.status, 200, reported.body);
     },
   } satisfies Phone;
+}
+
+/** Has `phone`'s texts at the DSP `dsp` filed from now on, as they will be once HR Line's texting
+ * is on: it keeps the texting its line had as it paired. */
+export function texting(f: Fixture, dsp: string, phone: Phone) {
+  f.people(dsp, (db) =>
+    db.prepare('UPDATE phones_devices SET texting = 1 WHERE id = ?').run(phone.id),
+  );
 }
