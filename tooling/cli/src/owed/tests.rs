@@ -149,7 +149,7 @@ fn each_change_in_either_clone_is_told_on_its_own() {
         home: home.clone(),
     };
     // `landed` passed on the commit one of them merged as.
-    let scratch = workspace::scratch(&change("merged"));
+    let scratch = workspace::scratch(&change("merged")).unwrap();
     workspace::write_private(
         &scratch.join(ci::LANDED),
         r#"{"commit":"m1","run":5,"result":"passed"}"#,
