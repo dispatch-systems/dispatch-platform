@@ -27,13 +27,14 @@ const TYPED_MOST: usize = 16;
 const MODEL_MOST: usize = 100;
 pub(super) const VERSION_MOST: usize = 40;
 
-/// What pairing answers the phone with: its key, which it keeps and sends with every call, and
-/// what it's called.
+/// What pairing answers the phone with: its key, which it keeps and sends with every call, what
+/// it's called, and the line it serves.
 #[derive(Serialize)]
 struct Paired {
     key: String,
     phone: PairedPhone,
     dsp: PairedDsp,
+    line: PairedLine,
 }
 #[derive(Serialize)]
 struct PairedPhone {
@@ -43,6 +44,24 @@ struct PairedPhone {
 #[derive(Serialize)]
 struct PairedDsp {
     name: String,
+}
+/// The line a phone serves, by its feature's name: Dispatch Phone, or the feature whose own it is.
+#[derive(Serialize)]
+struct PairedLine {
+    name: &'static str,
+}
+impl PairedLine {
+    fn of(line: Option<&str>) -> Self {
+        let feature = line.and_then(|line| {
+            dispatch_core::manifest::registry()
+                .features
+                .iter()
+                .find(|feature| feature.switch.id == line)
+        });
+        Self {
+            name: feature.map_or(crate::FEATURE.switch.label, |feature| feature.switch.label),
+        }
+    }
 }
 /// Pairs a phone by the code someone at the DSP showed: its own number, model and the app's
 /// version, then its key. What it sends is checked before the database is asked for, and the code
@@ -83,6 +102,7 @@ pub(super) async fn pair(state: Arc<State>, input: Input, access: Public) -> Res
         .await?;
     Reply::of(&Paired {
         key,
+        line: PairedLine::of(device.line.as_deref()),
         phone: PairedPhone {
             id: device.id,
             name: device.name,

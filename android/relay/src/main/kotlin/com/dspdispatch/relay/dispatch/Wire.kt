@@ -17,13 +17,17 @@ internal val wire = Json {
 data class PairRequest(val code: String, val number: String, val model: String, val version: String)
 
 @Serializable
-data class PairAnswer(val key: String, val phone: PairedPhone, val dsp: PairedDsp)
+data class PairAnswer(val key: String, val phone: PairedPhone, val dsp: PairedDsp, val line: PairedLine? = null)
 
 @Serializable
 data class PairedPhone(val id: String, val name: String)
 
 @Serializable
 data class PairedDsp(val name: String)
+
+/** The line the phone serves, by its feature's name: Dispatch Phone, or another, such as HR Line. */
+@Serializable
+data class PairedLine(val name: String)
 
 /**
  * The texts Dispatch has for the phone to send, oldest first; the videos the phone keeps that

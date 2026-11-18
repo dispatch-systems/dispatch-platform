@@ -28,7 +28,11 @@ test("HR Line's phones and Dispatch Phone's are each managed only on their own c
     const phone = { code, number, model: 'Pixel 8a', version: '1.0.0' };
     const paired = await f.request('/api/dispatch-phone/phone/pair', phone, f.at('nll'));
     assert.equal(paired.status, 200, paired.body);
-    return paired.value.phone as { id: string; name: string };
+    return { ...paired.value.phone, line: paired.value.line.name } as {
+      id: string;
+      name: string;
+      line: string;
+    };
   };
   const code = async (base: string) => {
     const made = await owner.post(`${base}/pairing`);
@@ -48,6 +52,9 @@ test("HR Line's phones and Dispatch Phone's are each managed only on their own c
   const hrPhone = await pair(hrCode.code, '(206) 555-0111');
   const dispatchPhone = await pair(dispatchCode.code, '(206) 555-0177');
   assert.equal(hrPhone.name, 'HR Line');
+  // Each phone is told the line it serves.
+  assert.equal(hrPhone.line, 'HR Line');
+  assert.equal(dispatchPhone.line, 'Dispatch Phone');
   assert.deepEqual(await listed(hr), [hrPhone.id]);
   const dispatchPhones = await listed(dispatch);
   assert.ok(dispatchPhones.includes(dispatchPhone.id));

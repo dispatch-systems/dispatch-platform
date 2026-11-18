@@ -45,6 +45,7 @@ test('A phone pairs once with a code, then calls with its key at its DSP alone',
   assert.equal(paired.status, 200, paired.body);
   assert.match(paired.value.key, /^[0-9a-f]{64}$/);
   assert.equal(paired.value.dsp.name, 'Northline Logistics');
+  assert.equal(paired.value.line.name, 'Dispatch Phone');
   const again = await f.request('/api/communications/phone/pair', phone, at);
   assert.equal(again.value.error, 'phones_pairing_invalid');
 
