@@ -849,7 +849,8 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
   feature's, of its own line's texts alone, to the browsers kept for that line, of members holding
   the permission it names with the Notifications of the section it names, titled with its name
   before who wrote it and opening its own page, watched by an upkeep of its own
-  (`lines::pushing`) while it and Dispatch Phone are on. A browser told of two lines is kept for
+  (`lines::pushing`) while it and Dispatch Phone are on, and each push going, as its turn comes,
+  only while Dispatch Phone still is. A browser told of two lines is kept for
   each apart, and let go of for one alone.
 
 ## The page's code

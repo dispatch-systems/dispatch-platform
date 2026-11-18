@@ -311,7 +311,8 @@ pub async fn turn(
 
 /// Whether the member whose browser `subscription` names is told of the DSP's new messages of
 /// `pushed`'s line: with its Notifications on, as one who may use that line there now, signed in
-/// where they subscribed it.
+/// where they subscribed it; another line's only while Dispatch Phone is on there too, which its
+/// own permission doesn't say, as its routes refuse while it's off.
 fn tells(
     db: &Store,
     dsp: &str,
@@ -324,6 +325,9 @@ fn tells(
         (Address::Dsp, Some(code)) => Site::Dsp(code.to_owned()),
         (Address::Dsp, None) => return Ok(false),
     };
+    if pushed.line.is_some() && !db.feature_enabled(dsp, crate::FEATURE.switch.id)? {
+        return Ok(false);
+    }
     let user = &subscription.user;
     Ok(db.may(user, &site, dsp, pushed.permission)?
         && settings::read_member::<MessageDisplay>(db, dsp, user, pushed.display)?.notifications)

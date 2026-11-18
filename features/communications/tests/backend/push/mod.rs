@@ -31,6 +31,13 @@ const DESK: Pushed = Pushed {
     display: &DISPLAY,
 };
 
+/// That line's pushes, told to those holding a permission of its own, which Dispatch Phone being off
+/// doesn't take away.
+const MANAGED: Pushed = Pushed {
+    permission: "connections.manage",
+    ..DESK
+};
+
 /// Has `user` turn Notifications on or off, their Message display at `revision`.
 async fn notifications(state: &Arc<State>, dsp: &str, user: &str, on: bool, revision: i64) {
     let (dsp, user) = (dsp.to_owned(), user.to_owned());
@@ -358,6 +365,28 @@ async fn a_browser_kept_by_someone_else_is_no_longer_told_of_any_line_for_whoeve
     )
     .await;
     assert_eq!(kept().await, [(DESK.line, blake.to_owned(), Address::Dsp)]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn another_lines_push_waiting_its_turn_goes_nowhere_once_dispatch_phone_is_off() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let owner = c.actor().to_owned();
+    notifications(&state, &dsp, &owner, true, 0).await;
+    let subscription = browser(
+        &owner,
+        "https://fcm.googleapis.com/fcm/send/managed-desk",
+        Address::Admin,
+    );
+    keep_for(&state, &dsp, MANAGED.line, subscription.clone()).await;
+    let turn = || turn(&state, &dsp, &MANAGED, &subscription);
+    assert!(matches!(turn().await.unwrap(), Turn::Goes));
+
+    // Read again as its turn comes, it no longer goes: its line's page is refused while Dispatch
+    // Phone is off, however its member may still use the line.
+    support::switch(&state, &dsp, crate::FEATURE.switch.id, false).await;
+    assert!(matches!(turn().await.unwrap(), Turn::Untold));
 }
 
 #[tokio::test(start_paused = true)]
