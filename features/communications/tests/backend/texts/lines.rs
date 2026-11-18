@@ -338,22 +338,33 @@ async fn another_lines_page_waiting_or_answering_is_refused_once_dispatch_phone_
         grant: MANAGE,
         line: Some(DESK.id),
     };
-    // Who is waiting, let in as each request of theirs would be, as things stand then.
+    // Who is waiting, let in as each request of theirs would be, as things stand then; `read`
+    // hears each time they are.
     let (auth, at) = (c.auth.clone(), dsp.clone());
-    let again = move |db: &Store| db.context(&auth, &at, MANAGE.0);
+    let read = Arc::new(tokio::sync::Notify::new());
+    let again = {
+        let read = read.clone();
+        move |db: &Store| {
+            let c = db.context(&auth, &at, MANAGE.0)?;
+            read.notify_one();
+            Ok(c)
+        }
+    };
     let (shared, at, me) = (state.clone(), dsp.clone(), c.auth.user.id.clone());
     let (now_at, _) = state
         .read(move |db| inbox::updates(db, &shared, &at, DESK.id.into(), -1, &me))
         .await
         .unwrap();
 
-    // Its page waits on its changes, with nothing new, as Dispatch Phone is switched off; then
-    // its line changes. Read again, it's refused, not answered.
+    // Its page waits on its changes, with nothing new, let in while Dispatch Phone is on; then
+    // Dispatch Phone is switched off and its line changes. Read again, it's refused, not
+    // answered.
     let waiting = tokio::spawn({
         let (state, dsp, again) = (state.clone(), dsp.clone(), again.clone());
         let (after, seen) = (now_at.revision, now_at.typing.version as i64);
         async move { inbox::waited(&state, access, &dsp, again, after, seen).await }
     });
+    read.notified().await;
     support::switch(&state, &dsp, crate::FEATURE.switch.id, false).await;
     live::changed_on(&state, &dsp, Some(DESK.id));
     let refused = waiting.await.unwrap().map(drop).map_err(|error| error.code);
