@@ -148,10 +148,13 @@ const COMMANDS: &[Spec] = &[
     ),
     spec(
         "ci",
-        &["ci"],
+        &["ci [<commit>]"],
         "Why the checks on the PR's head failed: each failed job with the end of its log, and \
-         whether main's latest run fails it too, which makes the fix main's.",
-    ),
+         whether main's latest run fails it too, which makes the fix main's. A run on a commit \
+         the head replaced, the one named or the newest that failed, is said to count no \
+         longer.",
+    )
+    .arguments(1),
     spec(
         "landed",
         &["landed"],
@@ -579,7 +582,13 @@ fn run() -> Result<()> {
             }
         },
         "merge" => merge::run(&line.root()?, &Native),
-        "ci" => ci::run(&line.root()?, std::time::SystemTime::now(), &Native),
+        "ci" => ci::run(
+            &line.root()?,
+            line.arguments.first().map(String::as_str),
+            std::time::SystemTime::now(),
+            &Native,
+            &mut std::io::stdout(),
+        ),
         "landed" => ci::landed(&line.root()?, &Native, &mut std::io::stdout()),
         "status" => status::run(&line.root()?, std::time::SystemTime::now(), &Native),
         "owed" => {

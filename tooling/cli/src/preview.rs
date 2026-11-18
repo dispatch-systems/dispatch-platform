@@ -550,6 +550,7 @@ fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
     command
         .args(["run", "dev"])
         .current_dir(root)
+        .env(workspace::NPM_LOGLEVEL.0, workspace::NPM_LOGLEVEL.1)
         .stdin(Stdio::null())
         .stdout(output.try_clone()?)
         .stderr(output)
