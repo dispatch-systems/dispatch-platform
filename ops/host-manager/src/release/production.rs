@@ -203,9 +203,10 @@ impl Release<'_> {
     /// already published.
     pub(super) fn check_installed(&self, release: &Value) -> Result<(Value, Option<PathBuf>)> {
         let published = io::text(release, "published_at");
-        let log = match chrono::DateTime::parse_from_rfc3339(&published)
+        let log = match published
+            .parse::<jiff::Timestamp>()
             .map_err(|_| format!("{} names no publication time", self.tag).into())
-            .and_then(|at| self.on_production(&log_script(at.timestamp()), 120))
+            .and_then(|at| self.on_production(&log_script(at.as_second()), 120))
             .and_then(|output| backup::reported(&output, "events"))
         {
             Ok(log) => log,

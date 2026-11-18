@@ -44,8 +44,9 @@ pub fn expire_release_backups(folder: &Path, now: SystemTime) -> Result<()> {
 /// not a release backup's.
 fn release_backup_taken(name: &str) -> Option<SystemTime> {
     let (taken, _) = name.split_once("-before-v")?;
-    let taken = chrono::NaiveDateTime::parse_from_str(taken, "%Y-%m-%d-%H%M%S").ok()?;
-    let seconds = u64::try_from(taken.and_utc().timestamp()).ok()?;
+    let taken = jiff::civil::DateTime::strptime("%Y-%m-%d-%H%M%S", taken).ok()?;
+    let taken = jiff::tz::TimeZone::UTC.to_timestamp(taken).ok()?;
+    let seconds = u64::try_from(taken.as_second()).ok()?;
     Some(SystemTime::UNIX_EPOCH + Duration::from_secs(seconds))
 }
 
@@ -250,7 +251,7 @@ impl<'a> Updater<'a> {
         }
     }
     fn status(&self, state: &str, manifest: &Manifest, extra: Value) -> Result<()> {
-        let mut value = json!({"status":state,"digest":manifest.digest,"updatedAt":chrono::Utc::now().to_rfc3339()});
+        let mut value = json!({"status":state,"digest":manifest.digest,"updatedAt":jiff::Timestamp::now().to_string()});
         if self.environment == Environment::Production {
             value["version"] = json!(manifest.version);
         }
@@ -534,7 +535,7 @@ impl<'a> Updater<'a> {
             Ok(_) => Ok(()),
             Err(error) => {
                 let previous = io::read_json(&self.failure_file).unwrap_or(Value::Null);
-                let now = chrono::Utc::now().to_rfc3339();
+                let now = jiff::Timestamp::now().to_string();
                 io::write_json(
                     &self.failure_file,
                     &json!({
