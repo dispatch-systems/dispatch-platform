@@ -45,7 +45,8 @@ impl FromRow for Subscription {
 /// Phone's own for none.
 pub trait PushStore {
     /// Keeps the browser `subscription` names as its member's for the line `line`, in place of
-    /// whoever's it was.
+    /// whoever's it was: kept by another member, or at another address, it's let go of for every
+    /// line it was kept for before, as theirs; kept by the same, its other lines stay.
     fn keep_communications_push(
         &self,
         dsp: &str,
@@ -103,6 +104,16 @@ impl PushStore for Store {
         } = subscription;
         let db = self.dsp(dsp)?;
         db.transaction(|| {
+            // A browser is one member's at one address: kept anew by another, it's no longer told
+            // of any line for whoever's it was.
+            for table in ["communications_push", "communications_line_push"] {
+                db.exec(
+                    &format!(
+                        "DELETE FROM {table} WHERE endpoint=?1 AND (user_id<>?2 OR site<>?3)"
+                    ),
+                    params![endpoint, user, address],
+                )?;
+            }
             match line {
                 None => db.exec(
                     "INSERT INTO communications_push (endpoint,user_id,p256dh,auth,site,created_at) \

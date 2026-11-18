@@ -1,6 +1,7 @@
 //! Who is pushed what: each message new in what waits, to each browser of each member who may be
 //! told of it, once, opening where it was subscribed; each line's alone to the browsers told of
-//! it; the browsers let go of once they can't be told, even as a push waits to be tried again;
+//! it; a browser kept by someone else no longer told of any line for whoever had it; the browsers
+//! let go of once they can't be told, even as a push waits to be tried again;
 //! pushes going a few at once, however many batches go; and what a push says of a message, as the
 //! list does.
 use super::*;
@@ -57,9 +58,18 @@ async fn keep(state: &Arc<State>, dsp: &str, user: &str, endpoint: &str) {
     keep_at(state, dsp, user, endpoint, Address::Admin).await;
 }
 async fn keep_at(state: &Arc<State>, dsp: &str, user: &str, endpoint: &str, address: Address) {
-    let (dsp, subscription) = (dsp.to_owned(), browser(user, endpoint, address));
+    keep_for(state, dsp, None, browser(user, endpoint, address)).await;
+}
+/// Keeps `subscription` for the line `line`.
+async fn keep_for(
+    state: &Arc<State>,
+    dsp: &str,
+    line: Option<&'static str>,
+    subscription: Subscription,
+) {
+    let dsp = dsp.to_owned();
     state
-        .run(move |db| db.keep_communications_push(&dsp, None, &subscription))
+        .run(move |db| db.keep_communications_push(&dsp, line, &subscription))
         .await
         .unwrap();
 }
@@ -295,6 +305,59 @@ async fn each_lines_texts_are_heard_and_pushed_on_its_own_alone() {
     let pushed = fixture::pushed(browser);
     assert_eq!(pushed.len(), 2);
     assert_eq!(pushed[1]["title"], "(425) 555-0199");
+}
+
+#[tokio::test]
+async fn a_browser_kept_by_someone_else_is_no_longer_told_of_any_line_for_whoever_had_it() {
+    let (_root, state, dsp) = support::started();
+    let endpoint = "https://fcm.googleapis.com/fcm/send/shared-desk";
+    let (avery, blake) = ("usr_avery", "usr_blake");
+    // Whose the browser is kept as, on each line.
+    let kept = || {
+        let (state, dsp) = (state.clone(), dsp.clone());
+        async move {
+            let kept = state.read(move |db| {
+                let mut kept = Vec::new();
+                for line in [None, DESK.line] {
+                    for each in db.communications_pushes(&dsp, line)? {
+                        kept.push((line, each.user, each.address));
+                    }
+                }
+                Ok(kept)
+            });
+            kept.await.unwrap()
+        }
+    };
+    let theirs = |user: &str, line| (line, user.to_owned(), Address::Admin);
+
+    // One member's, told of both lines, and kept again for one: still theirs on both.
+    keep(&state, &dsp, avery, endpoint).await;
+    keep_for(
+        &state,
+        &dsp,
+        DESK.line,
+        browser(avery, endpoint, Address::Admin),
+    )
+    .await;
+    keep(&state, &dsp, avery, endpoint).await;
+    assert_eq!(
+        kept().await,
+        [theirs(avery, None), theirs(avery, DESK.line)]
+    );
+
+    // Kept by another member for Dispatch Phone's own: the first's is let go of on every line.
+    keep(&state, &dsp, blake, endpoint).await;
+    assert_eq!(kept().await, [theirs(blake, None)]);
+
+    // Kept by them at the DSP's own address, for the other line: so is the one at the admin's.
+    keep_for(
+        &state,
+        &dsp,
+        DESK.line,
+        browser(blake, endpoint, Address::Dsp),
+    )
+    .await;
+    assert_eq!(kept().await, [(DESK.line, blake.to_owned(), Address::Dsp)]);
 }
 
 #[tokio::test(start_paused = true)]
