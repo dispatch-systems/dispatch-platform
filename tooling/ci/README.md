@@ -108,8 +108,9 @@ in progress, committed or not: `generate --check`, what a generator left to writ
 TypeScript, the changed files' format and lint, then its own tests as `test --owner` runs them.
 `dispatchdev check` stops a branch that isn't ready to push, on `main` or with changes not yet
 committed, then runs the rule checks (`npm run check:rules`, everything a push can fail on
-without a build), the TypeScript linter and clippy side by side; clippy builds in the
-checkout's own `target`, so a run after a small change takes seconds. A clippy pass is kept, in the repository's shared Git
+without a build), the TypeScript linter and clippy side by side, with the operator probes
+compiled after clippy as CI's lint job compiles them; clippy builds in the checkout's own
+`target`, so a run after a small change takes seconds. A clippy pass is kept, in the repository's shared Git
 folder, for the Rust inputs it ran on, so clippy passes again without running until one of them
 changes, and a whole pass is kept for the committed tree it ran on, so the same tree passes
 again at once; `--plan` only names them.

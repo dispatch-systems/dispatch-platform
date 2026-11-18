@@ -55,6 +55,10 @@ pub fn plan(root: &Path, runner: &dyn Runner) -> Result<Plan> {
     let mut commands: Vec<String> = test_selection::affected(&changed, &plan, &workspace)
         .into_iter()
         .filter(|command| command.starts_with("cargo clippy"))
+        .map(|clippy| match probes(&workspace) {
+            Some(probes) => format!("{clippy} && {probes}"),
+            None => clippy,
+        })
         .collect();
     if changed.iter().any(|file| dashboard(file)) {
         commands.push(SIZES.to_owned());
@@ -62,6 +66,20 @@ pub fn plan(root: &Path, runner: &dyn Runner) -> Result<Plan> {
     Ok(Plan {
         commands,
         base: command(&["git", "rev-parse", "--short", "origin/main"])?,
+    })
+}
+/// The operator probes compiled without running, behind their crates' `operator-probes`
+/// feature, as CI's lint job compiles them after clippy, which builds without them: after it
+/// here too, in its slot, where they would only wait on its build. None in a workspace with no
+/// probes.
+fn probes(workspace: &test_selection::Workspace) -> Option<String> {
+    let probing = workspace.declaring("operator-probes");
+    (!probing.is_empty()).then(|| {
+        let packages: Vec<String> = probing.iter().map(|name| format!("-p {name}")).collect();
+        format!(
+            "cargo check --locked {} --tests --features operator-probes",
+            packages.join(" ")
+        )
     })
 }
 /// The dashboard's page-size budgets, measured on its production build alone, in about half a
@@ -604,6 +622,54 @@ mod tests {
         ] {
             assert!(!dashboard(file), "{file} doesn't reach the dashboard");
         }
+    }
+    #[test]
+    fn a_rust_change_compiles_the_operator_probes_after_clippy_as_ci_does() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let write = |file: &str, text: &str| {
+            fs::create_dir_all(root.join(file).parent().unwrap()).unwrap();
+            fs::write(root.join(file), text).unwrap();
+        };
+        write(
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"core\", \"collectors/*\", \"app/backend\"]\n",
+        );
+        write("core/Cargo.toml", "[package]\nname = \"dispatch-core\"\n");
+        let probing = "[features]\noperator-probes = []\n";
+        for (dir, name) in [
+            ("collectors/cortex", "dispatch-cortex"),
+            ("app/backend", "dispatch-backend"),
+        ] {
+            let manifest = format!("[package]\nname = \"{name}\"\n\n{probing}");
+            write(&format!("{dir}/Cargo.toml"), &manifest);
+        }
+        write(
+            "collectors/paycom/Cargo.toml",
+            "[package]\nname = \"dispatch-paycom\"\n\n[features]\nts = []\n",
+        );
+        /// A committed branch whose diff from `origin/main` is `changed`.
+        struct Branch(&'static str);
+        impl Runner for Branch {
+            fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+                Ok(match args[1] {
+                    "rev-parse" if args[2] == "--abbrev-ref" => "feature".into(),
+                    "rev-parse" => "abc1234".into(),
+                    "status" => vec![],
+                    "diff" => self.0.into(),
+                    _ => panic!("ran {args:?}"),
+                })
+            }
+        }
+        let commands = |changed| plan(root, &Branch(changed)).unwrap().commands;
+        assert_eq!(
+            commands("core/accounts/backend/lib.rs\n"),
+            [
+                "cargo clippy --locked --all-targets -- -D warnings && cargo check --locked \
+                 -p dispatch-backend -p dispatch-cortex --tests --features operator-probes"
+            ]
+        );
+        assert!(commands("docs/readme.md\n").is_empty());
     }
     #[test]
     fn a_check_needs_a_committed_branch_of_its_own() {
