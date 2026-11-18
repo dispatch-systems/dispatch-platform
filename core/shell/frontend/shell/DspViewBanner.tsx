@@ -1,6 +1,7 @@
 import { Check, ChevronDown, Eye } from 'lucide-react';
 import type { DspView } from '../../../accounts/api/index.js';
 import { Popover } from '../ui/Popover.js';
+import './dsp-view.css';
 
 // The grant a platform owner views a DSP with by default: an owner's permissions, and the
 // features hidden from the DSP too.
