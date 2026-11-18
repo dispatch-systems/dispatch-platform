@@ -143,4 +143,12 @@ fn a_run_ending_leaves_the_package_a_run_beside_it_tests_with() {
     kept.keep().unwrap();
     beside.end().unwrap();
     assert!(backend.exists(), "the run beside it took what was kept");
+    // A last run whose record a kept run cleared meanwhile ends without an error, and deletes
+    // nothing.
+    fs::remove_dir_all(root.join(".build")).unwrap();
+    let last = Run::start(root, &tmp).unwrap();
+    package();
+    fs::remove_file(root.join(".test-build/made")).unwrap();
+    last.end().unwrap();
+    assert!(backend.exists());
 }

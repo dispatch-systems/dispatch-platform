@@ -409,14 +409,17 @@ fn join(root: &Path, builds: &Path) -> Result<fs::File> {
 /// made, and answers how much it deleted; with `keep`, what they made is the checkout's own at
 /// once, so no run ending after it deletes it.
 fn leave(root: &Path, builds: &Path, runs: fs::File, keep: bool) -> Result<u64> {
-    drop(runs);
     // A run kept: what the runs made is the checkout's own from now, whichever run ends last.
+    // The record goes while this run still shares the lock, so no run's cleanup has read it yet.
     if keep {
-        return match fs::remove_file(builds.join(MADE)) {
+        let cleared = fs::remove_file(builds.join(MADE));
+        drop(runs);
+        return match cleared {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
             _ => Ok(0),
         };
     }
+    drop(runs);
     let last = open(builds, RUNS, fs::OpenOptions::new().read(true))?;
     if last.try_lock_exclusive().is_err() {
         return Ok(0);
@@ -439,8 +442,10 @@ fn leave(root: &Path, builds: &Path, runs: fs::File, keep: bool) -> Result<u64> 
         freed += workspace::size(&crate::Native, &path).unwrap_or(0);
         fs::remove_dir_all(&path)?;
     }
-    fs::remove_file(builds.join(MADE))?;
-    Ok(freed)
+    match fs::remove_file(builds.join(MADE)) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+        _ => Ok(freed),
+    }
 }
 /// A run's build folder in a checkout, deleted when the run ends, and what the browser tests'
 /// packaging makes there, deleted when the last run side by side with it ends.
