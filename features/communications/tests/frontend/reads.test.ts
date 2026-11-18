@@ -6,6 +6,7 @@ import type {
   ConversationWindow,
   Message,
 } from '../../api/index.js';
+import { dispatchTexting } from '../../api/client.js';
 import {
   ConversationReads,
   type ConversationViewport,
@@ -99,7 +100,7 @@ function server() {
 
 test('a conversation read opens again as read until an update changes it, or one of whom it’s with’s others it shows; the one open is read again at once as one does, and once more if one came while it was read', async () => {
   const { asked, answer } = server();
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   reads.change({ at: 1, ids: 'all' });
   reads.open('tc_a');
   reads.open('tc_b');
@@ -173,7 +174,7 @@ test('a read of older ones that failed is held as failed until it’s asked agai
         : new Response(JSON.stringify(url.includes('?') ? { ...latest, more: false } : latest)),
     );
   }) as typeof fetch);
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   reads.open('tc_a');
   await new Promise((settled) => setImmediate(settled));
   failing = true;
@@ -211,7 +212,7 @@ test('older messages read in are held, but not as the latest read brought them',
     Promise.resolve(
       new Response(JSON.stringify(url.includes('?') ? older : latest)),
     )) as typeof fetch);
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   reads.open('tc_a');
   await new Promise((settled) => setImmediate(settled));
   await reads.readOlder('tc_a');
@@ -264,7 +265,7 @@ test('closing deep history bounds the cache and opening it can read every older 
     assert.ok(before >= 0);
     return Promise.resolve(new Response(JSON.stringify(page(before))));
   }) as typeof fetch);
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   const close = reads.watch('tc_a', () => undefined);
   reads.open('tc_a');
   await new Promise((settled) => setImmediate(settled));
@@ -316,7 +317,7 @@ test('leaving the page aborts its reads and ignores a transport that still answe
         });
       })) as typeof fetch,
   );
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   reads.open('tc_a');
   assert.equal(waiting.length, 1);
   reads.dispose();
@@ -370,7 +371,7 @@ test('server statuses win over delayed send snapshots on latest and older reads,
           answer = resolve;
         });
       }) as typeof fetch);
-      const reads = new ConversationReads('America/Los_Angeles');
+      const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
       const close = reads.watch('tc_a', () => undefined);
       reads.open('tc_a');
       await new Promise((settled) => setImmediate(settled));
@@ -515,7 +516,7 @@ test('ready active windows replace in both directions, retain independent latest
       new Response(JSON.stringify(boundedWindow(all.slice(start, start + 150), start, all))),
     );
   }) as typeof fetch;
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   const close = reads.watch('tc_a', () => undefined);
   reads.open('tc_a');
   await new Promise((settled) => setImmediate(settled));
@@ -643,7 +644,7 @@ test('a ready replacement is fenced by current interactions and navigation, and 
       answer = resolve;
     });
   }) as typeof fetch;
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   const stop = reads.watch('tc_a', () => undefined);
   reads.open('tc_a');
   await new Promise((settled) => setImmediate(settled));
@@ -703,7 +704,7 @@ test('origin capability transitions preserve the current legacy viewport and re-
     if (!ready) value.origins = { ...value.origins!, ready: false, selected: null, latest: null };
     return Promise.resolve(new Response(JSON.stringify(value)));
   }) as typeof fetch;
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   const stop = reads.watch('tc_a', () => undefined);
   reads.open('tc_a');
   await new Promise((settled) => setImmediate(settled));
@@ -781,7 +782,7 @@ test('superseding legacy older ownership releases busy before and after readines
   for (const ready of [false, true]) {
     const all = history();
     const next = gatedReads();
-    const reads = new ConversationReads('America/Los_Angeles');
+    const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
     const close = reads.watch('tc_a', () => undefined);
     const opened = published(reads, (held) => Boolean(held.opened));
     reads.open('tc_a');
@@ -841,7 +842,7 @@ test('superseding legacy older ownership releases busy before and after readines
 test('a legacy page completed after refresh dispatch survives fallback publication together with its current viewport and days', async () => {
   const all = history();
   const next = gatedReads();
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   const close = reads.watch('tc_a', () => undefined);
   const opened = published(reads, (held) => Boolean(held.opened));
   reads.open('tc_a');
@@ -901,7 +902,7 @@ test('acknowledged retries replace cached failures while interaction defers read
     };
     all[399] = failed;
     const next = gatedReads();
-    const reads = new ConversationReads('America/Los_Angeles');
+    const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
     const close = reads.watch('tc_a', () => undefined);
     const opened = published(reads, (held) => Boolean(held.opened));
     reads.open('tc_a');
@@ -949,7 +950,7 @@ test('acknowledged retries replace cached failures while interaction defers read
   const all = history();
   all[250] = { ...all[250]!, direction: 'out', status: 'failed', error: 'Cached failure' };
   const next = gatedReads();
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   const close = reads.watch('tc_a', () => undefined);
   const opened = published(reads, (held) => Boolean(held.opened));
   reads.open('tc_a');
@@ -973,7 +974,7 @@ test('acknowledged retries replace cached failures while interaction defers read
 test('legacy400 conversion retains first-visible250 and its suffix, and fallback follows a viewport moved during its extra awaits', async () => {
   const all = history();
   const next = gatedReads();
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   const close = reads.watch('tc_a', () => undefined);
   const opened = published(reads, (held) => Boolean(held.opened));
   reads.open('tc_a');
@@ -1050,7 +1051,7 @@ test('a snapshot issued before Retry began cannot replay its failed row over the
   };
   all[399] = failed;
   const next = gatedReads();
-  const reads = new ConversationReads('America/Los_Angeles');
+  const reads = new ConversationReads(dispatchTexting, 'America/Los_Angeles');
   const close = reads.watch('tc_a', () => undefined);
   const opened = published(reads, (held) => Boolean(held.opened));
   reads.open('tc_a');

@@ -10,19 +10,22 @@ import type { Conversation, Message } from '../../api/index.js';
 import type { Changed } from '../inbox/useInbox.js';
 import type { ConversationViewport, WriteVersion } from './reads.js';
 import { ConversationReads } from './reads.js';
+import { useLine } from '../line.js';
 
 /**
- * The conversations the page reads, at the DSP `dsp`, told of each update, `changed`: before the
+ * The conversations the page reads, of its line at the DSP `dsp`, told of each update, `changed`: before the
  * conversation open's own effects, so one opened as the page reads afresh is read once.
  */
 export function useConversationReads(dsp: string, changed: Changed, timeZone: string) {
+  const { texting } = useLine();
   const [reads, setReads] = useState(() => ({
     dsp,
+    texting,
     timeZone,
-    reads: new ConversationReads(timeZone),
+    reads: new ConversationReads(texting, timeZone),
   }));
-  if (reads.dsp !== dsp || reads.timeZone !== timeZone)
-    setReads({ dsp, timeZone, reads: new ConversationReads(timeZone) });
+  if (reads.dsp !== dsp || reads.texting !== texting || reads.timeZone !== timeZone)
+    setReads({ dsp, texting, timeZone, reads: new ConversationReads(texting, timeZone) });
   useLayoutEffect(() => reads.reads.change(changed), [reads, changed]);
   useEffect(() => () => reads.reads.dispose(), [reads]);
   return reads.reads;

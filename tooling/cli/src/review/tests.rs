@@ -389,7 +389,7 @@ impl Fixture {
         commit(&root, "base");
         git(&root, &["push", "-q", "-u", "origin", "HEAD:main"]);
         git(&root, &["switch", "-q", "-c", "keep-week"]);
-        let scratch = workspace::scratch(&name);
+        let scratch = workspace::scratch(&name).unwrap();
         let fixture = Self {
             _temp: temp,
             root,
@@ -1215,4 +1215,20 @@ fn the_agent_docs_pr_is_published_reviewed_and_merged_with_no_check() {
             &fixture.head(),
         ]
     );
+}
+
+#[test]
+fn an_apps_screens_previewed_are_still_the_agents_to_show() {
+    let fixture = Fixture::new();
+    let root = &fixture.root;
+    write(
+        root,
+        "android/relay/src/main/kotlin/com/dspdispatch/relay/ui/Home.kt",
+        "class Home\n",
+    );
+    commit(root, "the app's home screen");
+    // Nothing a browser shows, so `preview` takes no screenshot: the emulator's screen is
+    // what the agent shows, which the CLI never sees.
+    preview::run(root, &[], &Native).unwrap();
+    assert!(!preview::shown(root, &Native).unwrap());
 }

@@ -4,8 +4,10 @@
 //! again once it merged. A run GitHub created and never gave a job is told apart from one that
 //! goes on. `dispatchdev landed`: how `main`'s own run of a merged change ended.
 use crate::{REPOSITORY, Result, Runner, merge::short, require, review, workspace};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
+    fs,
     path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -381,6 +383,33 @@ fn report(root: &Path, run: &Run, runner: &dyn Runner) {
     }
 }
 
+/// What `landed` leaves in the change's scratch folder once `main`'s run of its merge ended, so
+/// `owed` tells a merge whose run is yet to be waited for from one ready to finish.
+pub const LANDED: &str = "landed.json";
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Landed {
+    /// The commit the PR merged as.
+    pub commit: String,
+    /// `main`'s run of the checks on it.
+    pub run: u64,
+    pub result: Outcome,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Outcome {
+    Passed,
+    Failed,
+}
+/// What `landed` last left for the change named `name`, if anything, in its scratch folder as it
+/// is now.
+pub fn landing(name: &str) -> Result<Option<Landed>> {
+    match fs::read_to_string(workspace::current_scratch(name)?.join(LANDED)) {
+        Ok(text) => Ok(Some(serde_json::from_str(&text)?)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 /// `dispatchdev landed`: `main`'s run of the checks on the commit the branch's PR merged as,
 /// waited for to its end, and an error when it failed. Whoever merged a change answers for that
 /// run: once a later merge's run passes, nothing else reads it. `pause` waits between asks.
@@ -428,7 +457,19 @@ pub fn landed(root: &Path, runner: &dyn Runner, pause: &dyn Fn(Duration)) -> Res
         pause(ASKS);
         waited += ASKS;
     };
-    if run.conclusion == "success" {
+    let landed = Landed {
+        commit: commit.to_owned(),
+        run: run.id,
+        result: match run.conclusion.as_str() {
+            "success" => Outcome::Passed,
+            _ => Outcome::Failed,
+        },
+    };
+    workspace::write_private(
+        &workspace::checkout_scratch(root)?.join(LANDED),
+        &serde_json::to_string(&landed)?,
+    )?;
+    if landed.result == Outcome::Passed {
         println!("main's checks passed on {merge}.");
         return Ok(());
     }
@@ -582,6 +623,17 @@ mod tests {
     #[test]
     fn landed_waits_for_mains_run_of_the_merge_and_fails_when_that_run_failed() {
         let merged = r#"[{"number":7,"mergeCommit":{"oid":"abc"}}]"#;
+        // A checkout of its own, so the marker it leaves goes to a scratch folder of its own.
+        let temp = tempfile::tempdir().unwrap();
+        let name = format!("landed-test-{}", std::process::id());
+        let root = temp.path().join(&name);
+        fs::create_dir(&root).unwrap();
+        let marker = workspace::scratch(&name).unwrap().join(LANDED);
+        let left = || {
+            let text = fs::read_to_string(&marker).ok();
+            let _ = fs::remove_file(&marker);
+            text
+        };
         let jobs = |conclusion: &'static str| {
             let job = format!(r#"{{"name":"core","databaseId":9,"conclusion":"{conclusion}"}}"#);
             (conclusion, format!(r#"{{"jobs":[{job}]}}"#))
@@ -595,7 +647,7 @@ mod tests {
                 paused: Cell::new(0),
                 asked: RefCell::new(vec![]),
             };
-            let result = landed(Path::new("."), &github, &|_| {
+            let result = landed(&root, &github, &|_| {
                 github.paused.set(github.paused.get() + 1)
             });
             (result.map_err(|error| error.to_string()), github)
@@ -608,6 +660,9 @@ mod tests {
             args[..3] == ["gh", "run", "list"]
                 && args.windows(2).any(|pair| pair == ["--commit", "abc"])
         }));
+        // It leaves how the run ended for `owed`, by the commit the PR merged as.
+        let passed = r#"{"commit":"abc","run":5,"result":"passed"}"#;
+        assert_eq!(left().as_deref(), Some(passed));
         // A run that failed is an error, so what waits on the command hears of it: one that
         // failed before it had a job to fail in too.
         let (result, _) = landed(merged, jobs("failure"), 0);
@@ -615,19 +670,25 @@ mod tests {
             result.unwrap_err(),
             "main's checks ended in failure on abc, the commit #7 merged as."
         );
+        let failed = r#"{"commit":"abc","run":5,"result":"failed"}"#;
+        assert_eq!(left().as_deref(), Some(failed));
         let (result, _) = landed(merged, ("startup_failure", r#"{"jobs":[]}"#.to_owned()), 0);
         assert_eq!(
             result.unwrap_err(),
             "main's checks ended in startup_failure on abc, the commit #7 merged as."
         );
+        assert_eq!(left().as_deref(), Some(failed));
         // One that never ends stops the wait, by the clock the pauses move.
         let (result, github) = landed(merged, jobs("success"), u32::MAX);
         assert!(result.unwrap_err().contains("hasn't ended after 45m 00s"));
         assert_eq!(github.paused.get(), 135);
+        assert_eq!(left(), None, "a run that hasn't ended leaves nothing");
         // A branch whose PR hasn't merged has no such run to wait for.
         let (result, github) = landed("[]", jobs("success"), 0);
         assert!(result.unwrap_err().contains("change has no merged PR"));
         assert_eq!(github.paused.get(), 0);
+        assert_eq!(left(), None);
+        let _ = fs::remove_dir_all(workspace::scratch(&name).unwrap());
     }
     /// GitHub with one run of the checks on commit `abc`, as `gh run list` and `gh run view`
     /// tell it.

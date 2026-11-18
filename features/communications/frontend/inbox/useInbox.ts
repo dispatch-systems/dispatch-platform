@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Communications, Conversation, DispatchPhone, Group } from '../../api/index.js';
-import {
-  getCommunications,
-  getCommunicationsUpdates,
-  olderConversations,
-  waitingUrl,
-} from '../../api/client.js';
 import { longPoll } from '../../../../core/shell/frontend/runtime/long-poll.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
+import { useLine } from '../line.js';
 import { sectionNamed, type Section } from './sections.js';
 import {
   lastAnswered,
@@ -25,7 +20,7 @@ import {
 export type Changed = { at: number; ids: readonly string[] | 'all' };
 
 /**
- * The DSP's conversations and groups as they are now: every one waiting, and those answered of
+ * The DSP's conversations and groups of the page's line as they are now: every one waiting, and those answered of
  * every workspace or the one `chosen` (`team`, while it's one of two or more Communications works
  * in); read, then kept up to date by waiting on each change (`updates`), and read afresh when the
  * server says to, the page comes back into view, the browser comes back online or another
@@ -33,6 +28,7 @@ export type Changed = { at: number; ids: readonly string[] | 'all' };
  * for the one open to read again.
  */
 export function useInbox(chosen?: string) {
+  const { texting } = useLine();
   const [inbox, setInbox] = useState<Communications>();
   const team = shownWorkspace(chosen, inbox?.workspaces);
   const [changed, setChanged] = useState<Changed>({ at: 0, ids: 'all' });
@@ -42,17 +38,20 @@ export function useInbox(chosen?: string) {
   // answered conversations it holds, which reading older ones goes on in.
   const current = useRef<Communications | undefined>(undefined);
   const scope = useRef<string | undefined>(undefined);
-  const change = useCallback((next: Communications) => {
-    // The sidebar's count, and every page's banner of the phones down, read again as the page
-    // first reads how many wait and how the phones stand, and once either changes.
-    if (
-      current.current?.waiting !== next.waiting ||
-      standing(current.current?.phones) !== standing(next.phones)
-    )
-      dataCache.invalidate((key) => key === waitingUrl);
-    current.current = next;
-    setInbox(next);
-  }, []);
+  const change = useCallback(
+    (next: Communications) => {
+      // The sidebar's count, and every page's banner of the phones down, read again as the page
+      // first reads how many wait and how the phones stand, and once either changes.
+      if (
+        current.current?.waiting !== next.waiting ||
+        standing(current.current?.phones) !== standing(next.phones)
+      )
+        dataCache.invalidate((key) => key === texting.waitingUrl);
+      current.current = next;
+      setInbox(next);
+    },
+    [texting],
+  );
   /** Reads the list afresh, as when Slack was connected or updated. */
   const refresh = useCallback(() => setGeneration((n) => n + 1), []);
 
@@ -62,7 +61,7 @@ export function useInbox(chosen?: string) {
       async (signal) => {
         const listed = current.current;
         if (fresh || !listed) {
-          const read = await getCommunications(signal, team);
+          const read = await texting.getOverview(signal, team);
           if (signal.aborted) return;
           fresh = false;
           scope.current = team;
@@ -72,7 +71,7 @@ export function useInbox(chosen?: string) {
           if (read.revision !== listed?.revision)
             setChanged((last) => ({ at: last.at + 1, ids: 'all' }));
         } else {
-          const update = await getCommunicationsUpdates(
+          const update = await texting.getUpdates(
             listed.revision,
             listed.typing.version,
             AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
@@ -105,7 +104,7 @@ export function useInbox(chosen?: string) {
       document.removeEventListener('visibilitychange', resume);
       window.removeEventListener('online', resume);
     };
-  }, [change, generation, team]);
+  }, [texting, change, generation, team]);
 
   /** Shows a conversation as one of the page's own writes left it. */
   const show = useCallback(
@@ -136,7 +135,7 @@ export function useInbox(chosen?: string) {
       setOlderFailed(false);
       try {
         const asked = scope.current;
-        const older = await olderConversations(last, sectionNamed(section).listing(asked));
+        const older = await texting.olderConversations(last, sectionNamed(section).listing(asked));
         // Read while another workspace's list came, it isn't of that list.
         if (current.current && scope.current === asked)
           change(withOlder(current.current, older, section));
@@ -147,7 +146,7 @@ export function useInbox(chosen?: string) {
         setReading(false);
       }
     },
-    [change, reading],
+    [texting, change, reading],
   );
   return { inbox, team, changed, error, refresh, show, showGroup, readOlder, olderFailed };
 }

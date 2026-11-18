@@ -1,6 +1,5 @@
 import { Fragment, useCallback, type ReactNode } from 'react';
 import type { Communications, Conversation } from '../../api/index.js';
-import { searchConversations } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { PartyFace } from '../conversations/party.js';
 import { dayOf } from '../shared/format.js';
@@ -8,6 +7,7 @@ import { ListEmpty, ListHead, Rows } from '../shared/List.js';
 import { ListRow } from '../shared/ListRow.js';
 import { More } from '../shared/More.js';
 import { useFound } from '../shared/useFound.js';
+import { useLine } from '../line.js';
 import type { Draft } from '../slack/groups/GroupDraft.js';
 import { GroupDraftRow, GroupRow } from '../slack/groups/GroupRow.js';
 import { ConversationRow } from './ConversationRow.js';
@@ -73,6 +73,7 @@ export function ConversationList({
   previousDays: boolean;
   showPreviousDays: (shown: boolean) => void;
 }) {
+  const { texting } = useLine();
   const model = sectionNamed(section);
   // What Search searches: the section's own, or in Recents every section the DSP has.
   const searched = (
@@ -85,13 +86,15 @@ export function ConversationList({
       Promise.all(
         searched
           .split(' ')
-          .map((each) => searchConversations(typed, sectionNamed(each as Section).listing(team))),
+          .map((each) =>
+            texting.searchConversations(typed, sectionNamed(each as Section).listing(team)),
+          ),
       ).then((found) =>
         found.length > 1
           ? found.flatMap((each) => each.conversations).sort(latestFirst)
           : found[0]!.conversations,
       ),
-    [typed, searched, team],
+    [texting, typed, searched, team],
   );
   const { found, failed } = useFound(
     typed ? search : undefined,

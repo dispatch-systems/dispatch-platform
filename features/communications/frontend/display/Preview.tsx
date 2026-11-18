@@ -3,6 +3,7 @@ import { slackAttachments } from '../../api/client.js';
 import { Composer } from '../conversations/Composer.js';
 import { Drafts } from '../conversations/drafts.js';
 import { ListPane } from '../page/ListPane.js';
+import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { roleText } from '../shared/format.js';
 import { PartyFace } from '../conversations/party.js';
 import { PaneHead } from '../shared/PaneHead.js';
@@ -11,6 +12,7 @@ import { Thread } from '../conversations/Thread.js';
 import { useLayout } from '../page/useLayout.js';
 import { dockAt, pageLook, Shown, type Display } from './display.js';
 import { sample } from './sample.js';
+import { own, useLine } from '../line.js';
 
 // Message display's preview: the Communications page as `display` has it look, drawn by the
 // page's own parts with a made-up morning (`sample`), on a screen `width` by `height` (a phone's
@@ -38,6 +40,8 @@ export function Preview({
   timeZone: string;
 }) {
   const now = useMemo(() => Date.now(), []);
+  // Another feature's line's conversations are all by text.
+  const texts = !own(useLine());
   const {
     inbox,
     open,
@@ -46,12 +50,15 @@ export function Preview({
     today,
     workspace,
     limits,
-  } = useMemo(() => sample(now), [now]);
+  } = useMemo(() => sample(now, texts), [now, texts]);
   const title = useId();
   const page = useRef<HTMLDivElement>(null);
   const docked =
     useLayout(page, dockAt(display)) === 'docked' && display.profile_opens === 'beside';
-  const about = [roleText(open.with), workspace.name].join(' · ');
+  const about = texts
+    ? phoneText(open.number ?? '')
+    : [roleText(open.with), workspace.name].join(' · ');
+  const section = texts ? 'messaging' : 'slack';
   return (
     <div
       className={phone ? 'display-screen phone' : 'display-screen'}
@@ -70,8 +77,8 @@ export function Preview({
               <ListPane
                 inbox={inbox}
                 routes={{ groups: [], read: { error: '', retry: nothing }, choose: nothing }}
-                sections={['slack']}
-                section="slack"
+                sections={[section]}
+                section={section}
                 chooseSection={nothing}
                 working={inbox.workspaces}
                 choose={nothing}

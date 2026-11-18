@@ -12,8 +12,8 @@ dispatchdev browser dev --out <canonical-private-scratch>/browser-dev.json
 dispatchdev browser production --out <canonical-private-scratch>/browser-production.json
 ```
 
-Use the scratch folder's real path (`realpath /tmp/dispatch-<name>`), for example
-`/private/tmp/dispatch-<name>` on macOS. Its owner is this user and its mode is `0700`;
+Use the scratch folder's real path, as `realpath ~/dispatch-platform/scratch/<name>` prints it:
+on the MacBook, `~/dispatch-platform` is a link. Its owner is this user and its mode is `0700`;
 no parent component may be a symlink.
 The output file must be a new absolute path; choose a new filename when renewing. It is
 written with mode `0600`. The command prints only the origin, deadline and read-only status.

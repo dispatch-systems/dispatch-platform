@@ -56,7 +56,7 @@ fn a_run_builds_where_the_last_did_and_deletes_it_unless_kept() {
     assert!(!dead.exists());
     assert!(run_commands(&root, &command("true"), false).unwrap());
     assert!(!first.exists());
-    let _ = fs::remove_dir_all(workspace::scratch("run-test-checkout"));
+    let _ = fs::remove_dir_all(workspace::scratch("run-test-checkout").unwrap());
 }
 #[test]
 fn a_run_leaves_a_folder_it_cannot_hold_and_builds_in_the_next() {
@@ -95,5 +95,5 @@ fn a_run_leaves_a_folder_it_cannot_hold_and_builds_in_the_next() {
     let refused = run_commands(&root, &["true".into()], false).unwrap_err();
     assert!(refused.to_string().contains("is a link"), "{refused}");
     assert!(outside.join("1/mine").exists());
-    let _ = fs::remove_dir_all(workspace::scratch("held-test-checkout"));
+    let _ = fs::remove_dir_all(workspace::scratch("held-test-checkout").unwrap());
 }

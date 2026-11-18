@@ -11,6 +11,12 @@
   align-items: start;
   gap: 28px;
 }
+/* A line's name above its choices and preview, while the page holds two lines' sections. */
+.display-line {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 17px;
+}
 .display-choices {
   display: flex;
   flex-direction: column;

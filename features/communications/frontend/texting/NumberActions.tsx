@@ -1,18 +1,19 @@
 import { useState } from 'react';
 import { Copy, Ellipsis, Phone, PhoneOff, UserMinus } from 'lucide-react';
 import type { Conversation, RouteDriver } from '../../api/index.js';
-import { blockNumber, removeFromPerson } from '../../api/client.js';
+import { removeFromPerson } from '../../api/client.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { ConfirmDialog, Popover } from '../../../../core/shell/frontend/ui/index.js';
+import { own, useLine } from '../line.js';
 import { SaveContact } from './SaveContact.js';
 import './number-actions.css';
 
 // What someone at the DSP does with the number a conversation texts: add it to a driver or save a
-// name for it, shared with everyone at the DSP, while Driver Match knows no one by it; take it off
-// the driver it was added to; copy it; block it, once asked whether to, or unblock it, which shows
-// at once and is put back if it fails.
+// name for it, shared with everyone at the DSP using the page's line, while Driver Match knows no
+// one by it; take it off the driver it was added to; copy it; block it on that line, once asked
+// whether to, or unblock it, which shows at once and is put back if it fails.
 
 export function NumberActions({
   conversation,
@@ -28,17 +29,19 @@ export function NumberActions({
   /** Has the page read the list afresh, as after a write that failed. */
   readAfresh: () => void;
 }) {
+  const line = useLine();
+  const { texting } = line;
   const copy = useAction(() => toClipboard(conversation.number ?? ''), {
     success: 'Number copied',
   });
   const [blocking, setBlocking] = useState(false);
   const block = useAction(async (blocked: boolean) => {
-    show(await blockNumber(conversation.id, blocked));
+    show(await texting.blockNumber(conversation.id, blocked));
     setBlocking(false);
   });
   // Unblock shows at once; one that fails has the page read the list afresh, as the server has it,
   // in turn with every update.
-  const unblocking = useAction(async () => show(await blockNumber(conversation.id, false)));
+  const unblocking = useAction(async () => show(await texting.blockNumber(conversation.id, false)));
   const unblock = () => {
     show({ ...conversation, blocked: false });
     void unblocking.run().then((saved) => {
@@ -63,7 +66,7 @@ export function NumberActions({
           <Copy size={15} />
           Copy number
         </button>
-        {conversation.added && conversation.with.code && (
+        {own(line) && conversation.added && conversation.with.code && (
           <button onClick={() => void remove.run(conversation.with.code!)}>
             <UserMinus size={15} />
             Remove from {conversation.with.name}
