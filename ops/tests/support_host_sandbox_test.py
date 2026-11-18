@@ -15,6 +15,7 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
+@unittest.skipUnless(sys.platform == "linux", "the support sandbox is bubblewrap, which runs on Linux alone")
 class BridgeTests(unittest.TestCase):
     def test_the_host_reaches_a_bridge_socket_deeper_than_an_address_holds(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -29,7 +30,7 @@ class BridgeTests(unittest.TestCase):
             finally:
                 os.chdir(here)
             server.listen(1)
-            short, address = module.bridge_link(bridge)
+            descriptor, address = module.bridge_address(bridge)
             try:
                 self.assertLess(len(address), 104)
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
@@ -38,8 +39,7 @@ class BridgeTests(unittest.TestCase):
                     accepted.close()
             finally:
                 server.close()
-                shutil.rmtree(short)
-            self.assertTrue(bridge.is_dir(), "removing the link leaves the bridge")
+                os.close(descriptor)
 
 
 @unittest.skipUnless(sys.platform == "linux", "the support sandbox is bubblewrap, which runs on Linux alone")

@@ -168,12 +168,12 @@ def build(root, node, command):
     return subprocess.call(args)
 
 
-def bridge_link(bridge):
+def bridge_address(bridge):
     # A Unix socket's address holds 108 bytes, which the scratch folder's path can pass: the host
-    # connects through a link to the bridge, in a short folder only this user can open.
-    short = Path(tempfile.mkdtemp(prefix="dsb-", dir="/tmp"))
-    (short / "b").symlink_to(bridge)
-    return short, str(short / "b/application.sock")
+    # connects through a descriptor held on the bridge, which leaves nothing behind however the
+    # preview ends.
+    descriptor = os.open(bridge, os.O_RDONLY | os.O_DIRECTORY)
+    return descriptor, f"/proc/self/fd/{descriptor}/application.sock"
 
 
 def preview(root, state):
@@ -185,7 +185,7 @@ def preview(root, state):
         if not state.is_relative_to(scratch):
             raise ValueError("Preview state leaves the assigned scratch directory")
     bridge = Path(tempfile.mkdtemp(prefix="browser-bridge-", dir=scratch))
-    short, address = bridge_link(bridge)
+    descriptor, address = bridge_address(bridge)
     resources = Path(__file__).resolve().parent
     child = None
 
@@ -231,7 +231,7 @@ def preview(root, state):
         server.shutdown()
         server.server_close()
         shutil.rmtree(bridge, ignore_errors=True)
-        shutil.rmtree(short, ignore_errors=True)
+        os.close(descriptor)
         # Native verification state lives until its outer ticket cleanup; fixture state is ephemeral.
         if state.name.startswith("browser-state-"):
             shutil.rmtree(state, ignore_errors=True)
