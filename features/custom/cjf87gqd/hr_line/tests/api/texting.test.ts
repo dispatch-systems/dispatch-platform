@@ -101,7 +101,7 @@ test('HR Line answers only those whose role gives them Use HR Line', async (t) =
     name: 'HR',
     permissions: ['cjf87gqd_hr_line.use'],
   });
-  assert.equal(role.status, 200, role.body);
+  assert.equal(role.status, 201, role.body);
   const members = (await owner.get('/api/dsp/members')).value;
   const memberId = members.find((m: { email: string }) => m.email === demo.member).id;
   await owner.post(`/api/dsp/members/${memberId}`, { role: role.value.id });
