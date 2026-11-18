@@ -70,7 +70,10 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
                                     manage it
   --connection                      a card on a DSP's Connections tab, for one of the DSP's
                                     own accounts
-  --widget                          a widget a member adds to their Home page
+  --widget <name>                   a widget a member adds to their Home page, as late_das:
+                                    its id <feature>.<name>, at every size to four by four
+  --part <id>                       with --widget, the part of the feature it goes with, as
+                                    x.day: off or hidden with it
   --contract <name>                 what it exposes to other features and agent tools, named
                                     for what it offers, as short_inspections: its contract
                                     crate in contract/, what fulfils it, and their test
@@ -125,7 +128,6 @@ const FLAGS = [
   'page',
   'settings',
   'connection',
-  'widget',
   'no-backend',
   'shown',
   'dry-run',
@@ -139,6 +141,8 @@ const OPTIONS = [
   'tabs',
   'sidebar',
   'contract',
+  'widget',
+  'part',
   'label',
   'icon',
   'preset',
@@ -215,7 +219,25 @@ function featureValues(root: string, argv: string[], adding = false) {
     );
   const page = args.flags.has('page') || Boolean(ownTabs);
   const connection = args.flags.has('connection');
-  const widget = args.flags.has('widget');
+  // A widget of its own, named as its id ends: late_das is <feature>.late_das.
+  const widgetName = args.options.get('widget');
+  const widget = Boolean(widgetName);
+  const part = args.options.get('part');
+  if (part !== undefined && !widget)
+    throw new UsageError('--part is the part of the feature a widget goes with: add --widget');
+  // Its parts, which a new feature has none of yet.
+  const parts =
+    adding && exists(root, `${dir}/feature.rs`)
+      ? [...read(root, `${dir}/feature.rs`).matchAll(/\b(?:tab|sub)\(\s*"([^"]+)"/g)].map(
+          (found) => found[1]!,
+        )
+      : [];
+  if (part !== undefined && !parts.includes(part))
+    throw new UsageError(
+      `--part names one of ${name}'s parts: ${parts.join(', ') || 'it has none'}`,
+    );
+  // Its names, as its id ends, its file and its label: late_das, LateDas, Late das.
+  const widgetNames = namesOf(widgetName ?? 'widget');
   const settings = args.flags.has('settings');
   const host = args.options.get('tab-of');
   if (page && host)
@@ -250,6 +272,10 @@ function featureValues(root: string, argv: string[], adding = false) {
     ...namesOf(id.replace(/-/g, '_')),
     id: owner ? `${owner}-${id}` : id,
   }));
+  // The page it opens: the feature's own, the one it gains or the first of its sidebar's.
+  const opens = page
+    ? { id: slug, label: names.label }
+    : (sidebarNames[0] ?? (adding ? pageOf(root, name) : undefined));
   if (args.flags.has('no-backend')) {
     if (!page && !host && !sidebar && !widget)
       throw new UsageError(
@@ -524,6 +550,14 @@ function featureValues(root: string, argv: string[], adding = false) {
       .join('\n'),
     connection,
     widget,
+    widgetId: `${name}.${widgetNames.name}`,
+    widgetLabel: widgetNames.label,
+    widgetPascal: widgetNames.pascal,
+    widgetSlug: widgetNames.slug,
+    // The page it opens: the feature's own, the one it gains or the first of its sidebar's.
+    widgetOpens: opens?.id ?? '',
+    widgetOpensLabel: opens?.label ?? '',
+    widgetPart: part ?? '',
     peopleIdent: source ? identOf(source.site) : '',
     readPeople: open.replace(/^self\./, 'store.'),
     site,
@@ -646,7 +680,16 @@ function pieces(values: Values): [boolean, string, string][] {
     // frontend/tabs/ holds the tabs of its own page, which its manifest declares.
     [values.tab as boolean, 'frontend/Tab.tsx', `frontend/${pascal}Tab.tsx`],
     [values.connection as boolean, 'frontend/Card.tsx', `frontend/connection/${pascal}Card.tsx`],
-    [values.widget as boolean, 'frontend/Widget.tsx', `frontend/widgets/${pascal}Widget.tsx`],
+    [
+      values.widget as boolean,
+      'frontend/Widget.tsx',
+      `frontend/widgets/${values.widgetPascal as string}Widget.tsx`,
+    ],
+    [
+      values.widget as boolean,
+      'tests/browser/widget.spec.ts',
+      `tests/browser/${values.widgetSlug as string}-widget.spec.ts`,
+    ],
     [values.platformSlots as boolean, 'frontend/platform-slots.ts', 'frontend/platform-slots.ts'],
     // A browser test only for a screen of its own.
     [values.screens as boolean, 'tests/browser/browser.spec.ts', `tests/browser/${slug}.spec.ts`],
@@ -782,7 +825,7 @@ export async function planFeature(root: string, argv: string[]) {
   await edit(appManifest, (text) => wiredManifest(text, wired, mcp));
   await edit(featureList, () => wiredList(wired));
   if (values.shown) await showing(root, plan, values.contract as string);
-  if (values.widget) await shipping(root, plan, `${name}.overview`);
+  if (values.widget) await shipping(root, plan, values.widgetId as string);
 
   const declared = [values.switch && 'switch', values.permission && 'permissions'].filter(Boolean);
   const generated = [

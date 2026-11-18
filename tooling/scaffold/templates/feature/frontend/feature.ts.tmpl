@@ -7,7 +7,12 @@ import { {{icon}} } from 'lucide-react';
 {{#canImport}}
 import { can } from '{{toRoot}}core/shell/frontend/runtime/permissions.js';
 {{/canImport}}
+{{#widget}}
+import { sizesUpTo, type FrontendFeature } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
+{{/widget}}
+{{^widget}}
 import type { FrontendFeature } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
+{{/widget}}
 {{#summaryUrl}}
 import { {{camel}}SummaryUrl } from '../api/client.js';
 {{/summaryUrl}}
@@ -109,20 +114,21 @@ export const feature: FrontendFeature = {
   ],
 {{/connection}}
 {{#widget}}
-  // Its widget for each member's Home page, at the size of these they choose.
+  // Its widgets for each member's Home page, each at the size of its own they choose.
   widgets: [
     {
-      id: '{{name}}.overview',
-      label: '{{label}}',
+      id: '{{widgetId}}',
+      label: '{{widgetLabel}}',
       icon: {{icon}},
-      sizes: [
-        { columns: 2, rows: 2 },
-        { columns: 4, rows: 2 },
-      ],
+      sizes: sizesUpTo({ columns: 4, rows: 4 }, { columns: 2, rows: 2 }),
 {{#permission}}
       permission: ({ view }) => can(view, '{{name}}.view'),
 {{/permission}}
-      load: () => import('./widgets/{{pascal}}Widget.js').then((module) => module.{{pascal}}Widget),
+{{#widgetPart}}
+      part: '{{widgetPart}}',
+{{/widgetPart}}
+      load: () =>
+        import('./widgets/{{widgetPascal}}Widget.js').then((module) => module.{{widgetPascal}}Widget),
     },
   ],
 {{/widget}}

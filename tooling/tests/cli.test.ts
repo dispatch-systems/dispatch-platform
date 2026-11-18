@@ -161,10 +161,9 @@ test("a standalone generate's next steps restart the preview only after a backen
 });
 
 test('list and explain read what the build lists', () => {
-  // Every list but the widgets, which no feature declares yet, has rows in this build.
+  // Every list has rows in this build.
   for (const [name, list] of Object.entries(LISTS))
-    if (name !== 'widgets')
-      assert(list.rows(root).length > 0, `dispatchdev list ${name} lists nothing`);
+    assert(list.rows(root).length > 0, `dispatchdev list ${name} lists nothing`);
   const features = LISTS.features!.rows(root).map((row) => row.name);
   assert(features.includes('slack') && features.includes('driver_match'));
   const slack = explain(root, 'slack');
@@ -182,11 +181,12 @@ test('list and explain read what the build lists', () => {
   );
   assert.deepEqual(
     declaredWidgets(
-      "export const feature: FrontendFeature = {\n  name: 'x',\n  widgets: [\n    {\n      id: 'x.today',\n      label: \"Today's\",\n      sizes: [{ columns: 1, rows: 1 }, { columns: 3, rows: 2 }],\n    },\n    {\n      label: 'Week',\n      id: 'x.week',\n      sizes: [{ columns: 6, rows: 6 }],\n    },\n  ],\n};\n",
+      "export const feature: FrontendFeature = {\n  name: 'x',\n  widgets: [\n    {\n      id: 'x.today',\n      label: \"Today's\",\n      sizes: [{ columns: 1, rows: 1 }, { columns: 3, rows: 2 }],\n    },\n    {\n      label: 'Week',\n      id: 'x.week',\n      sizes: [{ columns: 6, rows: 6 }],\n    },\n    {\n      id: 'x.every',\n      label: 'Every',\n      sizes: sizesUpTo({ columns: 2, rows: 2 }, { columns: 2, rows: 1 }),\n    },\n  ],\n};\n",
     ),
     [
       { id: 'x.today', label: "Today's", sizes: ['1×1', '3×2'] },
       { id: 'x.week', label: 'Week', sizes: ['6×6'] },
+      { id: 'x.every', label: 'Every', sizes: ['2×1', '1×1', '1×2', '2×2'] },
     ],
   );
   assert.equal(
