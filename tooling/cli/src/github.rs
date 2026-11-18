@@ -75,7 +75,7 @@ pub fn call(runner: &dyn Runner, root: &Path, args: &[&str]) -> Result<String> {
 pub fn download(runner: &dyn Runner, root: &Path, args: &[&str]) -> Result<String> {
     attempt(runner, root, args, SLOW, None)
 }
-/// A call that changes something once, such as a merge or a new PR, which GitHub may have made
+/// A call that changes something once, such as a new PR, which GitHub may have made
 /// on a try whose answer was lost, and refuses to make twice. After each try that failed for a
 /// passing reason, `done` asks GitHub whether the change was made, and answers what the call
 /// would have: it is tried again only when that says it wasn't.
@@ -86,6 +86,38 @@ pub fn once(
     done: &dyn Fn() -> Result<Option<String>>,
 ) -> Result<String> {
     attempt(runner, root, args, SLOW, Some(done))
+}
+/// A call that changes something once and was allowed only after checks of what it changes,
+/// such as a merge after its PR's head, body, checks and review were read: tried once. After a
+/// try that failed for a passing reason, `done` asks GitHub whether the change was made anyway;
+/// if not, it fails, and running the command again checks all of that again, since the PR may
+/// have changed meanwhile.
+pub fn checked(
+    runner: &dyn Runner,
+    root: &Path,
+    args: &[&str],
+    done: &dyn Fn() -> Result<Option<String>>,
+) -> Result<String> {
+    let command = [&["gh"][..], args].concat();
+    let name = command[..command.len().min(3)].join(" ");
+    let timeout = left(runner).map_or(SLOW, |left| SLOW.min(left.as_secs().max(1)));
+    let error = match runner.command(&command, Some(root), timeout) {
+        Ok(output) => return Ok(String::from_utf8(output)?.trim().to_owned()),
+        Err(error) => error,
+    };
+    let message = error.to_string();
+    if !passing(&message) {
+        return Err(error);
+    }
+    if let Some(answer) = done()? {
+        return Ok(answer);
+    }
+    Err(Unreachable(format!(
+        "`{name}` failed ({}) and GitHub didn't make it: run the command again, which checks \
+         everything again first",
+        reason(&message, &name)
+    ))
+    .into())
 }
 
 fn attempt(

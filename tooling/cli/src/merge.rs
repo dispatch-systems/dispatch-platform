@@ -260,7 +260,9 @@ fn squash(
         )?;
         Ok((state == format!("MERGED {head}")).then(String::new))
     };
-    github::once(
+    // Never tried again as it is: what allowed the merge (its head, title and body, checks and
+    // review) is read only once, before it.
+    github::checked(
         runner,
         root,
         &[
@@ -309,7 +311,7 @@ mod tests {
         fn pause(&self, _: std::time::Duration) {}
     }
     #[test]
-    fn a_merge_whose_answer_was_lost_is_tried_again_only_if_it_did_not_merge() {
+    fn a_merge_whose_answer_was_lost_counts_only_if_github_made_it_and_is_never_tried_again() {
         let lost = "gh pr merge failed: HTTP 502: Bad Gateway";
         let merge = |merges: &[&'static str], state| {
             let github = Merging {
@@ -329,16 +331,13 @@ mod tests {
             merge(&[lost], "MERGED abc"),
             (Ok(()), vec!["pr merge".into(), "pr view".into()])
         );
-        // It didn't: the merge is tried again.
-        assert_eq!(
-            merge(&[lost, ""], "OPEN abc"),
-            (
-                Ok(()),
-                vec!["pr merge".into(), "pr view".into(), "pr merge".into()]
-            )
-        );
+        // It didn't: the merge isn't tried again, since what allowed it is read only before
+        // it; running `merge` again reads it all again.
+        let (result, asked) = merge(&[lost, ""], "OPEN abc");
+        assert!(result.unwrap_err().contains("run the command again"));
+        assert_eq!(asked, vec!["pr merge".to_owned(), "pr view".into()]);
         // Merged at another head isn't this merge.
-        assert_eq!(merge(&[lost, ""], "MERGED def").1.len(), 3);
+        assert!(merge(&[lost, ""], "MERGED def").0.is_err());
         // A refusal, such as a conflict, is never tried again, nor asked about.
         let conflict = "gh pr merge failed: Pull request #7 is not mergeable";
         assert_eq!(
