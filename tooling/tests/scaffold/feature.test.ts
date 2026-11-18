@@ -572,12 +572,40 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
     '--settings',
     '--no-backend',
   );
-  // A widget alone is a frontend of its own: what draws it, behind its view permission.
-  const widget = await feature('front', '--widget', '--no-backend');
-  assert(writes(widget, 'features/front').includes('frontend/widgets/FrontWidget.tsx'));
+  // A widget alone is a frontend of its own: what draws it, at every size to four by four, behind
+  // its view permission, its id named for it, opening nothing, with a test that places it.
+  const widget = await feature('front', '--widget', 'late_das', '--no-backend');
+  assert.deepEqual(
+    writes(widget, 'features/front').filter((each) => /widget/i.test(each)),
+    ['frontend/widgets/LateDasWidget.tsx', 'tests/browser/late-das-widget.spec.ts'],
+  );
   assert.match(
     file(widget, 'features/front/frontend/feature.ts'),
-    /widgets: \[\s*\{\s*id: 'front\.overview',[\s\S]*sizes: \[\s*\{ columns: 2, rows: 2 \},\s*\{ columns: 4, rows: 2 \},\s*\],\s*permission: \(\{ view \}\) => can\(view, 'front\.view'\),/,
+    /widgets: \[\s*\{\s*id: 'front\.late_das',\s*label: 'Late Das',[\s\S]*sizes: sizesUpTo\(\{ columns: 4, rows: 4 \}, \{ columns: 2, rows: 2 \}\),\s*permission: \(\{ view \}\) => can\(view, 'front\.view'\),/,
+  );
+  assert.match(
+    file(widget, 'features/front/frontend/feature.ts'),
+    /^import \{ sizesUpTo, type FrontendFeature \} from /m,
+  );
+  assert.doesNotMatch(file(widget, 'features/front/frontend/widgets/LateDasWidget.tsx'), /href=/);
+  assert.match(
+    file(widget, 'features/front/tests/browser/late-das-widget.spec.ts'),
+    /placeWidgets\(owner, dsp\.id, \[\{ id: 'front\.late_das', columns: 2, rows: 2 \}\]\)/,
+  );
+  assert(widget.changes.get('app/tests/rules/widgets.txt')?.endsWith('\nfront.late_das\n'));
+  // With a page, it opens it.
+  const opening = await feature('front', '--widget', 'today', '--page');
+  assert.match(
+    file(opening, 'features/front/frontend/widgets/TodayWidget.tsx'),
+    /href=\{dspHash\(view\.dsp\.id, 'front'\)\}/,
+  );
+  await refused(/is not a name/, 'front', '--widget', 'Late-DAs', '--no-backend');
+  await refused(
+    /--part is the part of the feature a widget goes with/,
+    'front',
+    '--page',
+    '--part',
+    'x',
   );
   for (const piece of [['--api'], ['--settings'], ['--tables', 'dsp'], ['--keeps', 'cortex.dvic']])
     await refused(

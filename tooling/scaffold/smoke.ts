@@ -42,7 +42,8 @@ const MADE: [string, ...string[]][] = [
   // A tab of a page without tabs of its own, and of one with them.
   ['feature', 'smoke_tab', '--tab-of', 'uniforms'],
   ['feature', 'smoke_team_tab', '--tab-of', 'team', '--mandatory'],
-  ['feature', 'smoke_front', '--no-backend', '--page'],
+  // A page and a widget that opens it.
+  ['feature', 'smoke_front', '--no-backend', '--page', '--widget', 'today'],
   // A sidebar of its own pages, behind its view permission.
   ['feature', 'smoke_sidebar', '--sidebar', 'entries,history', '--api'],
   // What one exposes, which a page shows, and a tool reading it.
@@ -100,6 +101,9 @@ const ADDED: string[][] = [
   // A sidebar its page moves under.
   ['sidebar', 'drafts,archive', '--to', 'smoke_front'],
   ['api', '--to', 'smoke_front'],
+  // A widget that opens no page, and a second of a feature, with a part.
+  ['widget', 'board', '--to', 'smoke_rows'],
+  ['widget', 'smoke_week', '--to', 'dvic', '--part', 'dvic.week'],
   ['contract', 'smoke_rows_counts', '--to', 'smoke_rows'],
   // The product's own: Team has no backend/ for its settings, nor a team.view for their manage
   // permission to imply, which add once broke; Uniform Inventory's settings join the backend

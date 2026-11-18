@@ -1,0 +1,238 @@
+/* A widget on Home (Widget.tsx): a link filling its cell, which is a size container. */
+.widget {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  color: var(--foreground);
+  text-decoration: none;
+}
+a.widget:hover {
+  background: var(--accent);
+}
+a.widget:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+  border-radius: var(--radius);
+}
+.widget[data-columns='1'] {
+  padding: 10px 12px;
+}
+.widget > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.widget[data-columns='1'] > header {
+  gap: 4px;
+  font-size: 12px;
+}
+.widget > header svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--muted-foreground);
+}
+.widget > header strong {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget > header span {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+.widget > footer {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.widget-note {
+  margin: auto 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.widget-count {
+  display: flex;
+  flex-direction: column;
+}
+.widget-count strong {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.widget-count span {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* None: the check beside its 0, its line under them, centred in what's left of the widget; in
+   one column, one above the other. */
+.widget-zero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: center;
+  justify-content: center;
+  gap: 4px 8px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.widget > .widget-zero {
+  flex: 1;
+  min-height: 0;
+}
+.widget[data-columns='1'] .widget-zero {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+.widget-zero svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--series-1);
+}
+.widget-zero strong {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+}
+.widget-zero small {
+  flex-basis: 100%;
+  font-size: 11.5px;
+  text-align: center;
+}
+
+/* As many rows as fit, each whole: one that doesn't wraps into a column past the edge. */
+.widget-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px 40px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+}
+.widget-list li {
+  --tone: var(--series-4);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0 2px 9px;
+  box-sizing: border-box;
+  border-left: 3px solid var(--tone);
+  font-size: 12.5px;
+}
+.widget-list li[data-tone='good'] {
+  --tone: var(--series-1);
+}
+.widget-list li[data-tone='bad'] {
+  --tone: var(--destructive);
+}
+.widget[data-columns='1'] .widget-list li {
+  padding-left: 7px;
+  font-size: 11.5px;
+}
+.widget-initials {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.widget-row-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+/* A title too long for its row ends in an ellipsis, before its badge, which shows whole. */
+.widget-row-main strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.widget-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget-row-main small {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget-badge {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  font-size: 10.5px;
+}
+.widget-value {
+  margin-left: auto;
+  white-space: nowrap;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.widget-value small {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+/* After a pill or a bar, values line up at the row's end, as wide as `--widget-value-width`. */
+.widget-pill ~ .widget-value,
+.widget-bar ~ .widget-value {
+  margin-left: 0;
+  min-width: var(--widget-value-width, 64px);
+  text-align: right;
+}
+.widget-pill {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tone) 18%, transparent);
+  color: var(--tone);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.widget-bar {
+  flex: 1.2;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--muted);
+  overflow: hidden;
+}
+.widget-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--tone);
+}
