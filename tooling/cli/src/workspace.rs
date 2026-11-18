@@ -379,7 +379,13 @@ mod tests {
         git(&["commit", "-q", "--allow-empty", "-m", "x"]);
         let old = base.join("tmp/dispatch-change");
         let reading = old.join("review/1/checkout");
-        git(&["worktree", "add", "-q", "--detach", reading.to_str().unwrap()]);
+        git(&[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            reading.to_str().unwrap(),
+        ]);
         let dir = base.join("scratch/change");
         move_into_place(&old, &dir).unwrap();
         assert!(!old.exists());
@@ -411,6 +417,9 @@ mod tests {
             fs::read_to_string(to.join("review/1/brief.md")).unwrap(),
             "brief"
         );
-        assert_eq!(fs::read_link(to.join("link")).unwrap(), Path::new("decisions.md"));
+        assert_eq!(
+            fs::read_link(to.join("link")).unwrap(),
+            Path::new("decisions.md")
+        );
     }
 }
