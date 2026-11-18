@@ -351,7 +351,14 @@ pub fn run(
     let (branch, head) = review::pushed(root, runner)?;
     let run =
         latest(root, &branch, "pull_request", None, false, runner)?.filter(|run| run.head == head);
-    if let Some(replaced) = replaced(root, &branch, &head, commit, runner)? {
+    // Unnamed, an old head's failure is told only while the head's own run hasn't passed:
+    // after that it is history.
+    let passed = run
+        .as_ref()
+        .is_some_and(|run| run.done && run.conclusion == "success");
+    if (commit.is_some() || !passed)
+        && let Some(replaced) = replaced(root, &branch, &head, commit, runner)?
+    {
         writeln!(out, "{}", replaced.line(&head, run.as_ref(), now))?;
     }
     let Some(run) = run else {
@@ -990,10 +997,10 @@ mod tests {
                 .to_string(),
             "dddd111 names no commit in this checkout."
         );
-        // Unnamed, the newest run that failed is the one T3 told of.
+        // Unnamed, the newest run that failed is the one T3 told of, until the head's passed.
         assert_eq!(
             ci(Pushed::new(passed, true), None),
-            [replaced("passed"), nothing.clone()]
+            std::slice::from_ref(&nothing)
         );
         assert_eq!(ci(Pushed::new(passed, false), None), [nothing]);
         // The head's run is told as it stands, and then reported as usual.
