@@ -88,7 +88,13 @@ export async function expectEverySize(
     await expect(page.getByRole('heading', { name: 'Home', exact: true, level: 1 })).toHaveCount(0);
     const next = page.locator('.page-heading').getByRole('button', { name: 'Next', exact: true });
     for (let grid = 1; ; grid++) {
-      await ready?.(page.locator('.home-grid'));
+      // Each cell's widget drawn, or failed, before what it shows is waited on.
+      const board = page.locator('.home-grid');
+      await expect(board.locator('.home-cell').first()).toBeVisible();
+      await expect(board.locator('.home-cell:not(:has(.widget, .home-widget-failed))')).toHaveCount(
+        0,
+      );
+      await ready?.(board);
       await expect
         .poll(() => problems(page), {
           message: `${id} in ${size.width}×${size.height}, grid ${grid}`,
