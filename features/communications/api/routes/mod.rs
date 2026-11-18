@@ -12,16 +12,18 @@
 //! pictures (`files`); the DSP's quick replies (`replies`); telling the member of new messages
 //! with Dispatch closed (`push`); and the DSP's phones (`phones`). Reading the IDs and pages they
 //! name is here, below. Its writes of conversations change only Communications' own data (`changes`), so
-//! they leave the DSP's other cached reads, as who is who, as they were.
-mod conversations;
+//! they leave the DSP's other cached reads, as who is who, as they were. Those of conversations by
+//! text, and of telling the member, are each of one line (`*_of`), as the phones' are: Dispatch
+//! Phone's own here, another feature's from its own routes (`api::lines`).
+pub(crate) mod conversations;
 mod files;
 mod gifs;
 mod groups;
-mod inbox;
+pub(crate) mod inbox;
 pub(crate) mod phones;
-mod push;
+pub(crate) mod push;
 mod replies;
-mod texts;
+pub(crate) mod texts;
 
 use crate::{
     api::types::MessageGif,
@@ -336,6 +338,15 @@ pub fn routes() -> Vec<Route> {
     routes
 }
 
+/// Refuses another line's route while Dispatch Phone is off for the DSP, which that line's own
+/// permission still lets a member in: its texts are Dispatch Phone's to keep.
+fn served(c: &Context, line: Option<&str>) -> Result<()> {
+    ensure(
+        line.is_none() || c.has(crate::FEATURE.switch.id),
+        "not_found",
+        404,
+    )
+}
 /// One of Communications' IDs, `<prefix>_` and 32 hexadecimal digits.
 fn id(value: &str, prefix: &str) -> Result<String> {
     ensure(

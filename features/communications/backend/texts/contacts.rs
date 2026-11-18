@@ -1,11 +1,12 @@
-//! Whom the DSP can text, and what someone at the DSP does with a number. Messaging's Contacts
-//! lists everyone Driver Match has a phone number for who hasn't left, by each of them, and every
-//! number the DSP saved a name for, each number once, by name, with its conversation if it has
-//! one; then the numbers blocked. A name typed, misspelt or not, finds them as it finds
-//! conversations; digits typed, by their number. A number's conversation, where a text to it
-//! written now is filed, or one of today's drivers', is opened to text it first, and a number saved
-//! under a name, shared at the DSP, or added to a person Driver Match knows, or taken off them, or
-//! blocked, or unblocked.
+//! Whom the DSP can text, and what someone at the DSP does with a number, each on one line:
+//! Dispatch Phone's own (none), or another feature's, which keeps its own names and blocks.
+//! Messaging's Contacts lists everyone Driver Match has a phone number for who hasn't left, by each
+//! of them, and every number the line saved a name for, each number once, by name, with its
+//! conversation on the line if it has one; then the numbers it blocked. A name typed, misspelt or
+//! not, finds them as it finds conversations; digits typed, by their number. A number's
+//! conversation, where a text to it written now is filed, or one of today's drivers', is opened to
+//! text it first, and a number saved under a name, shared at the DSP, or blocked, or unblocked, on
+//! its line; or on Dispatch Phone's own, added to a person Driver Match knows, or taken off them.
 use super::{
     filing,
     live_day::LiveDay,
@@ -35,12 +36,19 @@ const FOUND: usize = 20;
 /// The most a contact's name may be, in characters.
 pub const NAME_MOST: usize = 80;
 
-/// Whom the DSP can text, all of them or those like `typed`, and the numbers blocked.
-pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Result<TextContacts> {
+/// Whom the DSP can text from the line `line`, all of them or those like `typed`, and the numbers
+/// it blocked.
+pub fn contacts(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    line: Option<&str>,
+    typed: Option<&str>,
+) -> Result<TextContacts> {
     let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
+    let numbers = Numbers::read(db, dsp, line)?;
     let conversations: HashMap<String, (String, Option<i64>, Option<i64>)> = db
-        .communications_numbers(dsp)?
+        .communications_numbers(dsp, line)?
         .into_iter()
         .filter_map(|each| Some((each.number?, (each.id, each.waiting_since, each.last_at))))
         .collect();
@@ -95,13 +103,24 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
     })
 }
 
-/// The conversation a text to the number `raw` written now belongs in, as filing would place it,
-/// opened with no text if it's new, for someone at the DSP to text first: a driver's latest work
-/// phone today is their conversation.
-pub fn open(db: &Store, state: &State, dsp: &str, raw: &str) -> Result<Conversation> {
+/// The conversation on the line `line` a text to the number `raw` written now belongs in, as
+/// filing would place it, opened with no text if it's new, for someone at the DSP to text first: a
+/// driver's latest work phone today is their conversation on Dispatch Phone's own; another line's
+/// is always the number's.
+pub fn open(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    line: Option<&str>,
+    raw: &str,
+) -> Result<Conversation> {
     let number = normal(raw).ok_or_else(|| Error::new("invalid_input", 400))?;
-    let opened = db.open_communications_text(dsp, &filing::belongs(db, dsp, &number)?)?;
-    one(db, state, dsp, &opened.id)
+    let filed = match line {
+        None => filing::belongs(db, dsp, &number)?,
+        Some(_) => Filed::Number(number),
+    };
+    let opened = db.open_communications_text(dsp, line, &filed)?;
+    one(db, state, dsp, line, &opened.id)
 }
 
 /// The work conversation of `driver`, one of today's drivers, opened with no text if it's new,
@@ -116,33 +135,35 @@ pub fn open_driver(db: &Store, state: &State, dsp: &str, driver: &str) -> Result
     )?;
     let opened = db.open_communications_text(
         dsp,
+        None,
         &Filed::Driver {
             source: live.source,
             id: driver.to_owned(),
         },
     )?;
-    one(db, state, dsp, &opened.id)
+    one(db, state, dsp, None, &opened.id)
 }
 
-/// Saves `name` for the number of the conversation `id`, as the member `by`, noted in the DSP's
-/// audit log with the name it had before, if it had one.
+/// Saves `name` for the number of the conversation `id` of the line `line`, as the member `by`,
+/// noted in the DSP's audit log as that line's, with the name it had before, if it had one.
 pub fn save_contact(
     db: &Store,
     state: &State,
     dsp: &str,
+    line: Option<&str>,
     id: &str,
     name: &str,
     by: &str,
 ) -> Result<Conversation> {
-    let number = numbered(db, dsp, id)?;
+    let number = numbered(db, dsp, line, id)?;
     let saved = together(db, dsp, || {
-        let Some(before) = db.save_communications_contact(dsp, &number, name, by)? else {
+        let Some(before) = db.save_communications_contact(dsp, line, &number, name, by)? else {
             return Ok(false);
         };
         db.audit_with(
             Some(by),
             Some(dsp),
-            "communications.contact_saved",
+            &action(line, "contact_saved"),
             "",
             Some(&shown(&number)),
             &[("name", before, Some(name.to_owned()))],
@@ -150,9 +171,9 @@ pub fn save_contact(
         Ok(true)
     })?;
     if saved {
-        live::changed(state, dsp);
+        live::changed_on(state, dsp, line);
     }
-    one(db, state, dsp, id)
+    one(db, state, dsp, line, id)
 }
 
 /// Everyone Driver Match knows who hasn't left, by name, whom a number can be added to.
@@ -179,7 +200,7 @@ pub fn add_to_person(
     added: bool,
 ) -> Result<Conversation> {
     let dsp = c.dsp.id.as_str();
-    let number = numbered(db, dsp, id)?;
+    let number = numbered(db, dsp, None, id)?;
     if added {
         add_phone(db, c, code, &number)?;
     } else {
@@ -187,35 +208,37 @@ pub fn add_to_person(
     }
     db.communications_number_changed(dsp, &number)?;
     live::changed(state, dsp);
-    one(db, state, dsp, id)
+    one(db, state, dsp, None, id)
 }
 
-/// Blocks the number of the conversation `id`, as the member `actor`, or unblocks it, with
-/// `blocked` false, noted in the DSP's audit log by whom it's with.
+/// Blocks the number of the conversation `id` of the line `line`, as the member `actor`, or
+/// unblocks it, with `blocked` false, on that line alone, noted in the DSP's audit log as that
+/// line's by whom it's with.
 pub fn block(
     db: &Store,
     state: &State,
     dsp: &str,
+    line: Option<&str>,
     id: &str,
     actor: &str,
     blocked: bool,
 ) -> Result<Conversation> {
-    let number = numbered(db, dsp, id)?;
+    let number = numbered(db, dsp, line, id)?;
     let by = blocked.then_some(actor);
     let changed = together(db, dsp, || {
-        let changed = db.block_communications_number(dsp, &number, by)?;
+        let changed = db.block_communications_number(dsp, line, &number, by)?;
         if changed {
-            let action = if blocked {
-                "communications.number_blocked"
+            let what = if blocked {
+                "number_blocked"
             } else {
-                "communications.number_unblocked"
+                "number_unblocked"
             };
             // By the number, as its name's saves are, so the log gathers each of its own.
-            let named = logged(&one(db, state, dsp, id)?.with.name, &number);
+            let named = logged(&one(db, state, dsp, line, id)?.with.name, &number);
             db.audit_with(
                 Some(actor),
                 Some(dsp),
-                action,
+                &action(line, what),
                 &named,
                 Some(&shown(&number)),
                 &[],
@@ -224,9 +247,19 @@ pub fn block(
         Ok(changed)
     })?;
     if changed {
-        live::changed(state, dsp);
+        live::changed_on(state, dsp, line);
     }
-    one(db, state, dsp, id)
+    one(db, state, dsp, line, id)
+}
+
+/// What the activity log calls `what` done on the line `line`: `communications.<what>` on Dispatch
+/// Phone's own, `<line>.<what>` on another feature's, which words it, so a name saved on one line
+/// is never logged as another's.
+fn action(line: Option<&str>, what: &str) -> String {
+    match line {
+        None => format!("communications.{what}"),
+        Some(line) => format!("{line}.{what}"),
+    }
 }
 
 /// How a number reads in the audit log: by the name it's shown by, with the number, or the number

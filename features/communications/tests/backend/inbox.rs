@@ -14,7 +14,7 @@ const TEAM: &str = "T0FIXTURE2";
 async fn latest(state: &Arc<State>, dsp: &str) -> Vec<(String, String)> {
     let (shared, dsp) = (state.clone(), dsp.to_owned());
     state
-        .read(move |db| waiting(db, &shared, &dsp))
+        .read(move |db| waiting(db, &shared, &dsp, None))
         .await
         .unwrap()
         .latest

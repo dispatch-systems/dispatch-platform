@@ -4,7 +4,7 @@
 //! as it was for a member still told (`turn`). A browser its push service no longer knows (404,
 //! 410), or of a member no longer told, is let go of. Fixture mode sends none: its push services are `fixture`'s.
 use super::{
-    Turn, fixture,
+    Pushed, Turn, fixture,
     storage::{PushStore, Subscription},
     turn,
     webpush::{self, Vapid},
@@ -54,19 +54,24 @@ pub enum Answer {
     Withheld,
 }
 
-/// What a push of `waiting`, in the DSP `dsp`, says: titled with who wrote it, saying what as the
-/// list shows it, opening the conversation at `address` (the DSP's page, up to its name), and
-/// tagged with the message, so the page's own notification of it takes its place rather than
-/// showing twice. The DSP, conversation and group it's of are for a page in front to say whether
-/// it alerts of it itself.
-pub fn message(dsp: &str, waiting: &WaitingMessage, address: &str) -> Vec<u8> {
+/// What a push of `waiting`, of `pushed`'s line in the DSP `dsp`, says: titled with who wrote it,
+/// after the line's label if it has one, saying what as the list shows it, opening the
+/// conversation on the line's page at `address` (the DSP's page, up to its name), and tagged with
+/// the message, so the page's own notification of it takes its place rather than showing twice.
+/// The DSP, conversation and group it's of are for a page in front to say whether it alerts of it
+/// itself.
+pub fn message(dsp: &str, pushed: &Pushed, waiting: &WaitingMessage, address: &str) -> Vec<u8> {
     let opens = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("open", &waiting.conversation_id)
         .finish();
+    let title = match pushed.label {
+        Some(label) => format!("{label} · {}", waiting.from),
+        None => waiting.from.clone(),
+    };
     json!({
-        "title": cut(&waiting.from, TITLE_MOST),
+        "title": cut(&title, TITLE_MOST),
         "body": cut(&preview(&waiting.message.text, &waiting.message.files), BODY_MOST),
-        "url": format!("{address}communications?{opens}"),
+        "url": format!("{address}{}?{opens}", pushed.page),
         "tag": waiting.message.id,
         "dsp": dsp,
         "conversation": waiting.conversation_id,
@@ -108,10 +113,12 @@ fn cut(text: &str, most: usize) -> String {
     }
 }
 
-/// Sends each of `pushes` to its browser, letting go of those gone; a failure is logged.
+/// Sends each of `pushes` of `pushed`'s line to its browser, letting go of those gone; a failure is
+/// logged.
 pub async fn send(
     state: &Arc<State>,
     dsp: &str,
+    pushed: &'static Pushed,
     pushes: Vec<(Subscription, Vec<u8>)>,
 ) -> Result<()> {
     let Some(vapid) = webpush::vapid(&state.config) else {
@@ -119,10 +126,10 @@ pub async fn send(
     };
     let answers: Vec<(String, Answer)> = stream::iter(pushes)
         .map(|(subscription, message)| async move {
-            let mut answer = deliver(state, dsp, vapid, &subscription, &message).await;
+            let mut answer = deliver(state, dsp, pushed, vapid, &subscription, &message).await;
             if matches!(answer, Answer::Failed(_)) {
                 tokio::time::sleep(AGAIN).await;
-                answer = deliver(state, dsp, vapid, &subscription, &message).await;
+                answer = deliver(state, dsp, pushed, vapid, &subscription, &message).await;
             }
             (subscription.endpoint, answer)
         })
@@ -144,17 +151,19 @@ pub async fn send(
     if !gone.is_empty() {
         let at = dsp.to_owned();
         state
-            .run_bookkeeping(move |db| db.drop_communications_pushes(&at, &gone))
+            .run_bookkeeping(move |db| db.drop_communications_pushes(&at, pushed.line, &gone))
             .await?;
     }
     Ok(())
 }
 
-/// Sends `message` to the browser `subscription` names in the DSP `dsp`, encrypted for it and
-/// signed by `vapid`, in its turn among every push going, while it's still to go then.
+/// Sends `message` of `pushed`'s line to the browser `subscription` names in the DSP `dsp`,
+/// encrypted for it and signed by `vapid`, in its turn among every push going, while it's still to
+/// go then.
 async fn deliver(
     state: &Arc<State>,
     dsp: &str,
+    pushed: &'static Pushed,
     vapid: &Vapid,
     subscription: &Subscription,
     message: &[u8],
@@ -164,7 +173,7 @@ async fn deliver(
     };
     // Who may be told is read again as each try's turn comes, as it may have changed while it
     // waited.
-    match turn(state, dsp, subscription).await {
+    match turn(state, dsp, pushed, subscription).await {
         Ok(Turn::Goes) => {}
         Ok(Turn::Untold) => return Answer::Gone,
         Ok(Turn::Gone) => return Answer::Withheld,

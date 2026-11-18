@@ -62,29 +62,33 @@ pub(crate) struct Window {
 }
 
 /// Reads revision, selection, latest observation, bodies and attachments in one DSP
-/// transaction. Directory/route context retains its existing independent owner semantics.
+/// transaction, of a conversation of the line `line`. Directory/route context retains its
+/// existing independent owner semantics.
 pub fn read(
     db: &Store,
     state: &State,
     dsp: &str,
+    line: Option<&str>,
     reference: &Reference,
     request: Request,
 ) -> Result<ConversationWindow> {
-    read_inner(db, state, dsp, reference, request, false)
+    read_inner(db, state, dsp, line, reference, request, false)
 }
 pub(crate) fn read_origins(
     db: &Store,
     state: &State,
     dsp: &str,
+    line: Option<&str>,
     reference: &Reference,
     request: Request,
 ) -> Result<ConversationWindow> {
-    read_inner(db, state, dsp, reference, request, true)
+    read_inner(db, state, dsp, line, reference, request, true)
 }
 fn read_inner(
     db: &Store,
     state: &State,
     dsp: &str,
+    line: Option<&str>,
     reference: &Reference,
     request: Request,
     want_origins: bool,
@@ -92,8 +96,8 @@ fn read_inner(
     let connection = db.dsp(dsp)?;
     connection.transaction(|| {
         // First Communications read establishes the snapshot before any message selection.
-        let revision = db.communications_revision(dsp)?;
-        dispatcher::found(db, dsp, reference)?;
+        let revision = db.communications_revision(dsp, line)?;
+        dispatcher::found(db, dsp, line, reference)?;
         let binding =
             serde_json::to_string(&json!(["communications-window-v1", dsp, reference.id()]))?;
         let (position, rebased) = match request {
@@ -142,7 +146,7 @@ fn read_inner(
             .map(|place| (place, position.leading));
         let people = People::read(db, state, dsp)?;
         let numbers = match reference {
-            Reference::Text(_) => Some(Numbers::read(db, dsp)?),
+            Reference::Text(_) => Some(Numbers::read(db, dsp, line)?),
             _ => None,
         };
         let zone = want_origins.then(|| texts::zone(db, dsp)).transpose()?;
@@ -158,7 +162,7 @@ fn read_inner(
                 let numbers = numbers
                     .as_ref()
                     .ok_or_else(|| Error::new("communications_origins_invariant", 500))?;
-                texts::reading::window(db, &people, numbers, dsp, id, anchor)?
+                texts::reading::window(db, &people, numbers, dsp, line, id, anchor)?
             }
         };
         let context = context::read(db, dsp, reference, &page.messages, numbers.as_ref(), zone)?;

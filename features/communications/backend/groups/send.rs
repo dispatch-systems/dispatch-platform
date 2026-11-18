@@ -285,7 +285,10 @@ async fn due(state: &Arc<State>, dsp: &str) {
         let read = state
             .read(move |db| {
                 let first = db.due_communications_deliveries(&at, now(), now() - FRESH_MS, 1)?;
-                Ok((first.into_iter().next(), db.communications_revision(&at)?))
+                Ok((
+                    first.into_iter().next(),
+                    db.communications_revision(&at, None)?,
+                ))
             })
             .await;
         let (first, before) = match read {
@@ -301,7 +304,9 @@ async fn due(state: &Arc<State>, dsp: &str) {
         }
         kit::due::<Deliveries>(state, dsp).await;
         let at = dsp.to_owned();
-        let after = state.read(move |db| db.communications_revision(&at)).await;
+        let after = state
+            .read(move |db| db.communications_revision(&at, None))
+            .await;
         if after.ok() != Some(before) {
             live::changed(state, dsp);
         }

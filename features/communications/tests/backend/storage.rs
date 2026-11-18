@@ -130,7 +130,7 @@ fn an_edit_keeps_only_the_latest_text() {
     store
         .keep_communications_message(&dsp, &written("100.000001", 100_000, "Van 12 is out"))
         .unwrap();
-    let before = store.communications_revision(&dsp).unwrap();
+    let before = store.communications_revision(&dsp, None).unwrap();
     let edit = |text: &str, at: i64| {
         let edited = Written {
             edited_at: Some(at),
@@ -158,7 +158,9 @@ fn an_edit_keeps_only_the_latest_text() {
     let rows = db.all("SELECT * FROM communications_messages", []).unwrap();
     assert!(!serde_json::to_string(&rows).unwrap().contains("Van 12"));
     // A page waiting since before the edit hears of it.
-    let (changed, _) = store.communications_changed_since(&dsp, before).unwrap();
+    let (changed, _) = store
+        .communications_changed_since(&dsp, None, before)
+        .unwrap();
     assert_eq!(changed.unwrap().len(), 1);
 }
 
@@ -172,11 +174,11 @@ fn latest_messages_stay_bounded_as_history_grows_and_keep_the_latest_incoming() 
     let (_root, store, dsp) = testing::bootstrapped();
     let phone = paired(&store, &dsp, "latest-read-key", "+12065550100");
     let text = store
-        .open_communications_text(&dsp, &Filed::Number("+12065550101".into()))
+        .open_communications_text(&dsp, None, &Filed::Number("+12065550101".into()))
         .unwrap()
         .id;
     let empty_text = store
-        .open_communications_text(&dsp, &Filed::Number("+12065550102".into()))
+        .open_communications_text(&dsp, None, &Filed::Number("+12065550102".into()))
         .unwrap()
         .id;
     let slack = store

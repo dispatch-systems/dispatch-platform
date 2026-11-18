@@ -19,7 +19,7 @@ const HALF_HOUR_MS: i64 = 30 * 60 * 1000;
 async fn counted(state: &Arc<State>, dsp: &str) -> usize {
     let (shared, dsp) = (state.clone(), dsp.to_owned());
     state
-        .read(move |db| inbox::waiting(db, &shared, &dsp))
+        .read(move |db| inbox::waiting(db, &shared, &dsp, None))
         .await
         .unwrap()
         .count
@@ -28,7 +28,7 @@ async fn counted(state: &Arc<State>, dsp: &str) -> usize {
 async fn shown(state: &Arc<State>, dsp: &str, id: &str) -> (ConversationState, Option<i64>) {
     let (shared, dsp, id) = (state.clone(), dsp.to_owned(), id.to_owned());
     let conversation = state
-        .read(move |db| reading::one(db, &shared, &dsp, &id))
+        .read(move |db| reading::one(db, &shared, &dsp, None, &id))
         .await
         .unwrap();
     (conversation.state, conversation.waiting_since)
@@ -115,7 +115,7 @@ async fn a_work_text_half_an_hour_after_the_stop_waits_and_counts_until_two_hour
     assert!(matches!(waits, (Some(_), None)), "{waits:?}");
     let at = dsp.clone();
     let before = state
-        .read(move |db| db.communications_revision(&at))
+        .read(move |db| db.communications_revision(&at, None))
         .await
         .unwrap();
     failing(&dsp, true);
@@ -124,7 +124,7 @@ async fn a_work_text_half_an_hour_after_the_stop_waits_and_counts_until_two_hour
         .unwrap();
     let at = dsp.clone();
     let (changed, _) = state
-        .read(move |db| db.communications_changed_since(&at, before))
+        .read(move |db| db.communications_changed_since(&at, None, before))
         .await
         .unwrap();
     assert!(changed.unwrap().contains(&avery));

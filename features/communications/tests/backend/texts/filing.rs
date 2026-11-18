@@ -14,16 +14,16 @@ use crate::backend::{
     model::{ConversationKind, PAGE},
     phone::{
         self,
-        model::{Direction, Outgoing, Status},
+        model::{Outgoing, Status},
         outbox,
-        storage::{DeviceStore, Line, MOST_TEXTS, Reported, TextStore as _},
+        storage::{DeviceStore, MOST_TEXTS, Reported, TextStore as _},
     },
     storage::DOMAIN,
     support::{
         self, DRIVERS, at, cached, failing, filed, moved, phoned, phones, route, routed, saved,
         started, switch, texted, today, unwritten,
     },
-    texts::{contacts, filing, reading, reply, storage::TextStore},
+    texts::{contacts, reading, reply, storage::TextStore},
 };
 use crate::{Communications, ConversationState};
 use chrono::NaiveDate;
@@ -40,7 +40,7 @@ use std::{collections::BTreeMap, sync::Arc};
 async fn listed(state: &Arc<State>, dsp: &str) -> Communications {
     let (shared, dsp) = (state.clone(), dsp.to_owned());
     state
-        .read(move |db| inbox::overview(db, &shared, &dsp, "me", None))
+        .read(move |db| inbox::overview(db, &shared, &dsp, None, "me", None))
         .await
         .unwrap()
 }
@@ -54,7 +54,7 @@ async fn block(
 ) -> (bool, ConversationState) {
     let (shared, dsp, id) = (state.clone(), dsp.to_owned(), id.to_owned());
     let after = state
-        .run(move |db| contacts::block(db, &shared, &dsp, &id, "me", blocked))
+        .run(move |db| contacts::block(db, &shared, &dsp, None, &id, "me", blocked))
         .await
         .unwrap();
     (after.blocked, after.state)
@@ -119,7 +119,9 @@ async fn a_numbers_texts_are_with_whom_driver_match_has_it_for_else_the_name_sav
     let lakeside = filed(&state, &dsp, &lakeside).await.id;
     let (shared, at) = (state.clone(), dsp.clone());
     state
-        .run(move |db| contacts::save_contact(db, &shared, &at, &lakeside, "Lakeside Fleet", "me"))
+        .run(move |db| {
+            contacts::save_contact(db, &shared, &at, None, &lakeside, "Lakeside Fleet", "me")
+        })
         .await
         .unwrap();
 
@@ -279,6 +281,7 @@ async fn a_phone_handed_to_another_driver_takes_the_days_conversation_with_it_bo
         &state,
         &c,
         support::USE,
+        None,
         &conversation,
         "Van 214",
         (&[], None),
@@ -315,9 +318,17 @@ async fn todays_texts_both_ways_go_to_the_driver_whose_work_phone_it_is_once_liv
     let number = filed(&state, &dsp, &asked).await;
     assert_eq!(number.kind, ConversationKind::Number);
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let answer = reply::send(&state, &c, support::USE, &number.id, "Van 214", (&[], None))
-        .await
-        .unwrap();
+    let answer = reply::send(
+        &state,
+        &c,
+        support::USE,
+        None,
+        &number.id,
+        "Van 214",
+        (&[], None),
+    )
+    .await
+    .unwrap();
 
     // The first live read shows Avery with it: both are theirs, and the number's conversation,
     // holding none, leaves the list.
@@ -345,6 +356,7 @@ async fn a_drivers_texts_stay_theirs_as_how_one_went_changes_while_routes_is_off
         &state,
         &c,
         support::USE,
+        None,
         &conversation,
         "Van 214",
         (&[], None),
@@ -436,7 +448,7 @@ async fn a_text_marked_done_stays_done_filed_under_a_driver_whose_own_still_wait
     assert_eq!(avery.driver, driver("A1"));
     let (shared, at_dsp) = (state.clone(), dsp.clone());
     let shown = state
-        .read(move |db| reading::one(db, &shared, &at_dsp, &avery.id))
+        .read(move |db| reading::one(db, &shared, &at_dsp, None, &avery.id))
         .await
         .unwrap();
     assert_eq!(
@@ -472,7 +484,7 @@ async fn a_text_dispatch_sent_filed_by_the_upkeep_is_under_whoever_at_the_dsp_se
     unfiled(&state, &dsp).await.unwrap();
     let (shared, at_dsp) = (state.clone(), dsp.clone());
     let message = state
-        .read(move |db| reading::message(db, &shared, &at_dsp, &sent.id))
+        .read(move |db| reading::message(db, &shared, &at_dsp, None, &sent.id))
         .await
         .unwrap();
     assert_eq!(message.sender.unwrap().name, "Test Owner");
@@ -629,7 +641,7 @@ async fn what_a_number_sent_while_blocked_never_alerts_once_it_is_unblocked() {
     // Unblocked, it waits on what it sent before, and alerts with that.
     let (shared, at) = (state.clone(), dsp.clone());
     let waiting = state
-        .read(move |db| inbox::waiting(db, &shared, &at))
+        .read(move |db| inbox::waiting(db, &shared, &at, None))
         .await
         .unwrap();
     let latest: Vec<_> = waiting
@@ -676,12 +688,12 @@ async fn a_drivers_work_conversation_changes_as_their_work_phone_or_route_change
         async move {
             let at = dsp.clone();
             let before = state
-                .read(move |db| db.communications_revision(&at))
+                .read(move |db| db.communications_revision(&at, None))
                 .await
                 .unwrap();
             phoned(&state, &dsp, Some(&today), phones(of), Vec::new()).await;
             let (changed, _) = state
-                .read(move |db| db.communications_changed_since(&dsp, before))
+                .read(move |db| db.communications_changed_since(&dsp, None, before))
                 .await
                 .unwrap();
             let changed = changed.expect("within the changes kept");
@@ -782,63 +794,6 @@ async fn texts_waiting_to_be_filed_are_each_filed_however_many_wait() {
         unfiled.is_empty(),
         "filed on while more remain: {unfiled:?}"
     );
-}
-
-#[tokio::test]
-async fn another_lines_texts_are_never_filed_listed_or_counted_however_long_they_wait() {
-    let (_root, state, dsp) = started();
-    let at_dsp = dsp.clone();
-    let desk = state
-        .run(move |db| {
-            let line = Line {
-                id: "front_desk",
-                name: "Front Desk",
-            };
-            Ok(support::pair_to(db, &at_dsp, line, "+12065550111"))
-        })
-        .await
-        .unwrap();
-    // One number texts both lines; the other line's text is kept, as its phone hears.
-    texted(&state, &dsp, "+14255550199", "Is this dispatch?", now()).await;
-    let (at_dsp, phone) = (dsp.clone(), desk.clone());
-    let theirs = filing::changing(&state, &dsp, move |db| {
-        let text = Reported {
-            client_id: "desk-1".into(),
-            direction: Direction::In,
-            number: "+14255550199".into(),
-            body: "About my paycheck".into(),
-            at: now(),
-            files: Vec::new(),
-        };
-        let id = db.phones_report(&at_dsp, &phone, vec![text])?.remove(0).id;
-        Ok((id.clone(), vec![id]))
-    })
-    .await
-    .unwrap();
-    // However long it waits and every upkeep that passes, it's in no conversation.
-    unfiled(&state, &dsp).await.unwrap();
-    overdue(&state, &dsp, now() + UNFILED_MS).await.unwrap();
-    (MAINTENANCE.run)(state.clone(), false).await;
-    let (at_dsp, id) = (dsp.clone(), theirs.clone());
-    let kept = state
-        .read(move |db| db.communications_text(&at_dsp, &id))
-        .await
-        .unwrap()
-        .expect("kept");
-    assert_eq!(kept.conversation, None);
-    // Dispatch Phone lists, counts and shows only its own.
-    let listed = listed(&state, &dsp).await;
-    assert_eq!(listed.waiting, 1);
-    let shown: Vec<_> = (listed.conversations.iter())
-        .map(|each| each.last.as_ref().map(|last| last.text.as_str()))
-        .collect();
-    assert_eq!(shown, [Some("Is this dispatch?")]);
-    let phones: Vec<_> = listed
-        .phones
-        .iter()
-        .map(|each| each.name.as_str())
-        .collect();
-    assert_eq!(phones, ["Dispatch"]);
 }
 
 #[tokio::test]

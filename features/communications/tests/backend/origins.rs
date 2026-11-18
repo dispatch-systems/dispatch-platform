@@ -76,9 +76,17 @@ fn place_for_candidate(db: &Store, dsp: &str, reference: &Reference, key: &str, 
                 .unwrap()
                 .unwrap();
             assert!(owner.is_none());
-            assert_eq!(db.place_communications_text(
-                dsp, &id, &Filed::Number("+12065550101".into()), None,
-            ).unwrap(), reference.id());
+            assert_eq!(
+                db.place_communications_text(
+                    dsp,
+                    &id,
+                    None,
+                    &Filed::Number("+12065550101".into()),
+                    None
+                )
+                .unwrap(),
+                reference.id()
+            );
             id
         }
     }
@@ -205,7 +213,8 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
                     )
                     .unwrap(),
             };
-            let page = read_origins(&db, &state, &dsp, reference, row_100(reference, 0)).unwrap();
+            let page =
+                read_origins(&db, &state, &dsp, None, reference, row_100(reference, 0)).unwrap();
             bounded(&page);
             let bodies = serde_json::to_value((&page.messages, &page.latest)).unwrap();
             if let Some(previous) = &prior_bodies {
@@ -252,7 +261,7 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
     person.name = "Current directory name".into();
     person.photo = Some("changed-photo".into());
     support::know(&state, &dsp, vec![person], Vec::new(), Vec::new());
-    let current = read_origins(&db, &state, &dsp, &text, Request::Latest).unwrap();
+    let current = read_origins(&db, &state, &dsp, None, &text, Request::Latest).unwrap();
     assert_eq!(current.conversation.with.name, "Current directory name");
     assert_eq!(
         current.conversation.with.photo.as_deref(),
@@ -276,7 +285,7 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
         )
         .unwrap();
     build_origins(&db, &dsp, &text, 701);
-    let page = read_origins(&db, &state, &dsp, &text, row_100(&text, 0)).unwrap();
+    let page = read_origins(&db, &state, &dsp, None, &text, row_100(&text, 0)).unwrap();
     let exact = page.origins.unwrap().selected.unwrap();
     assert_eq!(exact.origin.id, "text-000001");
     assert_eq!(exact.first_day.number.as_deref(), Some("+12065550999"));
@@ -462,12 +471,12 @@ async fn known_inserts_placement_moves_and_retry_preserve_readiness_but_unknown_
         )
         .unwrap();
     let id = &report[0].id;
-    db.place_communications_text(&dsp, id, &Filed::Number("+12065550101".into()), None)
+    db.place_communications_text(&dsp, id, None, &Filed::Number("+12065550101".into()), None)
         .unwrap();
     db.settle_communications_texts(&dsp, std::slice::from_ref(id))
         .unwrap();
     let destination = db
-        .open_communications_text(&dsp, &Filed::Number("+12065550102".into()))
+        .open_communications_text(&dsp, None, &Filed::Number("+12065550102".into()))
         .unwrap()
         .id;
     let there = Reference::Text(destination.clone());
@@ -483,7 +492,7 @@ async fn known_inserts_placement_moves_and_retry_preserve_readiness_but_unknown_
     for reference in [&text, &there] {
         assert!(ready(&db, &state, &dsp, reference));
     }
-    let target = read_origins(&db, &state, &dsp, &there, Request::Latest).unwrap();
+    let target = read_origins(&db, &state, &dsp, None, &there, Request::Latest).unwrap();
     assert_eq!(
         target.origins.unwrap().selected.unwrap().origin.id,
         "text-000100"
@@ -507,6 +516,7 @@ async fn known_inserts_placement_moves_and_retry_preserve_readiness_but_unknown_
         &db,
         &state,
         &dsp,
+        None,
         &text,
         Request::Anchor {
             place: "1700000000000:text-000200".into(),
@@ -592,6 +602,7 @@ async fn known_inserts_placement_moves_and_retry_preserve_readiness_but_unknown_
         .place_communications_text(
             &dsp,
             &broken[0].id,
+            None,
             &Filed::Number("+12065550101".into()),
             None,
         )
@@ -643,8 +654,9 @@ async fn known_inserts_placement_moves_and_retry_preserve_readiness_but_unknown_
         db.place_communications_text(
             &dsp,
             &bad[0].id,
+            None,
             &Filed::Number("+12065550101".into()),
-            None
+            None,
         )
         .unwrap(),
         text.id()
@@ -677,7 +689,7 @@ async fn known_inserts_placement_moves_and_retry_preserve_readiness_but_unknown_
     .unwrap();
     assert!(!ready(&db, &state, &dsp, &slack));
     assert_eq!(
-        read(&db, &state, &dsp, &slack, Request::Latest)
+        read(&db, &state, &dsp, None, &slack, Request::Latest)
             .unwrap()
             .messages
             .len(),
@@ -702,6 +714,7 @@ async fn known_inserts_placement_moves_and_retry_preserve_readiness_but_unknown_
         &db,
         &state,
         &dsp,
+        None,
         &slack,
         Request::Anchor {
             place: "1700000000.000051".into(),
@@ -751,6 +764,7 @@ async fn exact_pause_threshold_and_recurring_slack_date_segments_keep_true_origi
                 &db,
                 &state,
                 &dsp,
+                None,
                 reference,
                 Request::Anchor {
                     place: anchor,
@@ -795,7 +809,7 @@ async fn exact_pause_threshold_and_recurring_slack_date_segments_keep_true_origi
         at("2024-01-01T23:59:00Z"),at("2024-01-02T00:01:00Z"),at("2024-01-02T00:02:00Z"),
         at("2024-01-02T00:03:00Z"),at("2024-01-01T23:58:00Z"),at("2024-01-02T00:04:00Z"),slack.id()]).unwrap();
     build_origins(&db, &dsp, &slack, 701);
-    let exact = read_origins(&db, &state, &dsp, &slack, row_100(&slack, 0))
+    let exact = read_origins(&db, &state, &dsp, None, &slack, row_100(&slack, 0))
         .unwrap()
         .origins
         .unwrap();

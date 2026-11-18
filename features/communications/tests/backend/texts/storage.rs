@@ -93,13 +93,13 @@ fn read_to_now(db: &Db) {
 /// The conversation the number `number`'s texts are filed in as itself, made if it's new.
 fn number(db: &Store, dsp: &str, number: &str) -> String {
     let filed = Filed::Number(number.into());
-    db.open_communications_text(dsp, &filed).unwrap().id
+    db.open_communications_text(dsp, None, &filed).unwrap().id
 }
 /// The text `id` as the page reads it.
 async fn message(state: &Arc<State>, dsp: &str, id: &str) -> Message {
     let (shared, dsp, id) = (state.clone(), dsp.to_owned(), id.to_owned());
     state
-        .read(move |db| reading::message(db, &shared, &dsp, &id))
+        .read(move |db| reading::message(db, &shared, &dsp, None, &id))
         .await
         .unwrap()
 }
@@ -107,7 +107,7 @@ async fn message(state: &Arc<State>, dsp: &str, id: &str) -> Message {
 async fn standing(state: &Arc<State>, dsp: &str, id: &str) -> (ConversationState, Option<i64>) {
     let (shared, dsp, id) = (state.clone(), dsp.to_owned(), id.to_owned());
     let shown = state
-        .read(move |db| reading::one(db, &shared, &dsp, &id))
+        .read(move |db| reading::one(db, &shared, &dsp, None, &id))
         .await
         .unwrap();
     (shown.state, shown.waiting_since)
@@ -218,7 +218,7 @@ async fn texts_filed_before_migration_9_read_as_they_did_their_done_block_and_se
                 now() - 3 * minute,
                 0,
             );
-            db.block_communications_number(&at_dsp, "+18885550142", Some("me"))?;
+            db.block_communications_number(&at_dsp, None, "+18885550142", Some("me"))?;
             let blocked = reported(db, &at_dsp, "+18885550142", "Never mind", now() - minute, 0);
 
             let database = db.dsp(&at_dsp)?;
@@ -290,12 +290,12 @@ async fn texts_filed_before_migration_9_read_as_they_did_their_done_block_and_se
     // sent while it was.
     let (shared, at_dsp, unblocked) = (state.clone(), dsp.clone(), spam.clone());
     state
-        .run(move |db| contacts::block(db, &shared, &at_dsp, &unblocked, "me", false))
+        .run(move |db| contacts::block(db, &shared, &at_dsp, None, &unblocked, "me", false))
         .await
         .unwrap();
     let (shared, at_dsp) = (state.clone(), dsp.clone());
     let waiting = state
-        .read(move |db| inbox::waiting(db, &shared, &at_dsp))
+        .read(move |db| inbox::waiting(db, &shared, &at_dsp, None))
         .await
         .unwrap();
     let latest: Vec<_> = waiting

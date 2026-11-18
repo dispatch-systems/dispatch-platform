@@ -1,10 +1,12 @@
 //! The browsers members are told of new messages in (`communications_push`), each by where a push
-//! to it goes, its endpoint.
+//! to it goes, its endpoint, and the line it's told of: Dispatch Phone's own (none), or another
+//! feature's, each kept apart.
 use dispatch_core::{
     Result,
     db::{FromRow, Row, Store, now},
     text_enum,
 };
+use rusqlite::params;
 
 text_enum! {
     /// The address a browser was subscribed at: the admin's, as a platform owner's, or the DSP's
@@ -39,24 +41,52 @@ impl FromRow for Subscription {
     }
 }
 
-/// What Communications keeps of the browsers its members are told in.
+/// What Communications keeps of the browsers its members are told in, each of one line: Dispatch
+/// Phone's own for none.
 pub trait PushStore {
-    /// Keeps the browser `subscription` names as its member's, in place of whoever's it was.
-    fn keep_communications_push(&self, dsp: &str, subscription: &Subscription) -> Result<()>;
-    /// Lets go of the browser at `endpoint`, if it's `user`'s.
-    fn remove_communications_push(&self, dsp: &str, user: &str, endpoint: &str) -> Result<()>;
-    /// The browser at `endpoint`, as it's kept now, if it is.
-    fn communications_push(&self, dsp: &str, endpoint: &str) -> Result<Option<Subscription>>;
-    /// Every browser the DSP's members are told in, each member's together.
-    fn communications_pushes(&self, dsp: &str) -> Result<Vec<Subscription>>;
-    /// Lets go of the browsers at `endpoints`, whoever's they are.
-    fn drop_communications_pushes(&self, dsp: &str, endpoints: &[String]) -> Result<()>;
-    /// Whether any member of the DSP is told in a browser.
-    fn communications_pushing(&self, dsp: &str) -> Result<bool>;
+    /// Keeps the browser `subscription` names as its member's for the line `line`, in place of
+    /// whoever's it was.
+    fn keep_communications_push(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        subscription: &Subscription,
+    ) -> Result<()>;
+    /// Lets go of the browser at `endpoint` for the line `line`, if it's `user`'s.
+    fn remove_communications_push(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        user: &str,
+        endpoint: &str,
+    ) -> Result<()>;
+    /// The browser at `endpoint` for the line `line`, as it's kept now, if it is.
+    fn communications_push(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        endpoint: &str,
+    ) -> Result<Option<Subscription>>;
+    /// Every browser the DSP's members are told of the line `line` in, each member's together.
+    fn communications_pushes(&self, dsp: &str, line: Option<&str>) -> Result<Vec<Subscription>>;
+    /// Lets go of the browsers at `endpoints` for the line `line`, whoever's they are.
+    fn drop_communications_pushes(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        endpoints: &[String],
+    ) -> Result<()>;
+    /// Whether any member of the DSP is told of the line `line` in a browser.
+    fn communications_pushing(&self, dsp: &str, line: Option<&str>) -> Result<bool>;
 }
 
 impl PushStore for Store {
-    fn keep_communications_push(&self, dsp: &str, subscription: &Subscription) -> Result<()> {
+    fn keep_communications_push(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        subscription: &Subscription,
+    ) -> Result<()> {
         let Subscription {
             endpoint,
             user,
@@ -64,51 +94,73 @@ impl PushStore for Store {
             auth,
             address,
         } = subscription;
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            db.exec(
+                "DELETE FROM communications_push WHERE endpoint=? AND line IS ?",
+                params![endpoint, line],
+            )?;
+            db.exec(
+                "INSERT INTO communications_push \
+                 (endpoint,line,user_id,p256dh,auth,site,created_at) VALUES (?,?,?,?,?,?,?)",
+                params![endpoint, line, user, p256dh, auth, address, now()],
+            )?;
+            Ok(())
+        })
+    }
+    fn remove_communications_push(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        user: &str,
+        endpoint: &str,
+    ) -> Result<()> {
         self.dsp(dsp)?.exec(
-            "INSERT INTO communications_push (endpoint,user_id,p256dh,auth,site,created_at) \
-             VALUES (?,?,?,?,?,?) ON CONFLICT (endpoint) DO UPDATE SET user_id=excluded.user_id,\
-             p256dh=excluded.p256dh,auth=excluded.auth,site=excluded.site,\
-             created_at=excluded.created_at",
-            rusqlite::params![endpoint, user, p256dh, auth, address, now()],
+            "DELETE FROM communications_push WHERE endpoint=? AND line IS ? AND user_id=?",
+            params![endpoint, line, user],
         )?;
         Ok(())
     }
-    fn remove_communications_push(&self, dsp: &str, user: &str, endpoint: &str) -> Result<()> {
-        self.dsp(dsp)?.exec(
-            "DELETE FROM communications_push WHERE endpoint=? AND user_id=?",
-            [endpoint, user],
-        )?;
-        Ok(())
-    }
-    fn communications_push(&self, dsp: &str, endpoint: &str) -> Result<Option<Subscription>> {
+    fn communications_push(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        endpoint: &str,
+    ) -> Result<Option<Subscription>> {
         self.dsp(dsp)?.one_as(
-            "SELECT endpoint,user_id,p256dh,auth,site FROM communications_push WHERE endpoint=?",
-            [endpoint],
-        )
-    }
-    fn communications_pushes(&self, dsp: &str) -> Result<Vec<Subscription>> {
-        self.dsp(dsp)?.query_as(
             "SELECT endpoint,user_id,p256dh,auth,site FROM communications_push \
-             ORDER BY user_id,endpoint",
-            [],
+             WHERE endpoint=? AND line IS ?",
+            params![endpoint, line],
         )
     }
-    fn drop_communications_pushes(&self, dsp: &str, endpoints: &[String]) -> Result<()> {
+    fn communications_pushes(&self, dsp: &str, line: Option<&str>) -> Result<Vec<Subscription>> {
+        self.dsp(dsp)?.query_as(
+            "SELECT endpoint,user_id,p256dh,auth,site FROM communications_push WHERE line IS ? \
+             ORDER BY user_id,endpoint",
+            [line],
+        )
+    }
+    fn drop_communications_pushes(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        endpoints: &[String],
+    ) -> Result<()> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             for endpoint in endpoints {
                 db.exec(
-                    "DELETE FROM communications_push WHERE endpoint=?",
-                    [endpoint],
+                    "DELETE FROM communications_push WHERE endpoint=? AND line IS ?",
+                    params![endpoint, line],
                 )?;
             }
             Ok(())
         })
     }
-    fn communications_pushing(&self, dsp: &str) -> Result<bool> {
-        Ok(self
-            .dsp(dsp)?
-            .count("SELECT count(*) FROM communications_push", [])?
-            > 0)
+    fn communications_pushing(&self, dsp: &str, line: Option<&str>) -> Result<bool> {
+        Ok(self.dsp(dsp)?.count(
+            "SELECT count(*) FROM communications_push WHERE line IS ?",
+            [line],
+        )? > 0)
     }
 }

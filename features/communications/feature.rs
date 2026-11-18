@@ -245,6 +245,13 @@ pub const FEATURE: Feature = Feature {
                 name: "phones_lines",
                 apply: Code(backend::phone::storage::add_lines),
             },
+            // Each line's texting its own: its conversations, the names it saved and the numbers
+            // it blocked, the changes its pages wait on, and the browsers told of its messages.
+            Migration {
+                id: 24,
+                name: "communications_lines",
+                apply: Code(backend::texts::storage::add_lines),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.

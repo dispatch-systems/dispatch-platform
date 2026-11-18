@@ -1,8 +1,15 @@
 //! What only a conversation by text has: Retry, a number's contact, person and block, texting a number or
 //! one of today's drivers first, whom the DSP can text, a text's pictures, Today's Routes and Pick
-//! driver. A Slack conversation's ID is refused for each.
-use super::texting_id;
-use crate::backend::{model::Reference, phone::numbers::NUMBER_MOST, texts};
+//! driver. A Slack conversation's ID is refused for each. Retry, a number's contact and block,
+//! texting a number first, whom the DSP can text and a text's pictures are each of one line
+//! (`*_of`): Dispatch Phone's own here, another feature's from its own routes (`api::lines`); the
+//! rest are Dispatch Phone's own.
+use super::{served, texting_id};
+use crate::backend::{
+    model::Reference,
+    phone::{numbers::NUMBER_MOST, storage::Line},
+    texts,
+};
 use dispatch_core::{
     Result, State,
     db::{Store, now},
@@ -24,15 +31,33 @@ fn texted(input: &Input) -> Result<String> {
 
 /// Sends again a text Dispatch sent in a conversation that failed.
 pub(super) async fn retry(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    retry_of(state, input, access, None).await
+}
+/// Sends again a text Dispatch sent in a conversation of `line` that failed, from that line's
+/// phones.
+pub async fn retry_of(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    line: Option<Line<'static>>,
+) -> Result<Reply> {
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    let line = line.map(|line| line.id);
+    served(&c, line)?;
     v::fields(&input.body, &[])?;
     let conversation = texted(&input)?;
     let text = texting_id(input.param("message"))?;
-    Reply::of(&texts::reply::retry(&state, &c, access, &conversation, &text).await?)
+    Reply::of(&texts::reply::retry(&state, &c, access, line, &conversation, &text).await?)
 }
 /// Saves a `name` for the number of a conversation by text.
 pub(super) fn save_contact(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    save_contact_of(db, c, input, None)
+}
+/// Saves a `name` for the number of a conversation of `line`, that line's alone.
+pub fn save_contact_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
+    let line = line.map(|line| line.id);
+    served(c, line)?;
     v::fields(&input.body, &["name"])?;
     let conversation = texted(input)?;
     let name = v::name(&input.body, "name", texts::contacts::NAME_MOST)?;
@@ -40,6 +65,7 @@ pub(super) fn save_contact(db: &Store, c: &Member, input: &Input) -> Result<Repl
         db,
         c.state,
         c.dsp_id(),
+        line,
         &conversation,
         &name,
         c.actor(),
@@ -73,18 +99,35 @@ pub(super) fn addable(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 /// Blocks the number of a conversation by text.
 pub(super) fn block(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    blocking(db, c, input, true)
+    block_of(db, c, input, None)
 }
 pub(super) fn unblock(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    blocking(db, c, input, false)
+    unblock_of(db, c, input, None)
 }
-fn blocking(db: &Store, c: &Member, input: &Input, blocked: bool) -> Result<Reply> {
+/// Blocks the number of a conversation of `line`, on that line alone.
+pub fn block_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
+    blocking(db, c, input, line, true)
+}
+/// Unblocks the number of a conversation of `line`, on that line alone.
+pub fn unblock_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
+    blocking(db, c, input, line, false)
+}
+fn blocking(
+    db: &Store,
+    c: &Member,
+    input: &Input,
+    line: Option<Line>,
+    blocked: bool,
+) -> Result<Reply> {
+    let line = line.map(|line| line.id);
+    served(c, line)?;
     v::fields(&input.body, &[])?;
     let conversation = texted(input)?;
     Reply::of(&texts::contacts::block(
         db,
         c.state,
         c.dsp_id(),
+        line,
         &conversation,
         c.actor(),
         blocked,
@@ -93,7 +136,19 @@ fn blocking(db: &Store, c: &Member, input: &Input, blocked: bool) -> Result<Repl
 /// Opens the conversation with a `number`, or one of today's drivers, `driverId`, to text them
 /// first.
 pub(super) fn text_first(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &["number", "driverId"])?;
+    text_first_of(db, c, input, None)
+}
+/// Opens the conversation of `line` with a `number` to text it first; or on Dispatch Phone's own,
+/// one of today's drivers', `driverId`.
+pub fn text_first_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
+    let line = line.map(|line| line.id);
+    served(c, line)?;
+    // Today's drivers are Dispatch Phone's own.
+    let fields: &[&str] = match line {
+        None => &["number", "driverId"],
+        Some(_) => &["number"],
+    };
+    v::fields(&input.body, fields)?;
     if input.body.get("driverId").is_some() {
         ensure(input.body.get("number").is_none(), "invalid_input", 400)?;
         let driver = v::text(&input.body, "driverId", 1, MOST_ID_LENGTH)?;
@@ -105,19 +160,52 @@ pub(super) fn text_first(db: &Store, c: &Member, input: &Input) -> Result<Reply>
         )?);
     }
     let number = v::text(&input.body, "number", 3, NUMBER_MOST)?;
-    Reply::of(&texts::contacts::open(db, c.state, c.dsp_id(), number)?)
+    Reply::of(&texts::contacts::open(
+        db,
+        c.state,
+        c.dsp_id(),
+        line,
+        number,
+    )?)
 }
 /// Whom the DSP can text, or those found by a name or number typed, `q`, and the numbers
 /// blocked.
 pub(super) fn text_contacts(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    text_contacts_of(db, c, input, None)
+}
+/// Whom the DSP can text from `line`, or those found by a name or number typed, `q`, and the
+/// numbers that line blocked.
+pub fn text_contacts_of(
+    db: &Store,
+    c: &Member,
+    input: &Input,
+    line: Option<Line>,
+) -> Result<Reply> {
+    let line = line.map(|line| line.id);
+    served(c, line)?;
     v::fields(&input.query, &["q"])?;
     let typed = optional_text(&input.query, "q", 100)?.trim();
     let typed = (!typed.is_empty()).then_some(typed);
-    Reply::of(&texts::contacts::contacts(db, c.state, c.dsp_id(), typed)?)
+    Reply::of(&texts::contacts::contacts(
+        db,
+        c.state,
+        c.dsp_id(),
+        line,
+        typed,
+    )?)
 }
 /// A text's picture or file, as the phone side keeps it, kept by the browser at its version, `v`.
 pub(super) async fn text_file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    text_shown(state, input, access, false).await
+    text_file_of(state, input, access, None).await
+}
+/// A picture or file of a text of `line`, as `text_file` answers it: another line's isn't found.
+pub async fn text_file_of(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    line: Option<Line<'static>>,
+) -> Result<Reply> {
+    text_shown(state, input, access, line, false).await
 }
 /// A text's picture's preview, as `text_file` answers it, the picture itself when it has none; or
 /// the picture of the first frame of a text's video kept on its phone.
@@ -126,25 +214,53 @@ pub(super) async fn text_file_preview(
     input: Input,
     access: Dsp,
 ) -> Result<Reply> {
-    text_shown(state, input, access, true).await
+    text_file_preview_of(state, input, access, None).await
 }
-/// A text's picture or file, or its `preview`.
-async fn text_shown(state: Arc<State>, input: Input, access: Dsp, preview: bool) -> Result<Reply> {
+/// The preview of a picture or video of a text of `line`, as `text_file_preview` answers it.
+pub async fn text_file_preview_of(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    line: Option<Line<'static>>,
+) -> Result<Reply> {
+    text_shown(state, input, access, line, true).await
+}
+/// A text's picture or file of `line`, or its `preview`.
+async fn text_shown(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    line: Option<Line<'static>>,
+    preview: bool,
+) -> Result<Reply> {
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    let line = line.map(|line| line.id);
+    served(&c, line)?;
     v::fields(&input.query, &["v"])?;
     let version = optional(&input.query, "v", |q, key| v::text(q, key, 1, 64))?;
     let wanted = texting_id(input.param("id"))?;
-    texts::reading::file(&state, &c, access, &wanted, version, preview).await
+    texts::reading::file(&state, &c, access, line, &wanted, version, preview).await
 }
 /// Asks the phone of a text's video it keeps for its bytes, to play it.
 pub(super) async fn fetch_text_file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    fetch_text_file_of(state, input, access, None).await
+}
+/// Asks the phone of a video of a text of `line` for its bytes, as `fetch_text_file` does.
+pub async fn fetch_text_file_of(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    line: Option<Line<'static>>,
+) -> Result<Reply> {
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    let line = line.map(|line| line.id);
+    served(&c, line)?;
     v::fields(&input.query, &[])?;
     v::fields(&input.body, &[])?;
     let wanted = texting_id(input.param("id"))?;
-    texts::reading::fetch(&state, &c, access, &wanted).await
+    texts::reading::fetch(&state, &c, access, line, &wanted).await
 }
 /// Keeps a picture added for a text not sent yet, as the phone side keeps it: its `name` and
 /// `type` in the query.
@@ -154,8 +270,20 @@ pub(super) async fn add_text_photo(
     access: Dsp,
     photo: Upload,
 ) -> Result<Reply> {
+    add_text_photo_of(state, input, access, photo, None).await
+}
+/// Keeps a picture added for a text of `line` not sent yet, as `add_text_photo` keeps it: of no
+/// line until it's sent, its adder's alone.
+pub async fn add_text_photo_of(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    photo: Upload,
+    line: Option<Line<'static>>,
+) -> Result<Reply> {
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    served(&c, line.map(|line| line.id))?;
     v::fields(&input.query, &["name", "type"])?;
     let name = v::name(&input.query, "name", 200)?;
     let kind = v::text(&input.query, "type", 1, 100)?;

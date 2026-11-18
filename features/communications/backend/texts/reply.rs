@@ -11,7 +11,8 @@
 //! text would go from, only from the conversation it was written in, kept as it's queued: one filed
 //! elsewhere, as with a work phone handed to another driver, never is. Either is queued, and filed,
 //! in the write that checks where it goes and that the member may still send it, so no handoff,
-//! stop or change of their access comes between.
+//! stop or change of their access comes between. Each goes from a phone of its conversation's line
+//! alone: Dispatch Phone's own, or another feature's.
 use super::{
     filing, live_day,
     numbers::work_number,
@@ -41,28 +42,30 @@ use dispatch_core::{
 };
 use std::sync::Arc;
 
-/// Sends what the member `c` wrote in the conversation by text `id`, with the pictures they added
-/// for it, or a GIF in their place (`adding`), to where a text written there goes as it's queued:
-/// the text, as kept.
+/// Sends what the member `c` wrote in the conversation by text `id` of the line `line`, with the
+/// pictures they added for it, or a GIF in their place (`adding`), to where a text written there
+/// goes as it's queued, from a phone of that line: the text, as kept.
 pub async fn send(
     state: &Arc<State>,
     c: &Context,
     access: Dsp,
+    line: Option<&str>,
     id: &str,
     written: &str,
     (photos, gif): (&[String], Option<&MessageGif>),
 ) -> Result<Message> {
     let body = checked(written, photos, gif.is_some(), compose::TEXT)?.to_owned();
     let (asked, at, files, gif) = (c.clone(), id.to_owned(), photos.to_vec(), gif.cloned());
+    let from = line.map(str::to_owned);
     let (sent, device) = filing::changing(state, &c.dsp.id, move |db| {
         let c = access.revalidate(db, &asked)?;
         let outgoing = Outgoing {
-            to: recipient(db, &c.dsp.id, &at)?,
+            to: recipient(db, &c.dsp.id, from.as_deref(), &at)?,
             body,
             files,
             gif,
             by: c.auth.user.id.clone(),
-            line: None,
+            line: from,
         };
         let sent = outbox::send(db, &c.dsp.id, &outgoing, now())?;
         db.queued_communications_text(&c.dsp.id, &sent.id, &at)?;
@@ -70,18 +73,18 @@ pub async fn send(
     })
     .await?;
     phone::live::queued_for(state, &c.dsp.id, Some(&device));
-    live::stopped(state, &c.dsp.id, id, &c.auth.user.id);
-    let (shared, dsp) = (state.clone(), c.dsp.id.clone());
+    live::stopped(state, &c.dsp.id, line, id, &c.auth.user.id);
+    let (shared, dsp, line) = (state.clone(), c.dsp.id.clone(), line.map(str::to_owned));
     state
-        .read(move |db| message(db, &shared, &dsp, &sent))
+        .read(move |db| message(db, &shared, &dsp, line.as_deref(), &sent))
         .await
 }
 
-/// Where a text written in the conversation `id` goes: a number's own number, or a work phone's
-/// nobody had; for a driver's, the work phone they have now (`live_day::phones_now`), refused while
-/// they have none.
-fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
-    let conversation = reading::found(db, dsp, id)?;
+/// Where a text written in the conversation `id` of the line `line` goes: a number's own number, or
+/// a work phone's nobody had; for a driver's, the work phone they have now
+/// (`live_day::phones_now`), refused while they have none.
+fn recipient(db: &Store, dsp: &str, line: Option<&str>, id: &str) -> Result<String> {
+    let conversation = reading::found(db, dsp, line, id)?;
     let phone = match (&conversation.driver, conversation.kind) {
         (Some((source, driver)), _) => live_day::phones_now(db, dsp, source)?.remove(driver),
         (None, ConversationKind::Slack) => None,
@@ -96,44 +99,46 @@ fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
         .ok_or_else(|| Error::new("communications_no_work_phone", 409))
 }
 
-/// Refuses the text `text` unless it's the conversation `id`'s, still the one it was queued in,
-/// and goes where a text written there now would: not to a work phone its driver no longer has,
-/// which may be another's since.
-fn goes_now(db: &Store, dsp: &str, id: &str, text: &str) -> Result<()> {
+/// Refuses the text `text` unless it's the conversation `id`'s, of the line `line`, still the one
+/// it was queued in, and goes where a text written there now would: not to a work phone its driver
+/// no longer has, which may be another's since.
+fn goes_now(db: &Store, dsp: &str, line: Option<&str>, id: &str, text: &str) -> Result<()> {
     let text = db
         .communications_text(dsp, text)?
         .filter(|text| text.conversation.as_deref() == Some(id))
         .ok_or_else(|| Error::new("communications_message_not_found", 404))?;
     ensure(!text.moved(), "communications_text_moved", 409)?;
     ensure(
-        recipient(db, dsp, id)? == text.number,
+        recipient(db, dsp, line, id)? == text.number,
         "communications_work_phone_changed",
         409,
     )
 }
 
-/// Sends again the text `text`, which Dispatch sent in the conversation `id` and failed, while it
-/// goes where a text written now would, and the member may still send it, checked in the write
-/// that queues it. The text, as kept.
+/// Sends again the text `text`, which Dispatch sent in the conversation `id` of the line `line` and
+/// failed, while it goes where a text written now would, and the member may still send it, checked
+/// in the write that queues it, from a phone of its own line. The text, as kept.
 pub async fn retry(
     state: &Arc<State>,
     c: &Context,
     access: Dsp,
+    line: Option<&str>,
     id: &str,
     text: &str,
 ) -> Result<Message> {
     let (asked, at, wanted) = (c.clone(), id.to_owned(), text.to_owned());
+    let from = line.map(str::to_owned);
     let (sent, device) = filing::changing(state, &c.dsp.id, move |db| {
         let c = access.revalidate(db, &asked)?;
-        goes_now(db, &c.dsp.id, &at, &wanted)?;
+        goes_now(db, &c.dsp.id, from.as_deref(), &at, &wanted)?;
         let sent = outbox::retry(db, &c.dsp.id, &wanted, now())?;
         Ok(((sent.id.clone(), sent.phone), vec![sent.id]))
     })
     .await?;
     phone::live::queued_for(state, &c.dsp.id, Some(&device));
-    let (shared, dsp) = (state.clone(), c.dsp.id.clone());
+    let (shared, dsp, line) = (state.clone(), c.dsp.id.clone(), line.map(str::to_owned));
     state
-        .read(move |db| message(db, &shared, &dsp, &sent))
+        .read(move |db| message(db, &shared, &dsp, line.as_deref(), &sent))
         .await
 }
 

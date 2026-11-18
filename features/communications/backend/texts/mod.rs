@@ -29,22 +29,21 @@ use dispatch_core::{
 /// The minutes in a day: how far past its midnight a day may begin, as one clocks skip whole.
 const DAY_MINUTES: i64 = 24 * 60;
 
-/// The DSP's dispatch phones, Dispatch Phone's own line's, and whether each is online: none until
-/// one is paired.
-pub fn phones(db: &Store, dsp: &str) -> Result<Vec<DispatchPhone>> {
+/// The DSP's phones of the line `line`, Dispatch Phone's own for none, and whether each is
+/// online: none until one is paired.
+pub fn phones(db: &Store, dsp: &str, line: Option<&str>) -> Result<Vec<DispatchPhone>> {
     let now = db::now();
     Ok(db
-        .phones_devices(dsp, None)?
+        .phones_devices(dsp, line)?
         .into_iter()
         .map(|device| dispatch_phone(device, now))
         .collect())
 }
-/// The DSP's dispatch phones an app holds, Dispatch Phone's own line's, leaving out the demo's
-/// stand-in.
-pub fn held_phones(db: &Store, dsp: &str) -> Result<Vec<DispatchPhone>> {
+/// The DSP's phones of the line `line` an app holds, leaving out the demo's stand-in.
+pub fn held_phones(db: &Store, dsp: &str, line: Option<&str>) -> Result<Vec<DispatchPhone>> {
     let now = db::now();
     Ok(db
-        .phones_devices(dsp, None)?
+        .phones_devices(dsp, line)?
         .into_iter()
         .filter(|device| !device.stand_in)
         .map(|device| dispatch_phone(device, now))
@@ -84,3 +83,7 @@ pub fn began(zone: Tz, day: NaiveDate) -> Result<i64> {
         .map(|began| began.timestamp_millis())
         .ok_or_else(|| Error::new("invalid_date", 400))
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/texts/lines.rs"]
+mod lines;

@@ -39,12 +39,20 @@ fn bodies(page: &ConversationWindow) -> Vec<usize> {
 async fn both_transports_traverse_ties_in_both_directions_without_a_missing_or_duplicate_pivot() {
     let (_root, db, state, dsp, slack, text) = fixture(701);
     for reference in [&slack, &text] {
-        let mut page = read(&db, &state, &dsp, reference, Request::Latest).unwrap();
+        let mut page = read(&db, &state, &dsp, None, reference, Request::Latest).unwrap();
         assert_eq!(bodies(&page), (551..701).collect::<Vec<_>>());
         let mut seen = bodies(&page).into_iter().collect::<BTreeSet<_>>();
         while let Some(cursor) = page.range.before.clone() {
             let previous = page.messages[0].ts.clone();
-            let next = read(&db, &state, &dsp, reference, Request::Continue(cursor)).unwrap();
+            let next = read(
+                &db,
+                &state,
+                &dsp,
+                None,
+                reference,
+                Request::Continue(cursor),
+            )
+            .unwrap();
             bounded(&next);
             assert!(next.messages.iter().any(|message| message.ts == previous));
             let ordered = bodies(&next);
@@ -58,7 +66,15 @@ async fn both_transports_traverse_ties_in_both_directions_without_a_missing_or_d
         let mut seen = bodies(&page).into_iter().collect::<BTreeSet<_>>();
         while let Some(cursor) = page.range.after.clone() {
             let previous = page.messages.last().unwrap().ts.clone();
-            let next = read(&db, &state, &dsp, reference, Request::Continue(cursor)).unwrap();
+            let next = read(
+                &db,
+                &state,
+                &dsp,
+                None,
+                reference,
+                Request::Continue(cursor),
+            )
+            .unwrap();
             bounded(&next);
             // At the tail a short right side tops up from left, so overlap can exceed one.
             assert!(next.messages.iter().any(|message| message.ts == previous));
@@ -78,7 +94,7 @@ async fn empty_exact_and_short_sides_keep_authoritative_flags_and_the_legacy_fif
     for count in [0, 1, 150, 151] {
         let (_root, db, state, dsp, slack, text) = fixture(count);
         for reference in [&slack, &text] {
-            let page = read(&db, &state, &dsp, reference, Request::Latest).unwrap();
+            let page = read(&db, &state, &dsp, None, reference, Request::Latest).unwrap();
             bounded(&page);
             assert_eq!(
                 bodies(&page),
@@ -87,15 +103,16 @@ async fn empty_exact_and_short_sides_keep_authoritative_flags_and_the_legacy_fif
             assert_eq!(page.range.has_before, count > 150);
             assert!(!page.range.has_after);
             assert!(page.origins.is_none());
-            let pending = read_origins(&db, &state, &dsp, reference, Request::Latest).unwrap();
+            let pending =
+                read_origins(&db, &state, &dsp, None, reference, Request::Latest).unwrap();
             assert!(!pending.origins.unwrap().ready);
             build_origins(&db, &dsp, reference, count);
-            let ready = read_origins(&db, &state, &dsp, reference, Request::Latest).unwrap();
+            let ready = read_origins(&db, &state, &dsp, None, reference, Request::Latest).unwrap();
             let origins = ready.origins.unwrap();
             assert!(origins.ready);
             assert_eq!(origins.selected.is_none(), count == 0);
             assert_eq!(origins.latest.is_none(), count == 0);
-            let legacy = dispatcher::opened(&db, &state, &dsp, reference, None).unwrap();
+            let legacy = dispatcher::opened(&db, &state, &dsp, None, reference, None).unwrap();
             assert_eq!(legacy.messages.len(), count.min(50));
             assert_eq!(legacy.more, count > 50);
             assert_eq!(
@@ -114,6 +131,7 @@ async fn empty_exact_and_short_sides_keep_authoritative_flags_and_the_legacy_fif
                     &db,
                     &state,
                     &dsp,
+                    None,
                     reference,
                     Request::Anchor {
                         place: place.into(),
@@ -142,9 +160,10 @@ async fn empty_exact_and_short_sides_keep_authoritative_flags_and_the_legacy_fif
 #[tokio::test]
 async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows() {
     let (_root, db, state, dsp, slack, text) = fixture(701);
-    let historical =
-        |reference: &Reference| read(&db, &state, &dsp, reference, row_100(reference, 50)).unwrap();
-    let tail = read(&db, &state, &dsp, &slack, Request::Latest).unwrap();
+    let historical = |reference: &Reference| {
+        read(&db, &state, &dsp, None, reference, row_100(reference, 50)).unwrap()
+    };
+    let tail = read(&db, &state, &dsp, None, &slack, Request::Latest).unwrap();
     let old_slack = historical(&slack);
     let old_text = historical(&text);
     let old_before = old_text.range.before.clone().unwrap();
@@ -180,6 +199,7 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
         &db,
         &state,
         &dsp,
+        None,
         &slack,
         Request::Continue(tail.range.refresh),
     )
@@ -193,6 +213,7 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
         &db,
         &state,
         &dsp,
+        None,
         &slack,
         Request::Continue(refreshed.range.refresh.clone()),
     )
@@ -206,6 +227,7 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
             &db,
             &state,
             &dsp,
+            None,
             &slack,
             Request::Continue(across.range.before.expect("gap remains reachable")),
         )
@@ -217,6 +239,7 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
         &db,
         &state,
         &dsp,
+        None,
         &slack,
         Request::Continue(old_slack.range.refresh),
     )
@@ -259,6 +282,7 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
         &db,
         &state,
         &dsp,
+        None,
         &text,
         Request::Continue(old_text.range.refresh),
     )
@@ -286,6 +310,7 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
         &db,
         &state,
         &dsp,
+        None,
         &text,
         Request::Continue(waiting.range.refresh),
     )
@@ -302,7 +327,7 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
     // Refile the actual anchor and delete one neighbor. The old position still works, and no
     // retained message is resurrected. Backdated insertion is selected on this refresh too.
     let destination = db
-        .open_communications_text(&dsp, &Filed::Number("+12065550102".into()))
+        .open_communications_text(&dsp, None, &Filed::Number("+12065550102".into()))
         .unwrap();
     db.refile_communications_texts(
         &dsp,
@@ -320,6 +345,7 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
         &db,
         &state,
         &dsp,
+        None,
         &text,
         Request::Continue(delivered.range.refresh),
     )
@@ -334,7 +360,7 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
     );
     assert!(moved.messages.iter().any(|m| m.id == "text-000100-z"));
     for cursor in [old_before, old_after] {
-        let navigated = read(&db, &state, &dsp, &text, Request::Continue(cursor)).unwrap();
+        let navigated = read(&db, &state, &dsp, None, &text, Request::Continue(cursor)).unwrap();
         bounded(&navigated);
         assert!(navigated.range.rebased);
         assert!(
@@ -348,6 +374,7 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
         &db,
         &state,
         &dsp,
+        None,
         &Reference::Text(destination.id),
         Request::Latest,
     )
@@ -359,6 +386,7 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
         &db,
         &state,
         &dsp,
+        None,
         &text,
         Request::Continue(moved.range.refresh),
     )
@@ -370,11 +398,11 @@ async fn bursts_and_old_retries_edits_files_and_refiling_rebase_complete_windows
 async fn tokens_reject_modification_wrong_channel_and_future_revision_but_rebase_after_log_pruning()
 {
     let (_root, db, state, dsp, slack, text) = fixture(151);
-    let page = read(&db, &state, &dsp, &slack, Request::Latest).unwrap();
+    let page = read(&db, &state, &dsp, None, &slack, Request::Latest).unwrap();
     let token = page.range.refresh.clone();
     let invalid = |reference: &Reference, token: String| {
         assert_eq!(
-            read(&db, &state, &dsp, reference, Request::Continue(token))
+            read(&db, &state, &dsp, None, reference, Request::Continue(token))
                 .unwrap_err()
                 .code,
             "invalid_input"
@@ -411,7 +439,7 @@ async fn tokens_reject_modification_wrong_channel_and_future_revision_but_rebase
     )
     .unwrap();
     assert_eq!(
-        read(&db, &state, &dsp, &slack, Request::Continue(future))
+        read(&db, &state, &dsp, None, &slack, Request::Continue(future))
             .unwrap_err()
             .code,
         "communications_window_reset"
@@ -426,7 +454,7 @@ async fn tokens_reject_modification_wrong_channel_and_future_revision_but_rebase
             Ok(())
         })
         .unwrap();
-    let refreshed = read(&db, &state, &dsp, &slack, Request::Continue(token)).unwrap();
+    let refreshed = read(&db, &state, &dsp, None, &slack, Request::Continue(token)).unwrap();
     assert!(refreshed.range.rebased);
     assert_eq!(bodies(&refreshed), bodies(&page));
     for (reference, place, leading) in [
@@ -443,11 +471,12 @@ async fn tokens_reject_modification_wrong_channel_and_future_revision_but_rebase
                 &db,
                 &state,
                 &dsp,
+                None,
                 reference,
                 Request::Anchor {
                     place: place.into(),
                     leading
-                }
+                },
             )
             .unwrap_err()
             .code,
@@ -486,7 +515,7 @@ async fn revision_and_message_data_share_a_snapshot_even_when_another_connection
         Kind::DSP,
     )
     .unwrap();
-    let revision = db.communications_revision(&dsp).unwrap();
+    let revision = db.communications_revision(&dsp, None).unwrap();
     let mut write = Box::new(SnapshotWrite {
         writer,
         conversation: slack.id().into(),
@@ -530,7 +559,7 @@ async fn revision_and_message_data_share_a_snapshot_even_when_another_connection
         );
     }
     let trace = Trace(&connection.0);
-    let page = read_origins(&db, &state, &dsp, &slack, row_100(&slack, 0)).unwrap();
+    let page = read_origins(&db, &state, &dsp, None, &slack, row_100(&slack, 0)).unwrap();
     drop(trace);
     assert!(write.fired.get());
     assert!(write.error.borrow().is_none(), "{:?}", write.error.borrow());
@@ -582,6 +611,7 @@ async fn revision_and_message_data_share_a_snapshot_even_when_another_connection
         &db,
         &state,
         &dsp,
+        None,
         &slack,
         Request::Continue(page.range.refresh),
     )
@@ -589,7 +619,7 @@ async fn revision_and_message_data_share_a_snapshot_even_when_another_connection
     assert!(current.range.rebased);
     assert!(!current.origins.as_ref().unwrap().ready);
     build_origins(&db, &dsp, &slack, 700);
-    let rebuilt = read_origins(&db, &state, &dsp, &slack, Request::Latest)
+    let rebuilt = read_origins(&db, &state, &dsp, None, &slack, Request::Latest)
         .unwrap()
         .origins
         .unwrap();
@@ -669,8 +699,9 @@ async fn compact_boundaries_keep_writer_group_phone_name_and_failed_run_context_
             [],
         )
         .unwrap();
-    let selected =
-        |reference: &Reference| read(&db, &state, &dsp, reference, row_100(reference, 50)).unwrap();
+    let selected = |reference: &Reference| {
+        read(&db, &state, &dsp, None, reference, row_100(reference, 50)).unwrap()
+    };
     let slack_page = selected(&slack);
     let text_page = selected(&text);
     for page in [&slack_page, &text_page] {
@@ -807,6 +838,7 @@ async fn compact_boundaries_keep_writer_group_phone_name_and_failed_run_context_
         &db,
         &state,
         &dsp,
+        None,
         &text,
         Request::Anchor {
             place: "1700000000000:text-000699".into(),
@@ -900,6 +932,7 @@ async fn selected_and_latest_sender_context_reset_at_dsp_midnight_and_survive_bo
                 &db,
                 &state,
                 &dsp,
+                None,
                 &text,
                 Request::Anchor {
                     place: format!("{at:013}:text-000100"),
@@ -923,6 +956,7 @@ async fn selected_and_latest_sender_context_reset_at_dsp_midnight_and_survive_bo
                 &db,
                 &state,
                 &dsp,
+                None,
                 &text,
                 Request::Anchor {
                     place: format!("{at:013}:text-000100"),
@@ -954,7 +988,7 @@ async fn selected_and_latest_sender_context_reset_at_dsp_midnight_and_survive_bo
             db.keep_dsp_profile(&dsp, &name, "UTC", None, None).unwrap();
             assert!(!ready(&db, &state, &dsp, &text));
             assert_eq!(
-                read(&db, &state, &dsp, &text, Request::Latest)
+                read(&db, &state, &dsp, None, &text, Request::Latest)
                     .unwrap()
                     .messages
                     .len(),
@@ -962,7 +996,7 @@ async fn selected_and_latest_sender_context_reset_at_dsp_midnight_and_survive_bo
             );
             build_origins(&db, &dsp, &text, 701);
             assert_eq!(
-                read_origins(&db, &state, &dsp, &text, Request::Latest)
+                read_origins(&db, &state, &dsp, None, &text, Request::Latest)
                     .unwrap()
                     .origins
                     .unwrap()
@@ -985,7 +1019,7 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
     let (_root, store, dsp) = testing::bootstrapped();
     let phone = paired(&store, &dsp, "window-budget-key", "+12065550100");
     let text = store
-        .open_communications_text(&dsp, &Filed::Number("+12065550101".into()))
+        .open_communications_text(&dsp, None, &Filed::Number("+12065550101".into()))
         .unwrap()
         .id;
     let slack = store
@@ -1099,7 +1133,7 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
     .unwrap();
     let state = dispatch_core::State::new(store.config.clone()).unwrap();
     let people = People::read(&store, &state, &dsp).unwrap();
-    let numbers = Numbers::read(&store, &dsp).unwrap();
+    let numbers = Numbers::read(&store, &dsp, None).unwrap();
     let selected_slack = conversations::messages(
         &store,
         &people,

@@ -4,7 +4,8 @@
 //!
 //! An unread day says nothing: existing placements stay put; new texts use the work phone's own
 //! conversation when known, otherwise the number's. Status and attachment updates never move a
-//! text already filed. Actor names are read once per placement batch.
+//! text already filed. Actor names are read once per placement batch. Only Dispatch Phone's own
+//! line's texts are filed so: another line's are each under its number, on that line.
 use super::super::{
     live_day,
     model::{Filed, Unfiled},
@@ -27,26 +28,41 @@ use dispatch_routes_contract::{
 use serde_json::json;
 use std::collections::HashMap;
 
-/// Places each of `texts`, waiting to be filed, where it belongs, under the name its sender, if
-/// someone at the DSP, is shown by as it's placed: each on its own, so one that can't be yet, as
-/// reading what says where failed, is logged, kept as unplaced since now (`unplaced`), and waits
-/// for the next upkeep, the rest placed.
+/// Places each of `texts`, waiting to be filed, where it belongs on its phone's line, under the
+/// name its sender, if someone at the DSP, is shown by as it's placed: each on its own, so one that
+/// can't be yet, as reading what says where failed, is logged, kept as unplaced since now
+/// (`unplaced`), and waits for the next upkeep, the rest placed.
 pub(super) fn place(db: &Store, dsp: &str, texts: &[Unfiled]) -> Result<()> {
-    let mut filer = match Filer::new(db, dsp) {
-        Ok(filer) => filer,
-        Err(error) => return unplaced(db, dsp, texts, &error),
-    };
+    let mut filer = None;
     let mut senders = HashMap::new();
     for text in texts {
-        let placed = filer.placed(&text.number, text.at).and_then(|filed| {
+        let placed = place_of(db, dsp, &mut filer, text).and_then(|filed| {
             let sender = sender_name(db, &mut senders, text.sent_by.as_deref())?;
-            db.place_communications_text(dsp, &text.id, &filed, sender.as_deref())
+            let line = text.line.as_deref();
+            db.place_communications_text(dsp, &text.id, line, &filed, sender.as_deref())
         });
         if let Err(error) = placed {
             unplaced(db, dsp, std::slice::from_ref(text), &error)?;
         }
     }
     Ok(())
+}
+/// Where `text` is placed: another line's under its number; Dispatch Phone's own where `filer`
+/// says, made for the first of them.
+fn place_of<'a>(
+    db: &'a Store,
+    dsp: &'a str,
+    filer: &mut Option<Filer<'a>>,
+    text: &Unfiled,
+) -> Result<Filed> {
+    if text.line.is_some() {
+        return Ok(Filed::Number(text.number.clone()));
+    }
+    let filer = match filer {
+        Some(filer) => filer,
+        None => filer.insert(Filer::new(db, dsp)?),
+    };
+    filer.placed(&text.number, text.at)
 }
 /// Logs that `texts` couldn't be placed, as `error` says, and keeps that they couldn't since now,
 /// but those that couldn't before, which keep since when.

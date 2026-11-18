@@ -22,7 +22,7 @@ use dispatch_routes_contract::RouteDataChanged;
 use placement::place;
 use reconciliation::{note, noted};
 use serde_json::{Value, json};
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 /// Ten minutes, in milliseconds: how long a text waits to be filed, once placing it first failed,
 /// before it's placed under its number (`overdue`).
@@ -40,7 +40,7 @@ pub const MAINTENANCE: Maintenance = Maintenance {
 /// Makes the phone side's change `change` to the DSP's texts, and files the texts it kept or
 /// changed, in one write and one transaction, so neither is kept without the other: a text that
 /// can't be placed yet is kept waiting to be filed. Once both are committed, wakes the pages waiting
-/// on a conversation that changed. `change` answers with what the caller is answered with, and the
+/// on the line of each conversation that changed. `change` answers with what the caller is answered with, and the
 /// IDs of the texts it kept or changed.
 pub async fn changing<T: Send + 'static>(
     state: &Arc<State>,
@@ -56,8 +56,8 @@ pub async fn changing<T: Send + 'static>(
             })
         })
         .await?;
-    if changed {
-        live::changed(state, dsp);
+    for line in &changed {
+        live::changed_on(state, dsp, line.as_deref());
     }
     Ok(answer)
 }
@@ -115,11 +115,11 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
 }
 
 /// Files the texts `ids`, which the phone side kept or changed in this write: places each waiting
-/// to be, then keeps whether the conversation each is filed in waits. Whether a conversation
+/// to be, then keeps whether the conversation each is filed in waits. The lines whose conversations
 /// changed.
-fn file(db: &Store, dsp: &str, ids: &[String]) -> Result<bool> {
+fn file(db: &Store, dsp: &str, ids: &[String]) -> Result<BTreeSet<Option<String>>> {
     if ids.is_empty() {
-        return Ok(false);
+        return Ok(BTreeSet::new());
     }
     let waiting = db.unfiled_communications_texts_of(dsp, ids)?;
     if !waiting.is_empty() {

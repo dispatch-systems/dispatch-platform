@@ -29,7 +29,7 @@ async fn a_text_sent_from_the_demos_stand_in_phone_is_delivered_at_once() {
     let (_root, db, dsp) = store();
     let owner = testing::a_user(&db);
     crate::backend::phone::demo::demo(&db, &dsp, "America/Los_Angeles").unwrap();
-    let paired = phones(&db, &dsp).unwrap();
+    let paired = phones(&db, &dsp, None).unwrap();
     assert_eq!(paired.len(), 1);
     assert!(paired[0].online);
     // The three texts it received, kept, wait for the next upkeep to file them.

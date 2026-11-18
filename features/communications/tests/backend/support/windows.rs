@@ -24,7 +24,7 @@ pub fn fixture(count: usize) -> (impl Drop, Store, Arc<State>, String, Reference
     let (root, store, dsp) = testing::bootstrapped();
     let phone = paired(&store, &dsp, "window-phone", "+12065550100");
     let text = store
-        .open_communications_text(&dsp, &Filed::Number("+12065550101".into()))
+        .open_communications_text(&dsp, None, &Filed::Number("+12065550101".into()))
         .unwrap()
         .id;
     let slack = store
@@ -94,7 +94,7 @@ pub fn bounded(page: &ConversationWindow) {
 }
 /// Whether the conversation's latest window answers with ready origins.
 pub fn ready(db: &Store, state: &State, dsp: &str, reference: &Reference) -> bool {
-    read_origins(db, state, dsp, reference, Request::Latest)
+    read_origins(db, state, dsp, None, reference, Request::Latest)
         .unwrap()
         .origins
         .unwrap()

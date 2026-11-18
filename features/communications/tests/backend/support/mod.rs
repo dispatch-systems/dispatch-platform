@@ -19,7 +19,7 @@ pub mod windows;
 
 pub use budget::ReadBudget;
 pub use live::{read_live, routed};
-pub use phone::{pair_to, reported, sent, texted};
+pub use phone::{pair_to, reported, sent, texted, texted_on};
 pub use routes::failing;
 
 use crate::api::types::Message;

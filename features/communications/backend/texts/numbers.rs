@@ -1,37 +1,38 @@
 //! Phone numbers, each written one way as the phone side writes them (`phone::numbers::normal`):
 //! how one reads (`shown`); the ten digits Routes keeps a work phone by (`ten_digits`), and back
-//! (`work_number`); and what the DSP keeps of the numbers that text it, and what its phones are
-//! called, to read its texts by (`Numbers`).
+//! (`work_number`); and what one of the DSP's lines keeps of the numbers that text it, and what its
+//! phones are called, to read its texts by (`Numbers`).
 use super::storage::ContactStore;
 use crate::backend::phone::storage::DeviceStore;
 use dispatch_core::{Result, db::Store};
 use std::collections::{BTreeSet, HashMap};
 
-/// What the DSP keeps of the numbers that text it, and what its phones are called, to read its
-/// texts by.
+/// What one of the DSP's lines keeps of the numbers that text it, and what its phones are called,
+/// to read its texts by.
 pub struct Numbers {
     contacts: HashMap<String, String>,
     blocked: BTreeSet<String>,
     phones: HashMap<String, String>,
 }
 impl Numbers {
-    pub fn read(db: &Store, dsp: &str) -> Result<Self> {
+    /// The line `line`'s: Dispatch Phone's own for none.
+    pub fn read(db: &Store, dsp: &str, line: Option<&str>) -> Result<Self> {
         let phones = db
-            .phones_devices(dsp, None)?
+            .phones_devices(dsp, line)?
             .into_iter()
             .map(|device| (device.id, device.name))
             .collect();
         Ok(Self {
-            contacts: db.communications_contacts(dsp)?.into_iter().collect(),
-            blocked: db.communications_blocked(dsp)?,
+            contacts: db.communications_contacts(dsp, line)?.into_iter().collect(),
+            blocked: db.communications_blocked(dsp, line)?,
             phones,
         })
     }
-    /// The name the DSP saved for `number`, if it did.
+    /// The name the line saved for `number`, if it did.
     pub fn contact(&self, number: &str) -> Option<&str> {
         self.contacts.get(number).map(String::as_str)
     }
-    /// Every number the DSP saved a name for.
+    /// Every number the line saved a name for.
     pub fn contacts(&self) -> impl Iterator<Item = &str> {
         self.contacts.keys().map(String::as_str)
     }
@@ -42,7 +43,7 @@ impl Numbers {
     pub fn all_blocked(&self) -> impl Iterator<Item = &str> {
         self.blocked.iter().map(String::as_str)
     }
-    /// What the DSP's phone `id` is called, while it's paired.
+    /// What the line's phone `id` is called, while it's paired.
     pub fn phone(&self, id: &str) -> Option<&str> {
         self.phones.get(id).map(String::as_str)
     }

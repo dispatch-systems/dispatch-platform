@@ -45,13 +45,13 @@ async fn what_dispatch_didnt_hear_is_caught_up_once_from_when_it_was_on() {
     // Caught up again, nothing is kept twice.
     let at = dsp.clone();
     let before = state
-        .read(move |db| db.communications_revision(&at))
+        .read(move |db| db.communications_revision(&at, None))
         .await
         .unwrap();
     catch_up(&state, &dsp).await.unwrap();
     let at = dsp.clone();
     let after = state
-        .read(move |db| db.communications_revision(&at))
+        .read(move |db| db.communications_revision(&at, None))
         .await
         .unwrap();
     assert_eq!(

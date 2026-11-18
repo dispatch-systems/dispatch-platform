@@ -38,6 +38,9 @@ pub struct TextConversation {
     pub state: ConversationState,
     pub waiting_since: Option<i64>,
     pub last_at: Option<i64>,
+    /// The line whose phones its texts went through, by its feature's name: none for Dispatch
+    /// Phone's own. Another line's is always a number's.
+    pub line: Option<String>,
 }
 impl FromRow for TextConversation {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -52,6 +55,7 @@ impl FromRow for TextConversation {
             state: row.get("state")?,
             waiting_since: row.get("waiting_since")?,
             last_at: row.get("last_at")?,
+            line: row.get("line")?,
         })
     }
 }
@@ -114,14 +118,16 @@ impl FromRow for Text {
     }
 }
 
-/// A text waiting to be filed, as placing it reads it: its number, when it was written, and who at
-/// the DSP sent it, for one Dispatch sent.
+/// A text waiting to be filed, as placing it reads it: its number, when it was written, who at the
+/// DSP sent it, for one Dispatch sent, and the line of the phone it went through, none for Dispatch
+/// Phone's own.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Unfiled {
     pub id: String,
     pub number: String,
     pub at: i64,
     pub sent_by: Option<String>,
+    pub line: Option<String>,
 }
 impl FromRow for Unfiled {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -130,6 +136,7 @@ impl FromRow for Unfiled {
             number: row.get("number")?,
             at: row.get("at")?,
             sent_by: row.get("sent_by")?,
+            line: row.get("line")?,
         })
     }
 }

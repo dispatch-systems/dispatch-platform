@@ -29,7 +29,7 @@ pub fn member(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Profile>
 /// it is, or whoever Driver Match has its number for; their Slack workspace, the first of the
 /// DSP's they're in.
 pub fn text(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Profile> {
-    let conversation = reading::found(db, dsp, id)?;
+    let conversation = reading::found(db, dsp, None, id)?;
     let people = People::read(db, state, dsp)?;
     let person = reading::whose(&people, &conversation);
     let workspaces = kit::workspaces(db, dsp)?;

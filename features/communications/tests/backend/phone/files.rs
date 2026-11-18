@@ -116,7 +116,7 @@ async fn bytes_sent_again_leave_those_before_them_kept_while_what_keeps_them_fai
         .await
         .unwrap();
     assert_eq!(bytes.as_deref(), Some(&b"door"[..]));
-    let shown = super::shown(&state, &dsp, &file, "usr_other", None, false).await;
+    let shown = super::shown(&state, &dsp, None, &file, "usr_other", None, false).await;
     assert!(shown.unwrap().is_some(), "it downloads");
 }
 
@@ -196,7 +196,7 @@ async fn a_picture_is_its_adders_alone_until_it_goes_and_its_bytes_are_kept_once
             viewer.to_owned(),
         );
         async move {
-            super::shown(&state, &dsp, &id, &viewer, None, false)
+            super::shown(&state, &dsp, None, &id, &viewer, None, false)
                 .await
                 .unwrap()
                 .is_some()
@@ -247,7 +247,7 @@ async fn video_demand_wakes_its_owning_phone_and_keeps_other_phones_quiet() {
     let mut listener = live::listen(&state, &dsp, &phone.id);
     let mut unrelated = live::listen(&state, &dsp, "another-device");
     let mut other_dsp = live::listen(&state, "another-dsp", &phone.id);
-    let mut request = Box::pin(fetch(&state, &dsp, &video, |_| Ok(())));
+    let mut request = Box::pin(fetch(&state, &dsp, None, &video, |_| Ok(())));
     tokio::select! {
         result = &mut request => panic!("video answered before its bytes: {result:?}"),
         _ = listener.changed() => {}

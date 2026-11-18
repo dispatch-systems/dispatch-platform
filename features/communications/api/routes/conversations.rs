@@ -1,8 +1,12 @@
 //! A conversation of either kind, by its ID: reading it, its profile, sending in it, Done and
 //! who's writing, through the backend's `dispatcher`, and a window of it, through `windows`; and
-//! Slack's own, opening a direct message and whom the DSP can message there.
-use super::{PLACE_MOST, gif, photo_id, photos, slack_id, team};
-use crate::backend::{compose, contacts, dispatcher, live, model::Reference, reply};
+//! Slack's own, opening a direct message and whom the DSP can message there. Each by text is of one
+//! line (`*_of`): Dispatch Phone's own here, another feature's from its own routes (`api::lines`),
+//! where another line's conversation, or Slack's, isn't found.
+use super::{PLACE_MOST, gif, photo_id, photos, served, slack_id, team};
+use crate::backend::{
+    compose, contacts, dispatcher, live, model::Reference, phone::storage::Line, reply,
+};
 use dispatch_core::{
     Result, State,
     db::Store,
@@ -16,6 +20,12 @@ use std::sync::Arc;
 
 /// A conversation and its latest messages, or those before the one at `before`.
 pub(super) fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    conversation_of(db, c, input, None)
+}
+/// A conversation of `line` and its latest messages, or those before the one at `before`.
+pub fn conversation_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
+    let line = line.map(|line| line.id);
+    served(c, line)?;
     v::fields(&input.query, &["before"])?;
     let reference = Reference::parse(input.param("id"))?;
     let before = optional_text(&input.query, "before", PLACE_MOST)?;
@@ -24,6 +34,7 @@ pub(super) fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Repl
         db,
         c.state,
         c.dsp_id(),
+        line,
         &reference,
         before,
     )?)
@@ -31,8 +42,14 @@ pub(super) fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Repl
 /// Latest, explicitly anchored, or continued: every request is authorized by the read route
 /// in this same database turn. There is no await/provider work requiring a second access check.
 pub(super) fn window(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    window_of(db, c, input, None)
+}
+/// A window of a conversation of `line`, as `window` reads one.
+pub fn window_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
     use crate::backend::windows::{self, Request};
     use dispatch_core::{Error, ensure};
+    let line = line.map(|line| line.id);
+    served(c, line)?;
     v::fields(&input.query, &["anchor", "leading", "cursor", "origins"])?;
     let reference = Reference::parse(input.param("id"))?;
     let has = |key| input.query.get(key).is_some();
@@ -69,7 +86,7 @@ pub(super) fn window(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     } else {
         windows::read
     };
-    Reply::of(&read(db, c.state, c.dsp_id(), &reference, request)?)
+    Reply::of(&read(db, c.state, c.dsp_id(), line, &reference, request)?)
 }
 /// What the profile beside a conversation shows of whom it's with, a member of a workspace or a
 /// driver: behind `communications.use` alone, as it reads what other features know of them for
@@ -82,6 +99,12 @@ pub(super) fn profile(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 /// Marks a conversation done without an answer, covering what was written up to the message at
 /// `seen`, the latest the page showed, else everything.
 pub(super) fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    done_of(db, c, input, None)
+}
+/// Marks a conversation of `line` done without an answer, as `done` marks one.
+pub fn done_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
+    let line = line.map(|line| line.id);
+    served(c, line)?;
     v::fields(&input.body, &["seen"])?;
     let reference = Reference::parse(input.param("id"))?;
     let seen = optional_text(&input.body, "seen", PLACE_MOST)?;
@@ -89,6 +112,7 @@ pub(super) fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         db,
         c.state,
         c.dsp_id(),
+        line,
         &reference,
         c.actor(),
         (!seen.is_empty()).then_some(seen),
@@ -98,32 +122,60 @@ pub(super) fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 /// pictures the phone side keeps (`texts/uploads`), in Slack those Communications keeps, or the
 /// `gif` chosen in their place.
 pub(super) async fn send(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    send_of(state, input, access, None).await
+}
+/// Sends a message in a conversation of `line`, from that line's phones: its `text` and `photos`,
+/// and on Dispatch Phone's own, a `gif` in their place.
+pub async fn send_of(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    line: Option<Line<'static>>,
+) -> Result<Reply> {
     let asked = input.clone();
     let reference = Reference::parse(input.param("id"))?;
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    let line = line.map(|line| line.id);
+    served(&c, line)?;
     let limits = compose::of(&reference);
-    v::fields(&input.body, &["text", "photos", "gif"])?;
+    // GIFs are Dispatch Phone's own.
+    let fields: &[&str] = match line {
+        None => &["text", "photos", "gif"],
+        Some(_) => &["text", "photos"],
+    };
+    v::fields(&input.body, fields)?;
     let text = optional_text(&input.body, "text", limits.read())?;
     let photos = photos(&input.body, photo_id(&reference))?;
     let gif = gif(&input.body, &c, state.config.fixture)?;
     let adding = (photos.as_slice(), gif.as_ref());
-    let message = dispatcher::send(&state, &c, access, &reference, text, adding).await?;
+    let message = dispatcher::send(&state, &c, access, line, &reference, text, adding).await?;
     Reply::of_status(&message, 201)
 }
 /// Notes that the member is writing in a conversation, for the next few seconds.
 pub(super) async fn typing(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    typing_of(state, input, access, None).await
+}
+/// Notes that the member is writing in a conversation of `line`, for the pages of that line.
+pub async fn typing_of(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    line: Option<Line<'static>>,
+) -> Result<Reply> {
     let asked = input.clone();
     let reference = Reference::parse(input.param("id"))?;
     let of = reference.clone();
+    let line = line.map(|line| line.id);
     let c = state
         .read(move |db| {
             let c = access.authorize(db, &asked)?;
-            dispatcher::found(db, &c.dsp.id, &of)?;
+            served(&c, line)?;
+            dispatcher::found(db, &c.dsp.id, line, &of)?;
             Ok(c)
         })
         .await?;
     v::fields(&input.body, &[])?;
-    live::writing(&state, &c.dsp.id, reference.id(), &c.auth.user);
+    live::writing(&state, &c.dsp.id, line, reference.id(), &c.auth.user);
     Ok(Reply::ok())
 }
 
