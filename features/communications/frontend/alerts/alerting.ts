@@ -65,7 +65,7 @@ export function alertMember(access: () => Watching, line: TextingLine = DISPATCH
     const now = Date.now();
     const { fresh, seen } = arrived(waiting.latest, readSeen(at, user), now, inFront(line.page));
     keepSeen(at, user, seen);
-    const phones = wentDown(down(waiting.phones, now, line.phone), readDowns(at, user), now);
+    const phones = wentDown(down(waiting.phones, now, line), readDowns(at, user), now);
     keepDowns(at, user, phones.seen);
     const chosen = choices(settings, line.display);
     if (fresh.length && chosen.sound) void chime();

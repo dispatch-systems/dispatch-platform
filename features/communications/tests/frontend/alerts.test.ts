@@ -381,6 +381,28 @@ test('a phone alerts once as it goes down, and not one down before Dispatch was 
   ]);
 });
 
+test("another line's phones down say its name, a phone's own beside it while it has several", () => {
+  const line = { id: 'front_desk', name: 'Front Desk', phone: 'Front Desk phone' };
+  const offline = (id: string, name: string): DispatchPhone => ({
+    id,
+    name,
+    online: false,
+    lastSeenAt: 0,
+    cantSend: false,
+  });
+  const words = (phones: DispatchPhone[]) =>
+    down(phones, OFFLINE_MS, line).map((each) => each.words);
+  assert.deepEqual(words([offline('p1', 'Pixel')]), ['Front Desk phone offline for 10 min']);
+  // Renamed, a phone is still the line's; one named for it says so already.
+  assert.deepEqual(
+    words([
+      offline('p1', 'Pixel'),
+      { ...offline('p2', 'Front Desk 2'), online: true, cantSend: true },
+    ]),
+    ['Front Desk · Pixel offline for 10 min', "Front Desk 2 can't send texts"],
+  );
+});
+
 test('a phone down alerts once, though a tab taking its turn still reads it as it was before', () => {
   const failing: DispatchPhone[] = [
     { id: 'p1', name: 'Dispatch', online: true, lastSeenAt: 0, cantSend: true },

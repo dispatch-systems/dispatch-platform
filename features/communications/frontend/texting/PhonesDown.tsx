@@ -18,7 +18,7 @@ export function PhonesDown({
 }: Watching & { line?: TextingLine }) {
   const { data } = line.texting.useWaiting(POLL_MS);
   const now = useNow();
-  const downs = down(data?.phones ?? [], now, line.phone);
+  const downs = down(data?.phones ?? [], now, line);
   if (downs.length === 0) return null;
   const card = phonesCard(access, line);
   return (

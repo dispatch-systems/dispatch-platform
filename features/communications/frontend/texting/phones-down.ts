@@ -13,14 +13,23 @@ export const OFFLINE_MS = 10 * 60_000;
 /** A phone that's down: how, what says it, and by its `key`, each time it went down. */
 export type Down = { kind: 'offline' | 'cant_send'; key: string; words: string };
 
-/** The `phones` an app holds that are down at `now`: by name while there are several, else as
- * `called`. */
+/** What says which line's phones: Dispatch Phone's own, by default, or another's. */
+type Called = Pick<TextingLine, 'id' | 'name' | 'phone'>;
+const DISPATCH: Called = { name: 'Dispatch Phone', phone: 'Dispatch phone' };
+
+/** The `phones` of `line` an app holds that are down at `now`: by name while there are several,
+ * else as the line calls its phone; another line's by its name too, unless the phone's says it,
+ * as its alerts always say the line (HR Line · Pixel). */
 export function down(
   phones: readonly DispatchPhone[],
   now: number,
-  called = 'Dispatch phone',
+  line: Called = DISPATCH,
 ): Down[] {
-  const named = (phone: DispatchPhone) => (phones.length > 1 ? phone.name : called);
+  const named = (phone: DispatchPhone) => {
+    if (phones.length === 1) return line.phone;
+    if (line.id === undefined || phone.name.startsWith(line.name)) return phone.name;
+    return `${line.name} · ${phone.name}`;
+  };
   return phones.flatMap((phone): Down[] => {
     const since = phone.lastSeenAt;
     if (!phone.online && since !== null && now - since >= OFFLINE_MS)
