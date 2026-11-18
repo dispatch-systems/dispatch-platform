@@ -85,6 +85,14 @@ test("a feature's tests install what its features use, all the way down, and not
   assert.deepEqual([...installed].sort(), ['collectors/x', 'features/b', 'features/c']);
 });
 
+test("a feature's tests may install what its own dependencies use", () => {
+  const hrLine = features().find((owner) => owner.dir === 'features/custom/cjf87gqd/hr_line');
+  assert(hrLine, 'HR Line is a feature');
+  const installed = installedWith(hrLine);
+  // It declares Communications alone, which depends on Slack.
+  assert(installed.has('features/communications') && installed.has('features/slack'));
+});
+
 test("a contract's Cargo.toml lists core alone, and its feature's lists the contract", () => {
   const wrong: string[] = [];
   for (const dir of new Set(files.flatMap((file) => contract(file) ?? []))) {
