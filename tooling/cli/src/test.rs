@@ -406,9 +406,17 @@ fn join(root: &Path, builds: &Path) -> Result<fs::File> {
     Ok(runs)
 }
 /// Leaves the checkout's live runs, letting go of `runs`. The last of them deletes what they
-/// made, or with `keep` leaves it the checkout's own, and answers how much it deleted.
+/// made, and answers how much it deleted; with `keep`, what they made is the checkout's own at
+/// once, so no run ending after it deletes it.
 fn leave(root: &Path, builds: &Path, runs: fs::File, keep: bool) -> Result<u64> {
     drop(runs);
+    // A run kept: what the runs made is the checkout's own from now, whichever run ends last.
+    if keep {
+        return match fs::remove_file(builds.join(MADE)) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+            _ => Ok(0),
+        };
+    }
     let last = open(builds, RUNS, fs::OpenOptions::new().read(true))?;
     if last.try_lock_exclusive().is_err() {
         return Ok(0);
@@ -424,7 +432,7 @@ fn leave(root: &Path, builds: &Path, runs: fs::File, keep: bool) -> Result<u64> 
     let mut freed = 0;
     for path in PACKAGED
         .iter()
-        .filter(|path| !keep && made.lines().any(|line| line == **path))
+        .filter(|path| made.lines().any(|line| line == **path))
         .map(|path| root.join(path))
         .filter(|path| path.exists())
     {

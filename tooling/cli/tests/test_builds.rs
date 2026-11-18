@@ -135,4 +135,12 @@ fn a_run_ending_leaves_the_package_a_run_beside_it_tests_with() {
     kept.keep().unwrap();
     Run::start(root, &tmp).unwrap().end().unwrap();
     assert!(backend.exists());
+    // Kept while another run tests beside it, it stays once that one ends too.
+    fs::remove_dir_all(root.join(".build")).unwrap();
+    let kept = Run::start(root, &tmp).unwrap();
+    package();
+    let beside = Run::start(root, &tmp).unwrap();
+    kept.keep().unwrap();
+    beside.end().unwrap();
+    assert!(backend.exists(), "the run beside it took what was kept");
 }
