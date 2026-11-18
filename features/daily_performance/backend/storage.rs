@@ -13,6 +13,7 @@ use dispatch_cortex::{
     daily_performance::{Capture, Collection, DATASETS, Days, MAX_DATES, Request},
     discovery::Scope,
 };
+use jiff::ToSpan;
 use rusqlite::params;
 use serde_json::{Value, json};
 pub const DATABASE: Kind = Kind::new("daily_performance", 1);
@@ -35,13 +36,9 @@ fn verify(db: &Db) -> Result<()> {
     }
     Ok(())
 }
-pub(crate) fn today(store: &Store, dsp: &str) -> Result<chrono::NaiveDate> {
-    let tz: chrono_tz::Tz = store
-        .find_dsp(dsp)?
-        .timezone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
-    Ok(dispatch_core::foundation::clock::today(tz))
+pub(crate) fn today(store: &Store, dsp: &str) -> Result<jiff::civil::Date> {
+    let tz = dispatch_core::foundation::clock::zone(&store.find_dsp(dsp)?.timezone)?;
+    Ok(dispatch_core::foundation::clock::today(&tz))
 }
 pub(crate) fn bind(store: &Store, dsp: &str, dates: &[String]) -> Result<Value> {
     let tenant = store.find_dsp(dsp)?;
@@ -108,7 +105,7 @@ const CONFIRM_EMPTY_AFTER_MS: i64 = 12 * 3_600_000;
 /// answers while it republishes a day, and no read held at least half an hour before, or
 /// twelve hours for a dataset gone empty, saw the same counts for those datasets. A drop
 /// seen twice that far apart is what the day now is.
-fn held(data: &DspLease<'_>, capture: &Capture, today: chrono::NaiveDate) -> Result<bool> {
+fn held(data: &DspLease<'_>, capture: &Capture, today: jiff::civil::Date) -> Result<bool> {
     if capture.date >= today.to_string() {
         return Ok(false);
     }
@@ -314,13 +311,13 @@ impl DailyPerformanceStore for Store {
     fn daily_performance_jobs(&self, dsp: &str) -> Result<Vec<(String, Value)>> {
         let policy: Policy = dispatch_core::settings::read(self, dsp, &COLLECTION)?;
         let station = self.profile(dsp)?.station_code;
-        let yesterday = today(self, dsp)? - chrono::Duration::days(1);
+        let yesterday = today(self, dsp)? - 1.days();
         let data = self.daily_performance_db(dsp)?;
         let cutoff = at(now() - i64::from(policy.refresh_hours) * 3_600_000);
         // Every date due, oldest first, read by one job.
         let mut dates = Vec::new();
         for offset in (0..policy.lookback_days).rev() {
-            let date = (yesterday - chrono::Duration::days(i64::from(offset))).to_string();
+            let date = (yesterday - i64::from(offset).days()).to_string();
             if data.one("SELECT id FROM daily_publications WHERE station=? AND date=? AND active=1 AND collected_at>=?",
                 [&station, &date, &cutoff])?.is_none() {
                 dates.push(date);
@@ -342,21 +339,18 @@ impl DailyPerformanceStore for Store {
         from: &str,
         to: &str,
     ) -> Result<Value> {
-        let parse = |value: &str| {
-            chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
-                .map_err(|_| Error::new("invalid_date", 400))
-        };
+        let parse = |value: &str| dispatch_core::foundation::clock::date(value);
         let (first, last) = (parse(from)?, parse(to)?);
         ensure(
             first <= last
-                && (last - first).num_days() < MAX_DATES as i64
+                && i64::from((last - first).get_days()) < MAX_DATES as i64
                 && last <= today(self, dsp)?,
             "invalid_date_range",
             400,
         )?;
         // The whole range, one job.
         let dates: Vec<String> = first
-            .iter_days()
+            .series(1.day())
             .take_while(|date| *date <= last)
             .map(|date| date.to_string())
             .collect();
@@ -431,7 +425,7 @@ impl DailyPerformanceStore for Store {
         }
         Ok(DailyPerformanceSummary {
             station,
-            latest_date: (today(self, dsp)? - chrono::Duration::days(1)).to_string(),
+            latest_date: (today(self, dsp)? - 1.days()).to_string(),
             days,
         })
     }

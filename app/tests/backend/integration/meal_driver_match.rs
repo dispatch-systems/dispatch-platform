@@ -13,7 +13,7 @@ use dispatch_timecard::TimecardStore;
 use serde_json::{Value, json};
 
 /// A day in the demo period of Sep 6 to 19, 2026, within a week of its start.
-const DEMO_DAY: chrono::NaiveDate = chrono::NaiveDate::from_ymd_opt(2026, 9, 12).unwrap();
+const DEMO_DAY: jiff::civil::Date = jiff::civil::date(2026, 9, 12);
 fn actor(db: &Store) -> String {
     common::a_user(db)
 }

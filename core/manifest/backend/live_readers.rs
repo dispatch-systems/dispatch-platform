@@ -5,6 +5,7 @@
 //! (`collection::readers`) keeps one light task for each DSP that has the feature on while its
 //! window is open: it reads every interval from the window's start, hands each whole read to
 //! the feature to keep, tells it when a day starts and stops, and records each read's outcome.
+use super::settings::Days;
 use crate::{
     Result,
     collection::{browser::Pending, readers::Reading},
@@ -12,7 +13,7 @@ use crate::{
     ensure,
     manifest::{Feature, Registry},
 };
-use chrono::{NaiveTime, Weekday, WeekdaySet};
+use jiff::civil::{Time, Weekday};
 use std::{any::Any, collections::BTreeSet, time::Duration};
 
 /// What a feature reads for each DSP while its window is open, on the schedule the DSP sets.
@@ -60,21 +61,19 @@ pub type Counts = Vec<(&'static str, u64)>;
 /// they're the same; and while that window is open, every interval from its start.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Schedule {
-    days: WeekdaySet,
-    start: NaiveTime,
-    stop: NaiveTime,
+    days: Days,
+    start: Time,
+    stop: Time,
     every: Duration,
 }
 impl Schedule {
     /// From a feature's settings: the days its window opens on, its start and stop as `time`
     /// fields' values, `HH:MM`, and how often it reads. Refused unless it opens on a day at
     /// least and reads every whole number of seconds, a minute or more (`invalid_schedule`).
-    pub fn new(days: &[Weekday], start: &str, stop: &str, every: Duration) -> Result<Self> {
+    pub fn new(days: Days, start: &str, stop: &str, every: Duration) -> Result<Self> {
         let time = |text: &str| {
-            NaiveTime::parse_from_str(text, "%H:%M")
-                .map_err(|_| crate::Error::new("invalid_schedule", 400))
+            Time::strptime("%H:%M", text).map_err(|_| crate::Error::new("invalid_schedule", 400))
         };
-        let days: WeekdaySet = days.iter().copied().collect();
         ensure(
             !days.is_empty() && every >= Duration::from_secs(60) && every.subsec_nanos() == 0,
             "invalid_schedule",
@@ -91,10 +90,10 @@ impl Schedule {
     pub fn opens_on(&self, day: Weekday) -> bool {
         self.days.contains(day)
     }
-    pub fn start(&self) -> NaiveTime {
+    pub fn start(&self) -> Time {
         self.start
     }
-    pub fn stop(&self) -> NaiveTime {
+    pub fn stop(&self) -> Time {
         self.stop
     }
     /// How often it reads while its window is open.

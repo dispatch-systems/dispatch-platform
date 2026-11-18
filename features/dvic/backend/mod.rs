@@ -10,7 +10,6 @@ mod storage;
 
 pub use storage::{DvicDriver, DvicStore};
 
-use chrono::{Datelike, Duration, NaiveDate};
 use dispatch_core::{
     Error, Result,
     collection::registry::AddedStorage,
@@ -22,6 +21,8 @@ use dispatch_core::{
 use dispatch_cortex::dvic::{
     Capture, Collection, JOB_KIND, KnownReport, MAX_WEEKS, Request, hash, report_week,
 };
+use jiff::ToSpan;
+use jiff::civil::Date;
 use serde_json::{Value, json};
 
 /// The inspections it keeps.
@@ -83,11 +84,10 @@ pub fn weeks_ending(week: &str, count: usize) -> Result<Vec<String>> {
 /// published from its Monday to the Sunday after it.
 fn weeks_holding(day: &str) -> Result<[String; 2]> {
     validate::date(day)?;
-    let day =
-        NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))?;
-    let sunday = day - Duration::days(day.weekday().num_days_from_sunday().into());
+    let day = dispatch_core::foundation::clock::date(day)?;
+    let sunday = day - day.weekday().to_sunday_zero_offset().days();
     Ok([
-        report_week(sunday + Duration::days(8)),
-        report_week(sunday + Duration::days(1)),
+        report_week(sunday + 8.days()),
+        report_week(sunday + 1.days()),
     ])
 }

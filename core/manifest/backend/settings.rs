@@ -10,7 +10,7 @@ use crate::{
     manifest::{Feature, Registry},
     tenancy::roles,
 };
-use chrono::WeekdaySet;
+use jiff::civil::Weekday;
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -327,7 +327,7 @@ pub enum Kind {
     },
     /// Any of the days of the week, kept in their order from Monday, each by its short name:
     /// `mon` to `sun`.
-    Days { default: WeekdaySet },
+    Days { default: Days },
     /// A time of day, `HH:MM`.
     Time { default: &'static str },
     /// A timezone, by its IANA name.
@@ -423,8 +423,8 @@ pub const fn text(
     };
     field(id, label, kind)
 }
-/// Days of the week: `days("days", "Days", WeekdaySet::ALL)`, which reads as `Vec<Weekday>`.
-pub const fn days(id: &'static str, label: &'static str, default: WeekdaySet) -> Field {
+/// Days of the week: `days("days", "Days", Days::ALL)`, which reads as `Days`.
+pub const fn days(id: &'static str, label: &'static str, default: Days) -> Field {
     field(id, label, Kind::Days { default })
 }
 pub const fn time(id: &'static str, label: &'static str, default: &'static str) -> Field {
@@ -790,3 +790,47 @@ fn check_field(field: &Field) -> std::result::Result<(), String> {
 #[cfg(test)]
 #[path = "../tests/backend/settings.rs"]
 mod tests;
+
+/// Days of the week, as a days field keeps them: each by its short name, `mon` to `sun`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Days(u8);
+impl Days {
+    /// Every day of the week.
+    pub const ALL: Self = Self(0b111_1111);
+    /// The names a days field keeps the days by, from Monday.
+    pub const NAMES: [&'static str; 7] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+    /// These days.
+    pub const fn of(days: &[Weekday]) -> Self {
+        let (mut set, mut index) = (0, 0);
+        while index < days.len() {
+            set |= 1 << days[index].to_monday_zero_offset();
+            index += 1;
+        }
+        Self(set)
+    }
+    pub const fn contains(self, day: Weekday) -> bool {
+        self.0 & (1 << day.to_monday_zero_offset()) != 0
+    }
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+    /// The names of its days, from Monday.
+    pub fn names(self) -> impl Iterator<Item = &'static str> {
+        (Self::NAMES.into_iter().enumerate())
+            .filter(move |(place, _)| self.0 & (1 << place) != 0)
+            .map(|(_, name)| name)
+    }
+}
+impl<'de> serde::Deserialize<'de> for Days {
+    fn deserialize<D: serde::Deserializer<'de>>(from: D) -> std::result::Result<Self, D::Error> {
+        let names = Vec::<String>::deserialize(from)?;
+        (names.iter())
+            .try_fold(0, |set, name| {
+                let place = Self::NAMES.iter().position(|day| day == name)?;
+                Some(set | 1 << place)
+            })
+            .map(Self)
+            .ok_or_else(|| serde::de::Error::custom("a day by another name than mon to sun"))
+    }
+}

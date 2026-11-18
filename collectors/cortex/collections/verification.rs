@@ -12,14 +12,11 @@ pub(crate) fn request(db: &Store, dsp: &str, input: &Value) -> Result<Value> {
         400,
     )?;
     let dsp_scope = db.find_dsp(dsp)?;
-    let timezone: chrono_tz::Tz = dsp_scope
-        .timezone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
-    let today = dispatch_core::foundation::clock::today(timezone);
+    let timezone = dispatch_core::foundation::clock::zone(&dsp_scope.timezone)?;
+    let today = dispatch_core::foundation::clock::today(&timezone);
     let date = input["date"].as_str().map_or(Ok(today), |date| {
         validate::date(date)?;
-        date.parse::<chrono::NaiveDate>()
+        date.parse::<jiff::civil::Date>()
             .map_err(|_| Error::new("invalid_date", 400))
     })?;
     ensure(date <= today, "invalid_date", 400)?;

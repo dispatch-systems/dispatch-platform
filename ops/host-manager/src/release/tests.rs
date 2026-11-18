@@ -391,7 +391,7 @@ impl System for Fake {
             } else if script.contains("dispatch-backend backup") {
                 let path = self.snapshot.join("backup.json");
                 let mut manifest = io::read_json(&path)?;
-                manifest["createdAt"] = json!(chrono::DateTime::from_timestamp(self.now() as i64, 0).unwrap().to_rfc3339());
+                manifest["createdAt"] = json!(jiff::Timestamp::from_second(self.now() as i64).unwrap().to_string());
                 fs::write(path, serde_json::to_vec(&manifest)?)?;
                 json!({"destination":"/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0","files":self.copy_control.borrow()["captureFiles"].as_u64().unwrap_or(12)}).to_string()
             } else if script.contains("production-update-failure.json") {
@@ -654,7 +654,7 @@ impl Fixture {
             files.push(json!({"path":path.strip_prefix(root).unwrap().to_str().unwrap(),
                 "sha256":artifact::file_hash(&path).unwrap(),"size":path.metadata().unwrap().len()}));
         }
-        fs::write(root.join("backup.json"), json!({"format":2,"createdAt":chrono::DateTime::from_timestamp(self.system.now() as i64, 0).unwrap().to_rfc3339(),"files":files}).to_string()).unwrap();
+        fs::write(root.join("backup.json"), json!({"format":2,"createdAt":jiff::Timestamp::from_second(self.system.now() as i64).unwrap().to_string(),"files":files}).to_string()).unwrap();
     }
     fn new() -> Self {
         Self::merging(false, App::None)

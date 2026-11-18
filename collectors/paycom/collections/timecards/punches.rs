@@ -3,9 +3,12 @@
 //! time between each in and its out, and the hours entered without a punch.
 use super::EmployeeTimecardPeriod;
 use crate::codes;
-use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, TimeZone};
-use chrono_tz::Tz;
-use dispatch_core::{Error, Result, db::s, ensure};
+use dispatch_core::{Error, Result, db::s, ensure, foundation::clock};
+use jiff::{
+    Timestamp, ToSpan,
+    civil::{Date, DateTime},
+    tz::TimeZone,
+};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -15,7 +18,7 @@ fn unreadable() -> Error {
 
 /// One punch, as the timecard shows it.
 struct Stamp {
-    at: DateTime<Tz>,
+    at: Timestamp,
     kind: &'static str,
     /// Whether it clocks in.
     enters: bool,
@@ -35,7 +38,7 @@ fn kind(value: &str) -> Result<(&'static str, bool)> {
 
 /// When a punch was made: seconds since the epoch, as the API takes its dates, or a date and
 /// time, which without an offset is the clock where the DSP is.
-fn time(value: &Value, zone: Tz) -> Result<DateTime<Tz>> {
+fn time(value: &Value, zone: &TimeZone) -> Result<Timestamp> {
     let seconds = value
         .as_i64()
         .or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()));
@@ -46,18 +49,17 @@ fn time(value: &Value, zone: Tz) -> Result<DateTime<Tz>> {
             codes::API_UNREADABLE.as_str(),
             502,
         )?;
-        return DateTime::from_timestamp(seconds, 0)
-            .map(|at| at.with_timezone(&zone))
-            .ok_or_else(unreadable);
+        return Timestamp::from_second(seconds).map_err(|_| unreadable());
     }
     let text = value.as_str().ok_or_else(unreadable)?.trim();
-    if let Ok(at) = DateTime::parse_from_rfc3339(text) {
-        return Ok(at.with_timezone(&zone));
+    if let Ok(at) = text.parse() {
+        return Ok(at);
     }
     ["%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"]
         .iter()
-        .find_map(|format| NaiveDateTime::parse_from_str(text, format).ok())
-        .and_then(|local| zone.from_local_datetime(&local).earliest())
+        .find_map(|format| DateTime::strptime(format, text).ok())
+        .and_then(|local| clock::instant(zone, local))
+        .and_then(|at| Timestamp::from_millisecond(at).ok())
         .ok_or_else(unreadable)
 }
 
@@ -73,8 +75,8 @@ fn deleted(row: &Value) -> bool {
     number(&row["isdeleted"]).is_some_and(|flag| flag != 0.) || row["isdeleted"] == true
 }
 
-fn pair(entered: Option<&Stamp>, left: Option<&Stamp>) -> Value {
-    let shown = |stamp: &Stamp| stamp.at.format("%I:%M %p").to_string();
+fn pair(entered: Option<&Stamp>, left: Option<&Stamp>, zone: &TimeZone) -> Value {
+    let shown = |stamp: &Stamp| zone.to_datetime(stamp.at).strftime("%I:%M %p").to_string();
     json!({
         "in": entered.map(shown),
         "out": left.map(shown),
@@ -90,12 +92,12 @@ pub(crate) fn cards(
     rows: &[Value],
     code: &str,
     period: &EmployeeTimecardPeriod,
-    zone: Tz,
+    zone: &TimeZone,
 ) -> Result<Vec<Value>> {
     let start = period.start()?;
     let mut stamps = Vec::new();
     // Hours entered without a punch, as paid leave is, by the day they are entered on.
-    let mut entered: BTreeMap<NaiveDate, f64> = BTreeMap::new();
+    let mut entered: BTreeMap<Date, f64> = BTreeMap::new();
     for row in rows.iter().filter(|row| !deleted(row)) {
         let at = time(&row["punchtime"], zone)?;
         match number(&row["entrytype"]).ok_or_else(unreadable)? as i64 {
@@ -104,7 +106,7 @@ pub(crate) fn cards(
                 stamps.push(Stamp { at, kind, enters });
             }
             2 => {
-                *entered.entry(at.date_naive()).or_default() +=
+                *entered.entry(zone.to_datetime(at).date()).or_default() +=
                     number(&row["hours"]).ok_or_else(unreadable)?;
             }
             // Earnings and units add no time to a day.
@@ -116,12 +118,12 @@ pub(crate) fn cards(
     // A punch belongs to the day its shift began: an IN DAY's own, and what follows it until
     // its OUT DAY, so a shift that ends after midnight stays on one card. A shift never closed
     // doesn't take the next day's punches with it.
-    let mut days: BTreeMap<NaiveDate, Vec<&Stamp>> = BTreeMap::new();
-    let mut shift: Option<NaiveDate> = None;
+    let mut days: BTreeMap<Date, Vec<&Stamp>> = BTreeMap::new();
+    let mut shift: Option<Date> = None;
     for stamp in &stamps {
-        let date = stamp.at.date_naive();
+        let date = zone.to_datetime(stamp.at).date();
         let day = match shift {
-            Some(began) if stamp.kind != "IN DAY" && (date - began).num_days() <= 1 => began,
+            Some(began) if stamp.kind != "IN DAY" && (date - began).get_days() <= 1 => began,
             _ => date,
         };
         shift = (stamp.kind != "OUT DAY").then_some(day);
@@ -129,24 +131,24 @@ pub(crate) fn cards(
     }
     (0..super::PERIOD_DAYS)
         .map(|offset| {
-            let date = start + Duration::days(offset);
+            let date = start + offset.days();
             let mut punches = Vec::new();
             let mut seconds = 0;
             let mut open: Option<&Stamp> = None;
             for &stamp in days.get(&date).map_or(&[][..], Vec::as_slice) {
                 if stamp.enters {
                     if let Some(unclosed) = open.replace(stamp) {
-                        punches.push(pair(Some(unclosed), None));
+                        punches.push(pair(Some(unclosed), None, zone));
                     }
                 } else {
                     if let Some(entered) = open {
-                        seconds += (stamp.at - entered.at).num_seconds();
+                        seconds += entered.at.duration_until(stamp.at).as_secs();
                     }
-                    punches.push(pair(open.take(), Some(stamp)));
+                    punches.push(pair(open.take(), Some(stamp), zone));
                 }
             }
             if let Some(unclosed) = open {
-                punches.push(pair(Some(unclosed), None));
+                punches.push(pair(Some(unclosed), None, zone));
             }
             let missing = punches
                 .iter()

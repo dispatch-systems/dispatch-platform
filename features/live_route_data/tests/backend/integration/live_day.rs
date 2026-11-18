@@ -8,8 +8,6 @@
 //! Each day is the day Routes reckons too, pinned as the test moves to it. What Routes keeps is
 //! read as other features read it, through its contracts.
 //! A program of its own, as its registry holds the parts it names, and a program holds one.
-use chrono::{DateTime, NaiveDate, Timelike};
-use chrono_tz::Tz;
 use dispatch_core::{
     Result, State,
     collection::readers,
@@ -20,6 +18,8 @@ use dispatch_core::{
 };
 use dispatch_cortex as cortex;
 use dispatch_routes_contract as routes;
+use jiff::civil::Date;
+use jiff::tz::TimeZone;
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 use tokio::{sync::watch, task::JoinHandle, time::Instant};
@@ -58,7 +58,7 @@ struct Server {
     owner: String,
     dsp: String,
     /// Where the DSP is: where it's late morning now, so a window keeps to one day.
-    zone: Tz,
+    zone: TimeZone,
     revision: i64,
     stop: watch::Sender<bool>,
     readers: Option<JoinHandle<Result<()>>>,
@@ -78,10 +78,17 @@ impl Server {
         );
         let (root, store, dsp) = testing::bootstrapped();
         let owner = testing::platform_owner(&store);
-        let hour = DateTime::from_timestamp_millis(now()).unwrap().hour() as i32;
+        let hour = i32::from(dispatch_core::foundation::clock::local(&TimeZone::UTC, now()).hour());
         // Etc/GMT-N is N hours ahead of UTC: here it's eleven, and some minutes.
-        let zone: Tz = format!("Etc/GMT{:+}", hour - 11).parse().unwrap();
-        testing::set_dsp(&store, &dsp, "Live DSP", zone.name()).unwrap();
+        let zone =
+            dispatch_core::foundation::clock::zone(&format!("Etc/GMT{:+}", hour - 11)).unwrap();
+        testing::set_dsp(
+            &store,
+            &dsp,
+            "Live DSP",
+            zone.iana_name().unwrap_or_default(),
+        )
+        .unwrap();
         store
             .set_profile(
                 &dsp,
@@ -146,11 +153,9 @@ impl Server {
     fn at(&self, minutes: i64) -> (String, Instant) {
         let now = now();
         let minute = now - now.rem_euclid(60_000) + minutes * 60_000;
-        let local = DateTime::from_timestamp_millis(minute)
-            .unwrap()
-            .with_timezone(&self.zone);
+        let local = dispatch_core::foundation::clock::local(&self.zone, minute);
         let when = Instant::now() + Duration::from_millis((minute - now) as u64);
-        (local.format("%H:%M").to_string(), when)
+        (local.strftime("%H:%M").to_string(), when)
     }
     /// Keeps a whole read of today in live route data, as a reader before this one left it: its
     /// routes `BEFORE`, collected two hours from now, so no read before then changes it.
@@ -215,7 +220,7 @@ impl Server {
             .unwrap()
     }
     /// How the first driver's route progresses on `day` in historical route data.
-    async fn history(&self, day: NaiveDate) -> Option<String> {
+    async fn history(&self, day: Date) -> Option<String> {
         let dsp = self.dsp.clone();
         self.state
             .read(move |db| {
@@ -289,11 +294,8 @@ fn instant(at: i64) -> Instant {
 }
 
 /// Pins today, where the DSP is, as the day the readers read now: the day Routes reckons in.
-fn pin(server: &Server) -> NaiveDate {
-    let today = DateTime::from_timestamp_millis(now())
-        .unwrap()
-        .with_timezone(&server.zone)
-        .date_naive();
+fn pin(server: &Server) -> Date {
+    let today = dispatch_core::foundation::clock::local(&server.zone, now()).date();
     testing::pin_today(Some(today));
     today
 }
@@ -343,7 +345,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     let (open, close) = (open + DAY, close + DAY);
     until(open - MINUTE).await;
     let second_day = pin(&server);
-    assert_eq!(second_day, first_day.succ_opt().unwrap());
+    assert_eq!(second_day, first_day.tomorrow().unwrap());
     server.kept_before().await;
     until(open + MINUTE).await;
     assert_eq!(server.live().await.as_deref(), Some(READ));

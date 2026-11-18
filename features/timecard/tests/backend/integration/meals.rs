@@ -127,9 +127,7 @@ fn four_timestamps_multiple_meals_midnight_and_unknown_boundaries_survive_round_
     let scope = scope();
     let mut c = meals::fixture(&scope);
     let route = &mut c.itineraries[0];
-    let midnight = chrono::DateTime::parse_from_rfc3339("2026-01-11T07:50:00Z")
-        .unwrap()
-        .timestamp_millis();
+    let midnight = dispatch_core::db::millis("2026-01-11T07:50:00Z").unwrap();
     route.meals.push(Meal {
         id: "meal-2".into(),
         start: midnight,

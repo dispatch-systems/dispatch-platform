@@ -40,6 +40,18 @@ class PairingsTest {
         assertEquals("a new key", pairings.key())
     }
 
+    @Test
+    fun aPairingSaysTheLineItServesAndItsNameEachOnceAndAnOlderOneItsNameAlone() {
+        assertEquals("Dispatch", paired.serves)
+        assertEquals("Dispatch Phone · Dispatch", paired.copy(line = "Dispatch Phone").serves)
+        assertEquals("HR Line", paired.copy(phoneName = "HR Line", line = "HR Line").serves)
+        // A pairing keeps its line as it keeps the rest.
+        val line = paired.copy(line = "HR Line")
+        opened = "the key"
+        Pairings(kept, vault).save(line, "the key")
+        assertEquals(Standing.Pairing(line), Pairings(kept, vault).standing.value)
+    }
+
     private class MemoryKept : Kept {
         private val values = mutableMapOf<String, String>()
 

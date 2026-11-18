@@ -14,7 +14,7 @@ use crate::{
     foundation::{clock, observability},
     manifest::{Feature, Reads},
 };
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use serde_json::json;
 use std::{
     any::Any,
@@ -60,11 +60,11 @@ pub(super) async fn run(task: Task, mut plans: watch::Receiver<Option<Plan>>) {
         }
     };
     // What the reader holds for the day being read.
-    let mut held: Option<(NaiveDate, Box<dyn Any + Send>)> = None;
+    let mut held: Option<(Date, Box<dyn Any + Send>)> = None;
     let mut moves = MOVED.subscribe();
     loop {
         task.busy();
-        let Some(plan) = *plans.borrow_and_update() else {
+        let Some(plan) = plans.borrow_and_update().clone() else {
             return;
         };
         let Some((unstopped, ended)) = task
@@ -135,8 +135,8 @@ impl Task {
         Reading {
             state: self.state.clone(),
             dsp: self.dsp.clone(),
-            day: clock::day(plan.timezone, day.open),
-            timezone: plan.timezone,
+            day: clock::day(&plan.timezone, day.open),
+            timezone: plan.timezone.clone(),
             reader: self.reader.id(),
             feature: self.feature,
         }
@@ -256,7 +256,7 @@ impl Task {
         };
         self.busy();
         let at = now();
-        if *plans.borrow() != Some(*plan) {
+        if plans.borrow().as_ref() != Some(plan) {
             return Attempt::Late;
         }
         let read = tokio::select! {
@@ -298,7 +298,7 @@ impl Task {
     /// though its hook fails part of the way, as after it emptied what the day kept. Its hook
     /// waits its turn among the server's reads for as long as that takes, as every DSP stopping
     /// at the same time saves its day at once.
-    async fn stop(&self, plan: &Plan, date: NaiveDate) -> bool {
+    async fn stop(&self, plan: &Plan, date: Date) -> bool {
         let day = plan.day(date);
         let began = now();
         if let Err(error) = self

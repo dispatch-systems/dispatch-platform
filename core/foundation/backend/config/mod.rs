@@ -233,7 +233,7 @@ impl Config {
         let today = env::var("DISPATCH_FIXTURE_TODAY")
             .ok()
             .map(|day| {
-                chrono::NaiveDate::parse_from_str(&day, "%Y-%m-%d")
+                super::clock::date(&day)
                     .map_err(|_| crate::Error::new("invalid_fixture_today", 400))
             })
             .transpose()?;

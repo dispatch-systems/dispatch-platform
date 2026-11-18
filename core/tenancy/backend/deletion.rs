@@ -117,11 +117,7 @@ impl Store {
         let started: Vec<(String,)> = self
             .platform
             .query_as("SELECT started_at FROM dsp_deletions WHERE dsp_id=?", [dsp])?;
-        Ok(started.first().and_then(|(at,)| {
-            chrono::DateTime::parse_from_rfc3339(at)
-                .ok()
-                .map(|at| at.timestamp_millis())
-        }))
+        Ok(started.first().and_then(|(at,)| crate::db::millis(at)))
     }
     /// The DSPs whose rows are gone and whose delete isn't finished.
     fn deletions(&self) -> Result<Vec<String>> {

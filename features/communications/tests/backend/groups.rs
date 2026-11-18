@@ -707,7 +707,7 @@ async fn the_groups_to_choose_from_hold_someone_each() {
         .read(move |db| Ok(db.find_dsp(&at)?.timezone))
         .await
         .unwrap();
-    let today = clock::today(zone.parse().unwrap()).to_string();
+    let today = clock::today(&clock::zone(&zone).unwrap()).to_string();
     let wave = |hour: i64| 1_792_482_000_000 + hour * 3_600_000;
     let route = |driver: &str, at: i64| RouteDay {
         day: today.clone(),

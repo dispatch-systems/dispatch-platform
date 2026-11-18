@@ -3,7 +3,7 @@ use crate::api::{
     assessment::{AssessedClock, Lunch, PaycomDay, PunchEvent},
     types::{EmployeeTimecard, Punch, Timecard},
 };
-use chrono::TimeZone;
+use jiff::ToSpan;
 
 // Collected display strings historically used JavaScript's whitespace rules.
 fn clock_space(c: char) -> bool {
@@ -173,26 +173,19 @@ fn worked_minutes(card: &Timecard, day: &PaycomDay, timezone: &str) -> Option<i3
     if card.status != "Complete" {
         return None;
     }
-    let timezone: chrono_tz::Tz = timezone.parse().ok()?;
-    let midnight = card
-        .date
-        .parse::<chrono::NaiveDate>()
-        .ok()?
-        .and_hms_opt(0, 0, 0)?;
+    let timezone = dispatch_core::foundation::clock::zone(timezone).ok()?;
+    let midnight = card.date.parse::<jiff::civil::Date>().ok()?.at(0, 0, 0, 0);
     let mut state = WorkState::Outside;
     let mut total: i32 = 0;
     let mut previous = i64::MIN;
     let mut closed = false;
     for event in &day.events {
-        let local = midnight.checked_add_signed(chrono::Duration::minutes(i64::from(
-            event.time.as_ref()?.minute,
-        )))?;
+        let local = midnight
+            .checked_add(i64::from(event.time.as_ref()?.minute).minutes())
+            .ok()?;
         // Repeated or skipped local clocks cannot establish an unambiguous duration.
-        let minute = timezone
-            .from_local_datetime(&local)
-            .single()?
-            .timestamp()
-            .div_euclid(60);
+        let minute =
+            dispatch_core::foundation::clock::only_instant(&timezone, local)?.div_euclid(60_000);
         if minute < previous {
             return None;
         }

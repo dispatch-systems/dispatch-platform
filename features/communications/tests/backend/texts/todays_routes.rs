@@ -20,8 +20,8 @@ async fn todays_routes_lists_the_live_days_drivers_with_their_route_phone_and_te
  {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
-    let now = |h, m| at(zone, day, h, m);
+    let yesterday = day.yesterday().unwrap();
+    let now = |h, m| at(&zone, day, h, m);
     let today = day.to_string();
     support::know(
         &state,
@@ -158,7 +158,7 @@ async fn todays_routes_names_every_drivers_van_beyond_what_one_read_of_the_fleet
         Vec::new(),
         ids.iter().map(|id| van(&vin(id), id)).collect(),
     );
-    let wave = at(zone, day, 9, 0);
+    let wave = at(&zone, day, 9, 0);
     routed(
         &dsp,
         ids.iter()

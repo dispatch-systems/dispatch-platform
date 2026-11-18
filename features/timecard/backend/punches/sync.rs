@@ -1,5 +1,4 @@
 //! Single-employee Paycom requests and captures, separate from full roster snapshots.
-use chrono::Duration;
 use dispatch_core::{
     Result,
     db::{Store, s},
@@ -9,6 +8,7 @@ use dispatch_paycom::{
     self as paycom,
     timecards::{EmployeeSync, PERIOD_DAYS, validate_workforce},
 };
+use jiff::ToSpan;
 use rusqlite::params;
 use serde_json::Value;
 
@@ -44,7 +44,7 @@ pub(crate) fn publish_employee_timecard(
             && (0..PERIOD_DAYS).all(|i| {
                 records.iter().any(|card| {
                     card["employeeCode"] == scope.employee_code
-                        && card["date"] == (start + Duration::days(i)).to_string()
+                        && card["date"] == (start + i.days()).to_string()
                 })
             }),
         "timecard_identity_mismatch",

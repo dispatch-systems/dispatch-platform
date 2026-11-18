@@ -2,7 +2,7 @@
 //! outcome and time, with counts and codes only (`live_reads`), and the days each reader
 //! started and stopped there (`live_days`), which a restart reads to go on as it was.
 use crate::{Result, db::Store, manifest::Counts};
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use rusqlite::params;
 use serde_json::{Map, Value};
 
@@ -13,7 +13,7 @@ const KEPT_FOR_MS: i64 = 14 * 24 * 60 * 60 * 1000;
 pub(super) struct Read<'a> {
     pub reader: &'a str,
     pub dsp: &'a str,
-    pub day: NaiveDate,
+    pub day: Date,
     /// When it began, once its turn came.
     pub at: i64,
     pub ms: i64,
@@ -79,7 +79,7 @@ impl Store {
         Ok(())
     }
     /// The days `reader` started for the DSP and hasn't stopped, earliest first.
-    pub(super) fn unstopped_days(&self, reader: &str, dsp: &str) -> Result<Vec<NaiveDate>> {
+    pub(super) fn unstopped_days(&self, reader: &str, dsp: &str) -> Result<Vec<Date>> {
         let days: Vec<(String,)> = self.jobs.query_as(
             "SELECT day FROM live_days WHERE reader=? AND dsp_id=? AND stopped_at IS NULL \
              ORDER BY day",
@@ -92,7 +92,7 @@ impl Store {
     }
     /// The last day `reader` ended for the DSP, its stop begun or done, if one is still
     /// recorded.
-    pub(super) fn last_ended(&self, reader: &str, dsp: &str) -> Result<Option<NaiveDate>> {
+    pub(super) fn last_ended(&self, reader: &str, dsp: &str) -> Result<Option<Date>> {
         let day: Option<(Option<String>,)> = self.jobs.one_as(
             "SELECT max(day) FROM live_days WHERE reader=? AND dsp_id=? \
              AND (stopping_at IS NOT NULL OR stopped_at IS NOT NULL)",
@@ -101,7 +101,7 @@ impl Store {
         Ok(day.and_then(|(day,)| day?.parse().ok()))
     }
     /// Whether `reader` started `day` for the DSP, stopped since or not.
-    pub(super) fn day_started(&self, reader: &str, dsp: &str, day: NaiveDate) -> Result<bool> {
+    pub(super) fn day_started(&self, reader: &str, dsp: &str, day: Date) -> Result<bool> {
         Ok(self
             .jobs
             .one_as::<(i64,)>(
@@ -112,7 +112,7 @@ impl Store {
     }
     /// Records that `day` reads for the DSP: started now, unless it started already. A day
     /// whose stop began never reads again (`Plan::step`).
-    pub(super) fn keep_day(&self, reader: &str, dsp: &str, day: NaiveDate, at: i64) -> Result<()> {
+    pub(super) fn keep_day(&self, reader: &str, dsp: &str, day: Date, at: i64) -> Result<()> {
         self.jobs.exec(
             "INSERT INTO live_days(reader,dsp_id,day,started_at) VALUES (?,?,?,?) \
              ON CONFLICT(reader,dsp_id,day) DO NOTHING",
@@ -122,13 +122,7 @@ impl Store {
     }
     /// Records that `day`'s stop began for the DSP, when it first did: from then it reads no
     /// more, and its stop is asked again until it's done.
-    pub(super) fn begin_stop(
-        &self,
-        reader: &str,
-        dsp: &str,
-        day: NaiveDate,
-        at: i64,
-    ) -> Result<()> {
+    pub(super) fn begin_stop(&self, reader: &str, dsp: &str, day: Date, at: i64) -> Result<()> {
         self.jobs.exec(
             "UPDATE live_days SET stopping_at=? WHERE reader=? AND dsp_id=? AND day=? \
              AND stopping_at IS NULL",
@@ -137,7 +131,7 @@ impl Store {
         Ok(())
     }
     /// Records that `day` stopped for the DSP.
-    pub(super) fn stop_day(&self, reader: &str, dsp: &str, day: NaiveDate, at: i64) -> Result<()> {
+    pub(super) fn stop_day(&self, reader: &str, dsp: &str, day: Date, at: i64) -> Result<()> {
         self.jobs.exec(
             "UPDATE live_days SET stopped_at=? WHERE reader=? AND dsp_id=? AND day=?",
             params![at, reader, dsp, day.to_string()],

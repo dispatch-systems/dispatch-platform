@@ -88,9 +88,9 @@ async fn a_texts_picture_is_refused_once_the_members_access_ended_while_the_phon
 async fn a_drivers_work_conversation_is_found_by_the_digits_of_each_work_phone_they_texted_on() {
     let (_root, state, dsp) = support::started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
+    let yesterday = day.yesterday().unwrap();
     // Yesterday Avery had 0101, and today 0202, texting on each.
-    let (midnight, then) = (at(zone, day, 0, 0), at(zone, yesterday, 9, 0));
+    let (midnight, then) = (at(&zone, day, 0, 0), at(&zone, yesterday, 9, 0));
     let earlier = saved(yesterday, &[("A1", "2065550101")]);
     let now = phones(&[("A1", "2065550202")]);
     phoned(&state, &dsp, Some(&day.to_string()), now, vec![earlier]).await;

@@ -16,6 +16,7 @@ use dispatch_core::{
     db::{Db, Store, s},
     foundation::observability,
 };
+use jiff::ToSpan;
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::{
@@ -136,7 +137,7 @@ fn looked(store: &Store, id: &str, db: &Db, days: &mut Days) -> Result<Next> {
             Ok(Next::Look)
         }
         Progress::Idle => {
-            let before = (routes_today(store, id)? - chrono::Duration::days(KEPT_DAYS)).to_string();
+            let before = (routes_today(store, id)? - KEPT_DAYS.days()).to_string();
             let kept = serde_json::to_string(&days.kept.iter().collect::<Vec<_>>())?;
             let Some((publication,)) = db.one_as::<(String,)>(
                 "SELECT id FROM route_publications WHERE active=1 AND tasks_pruned=0 AND day<?1 \

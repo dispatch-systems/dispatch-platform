@@ -165,14 +165,22 @@ fn read_inner(
                 texts::reading::window(db, &people, numbers, dsp, line, id, anchor)?
             }
         };
-        let context = context::read(db, dsp, reference, &page.messages, numbers.as_ref(), zone)?;
-        let latest_context = context::read(db, dsp, reference, &latest, numbers.as_ref(), zone)?;
+        let context = context::read(
+            db,
+            dsp,
+            reference,
+            &page.messages,
+            numbers.as_ref(),
+            zone.as_ref(),
+        )?;
+        let latest_context =
+            context::read(db, dsp, reference, &latest, numbers.as_ref(), zone.as_ref())?;
         let origins = zone
             .map(|zone| {
                 super::origins::read(
                     &connection,
                     reference,
-                    zone,
+                    &zone,
                     &page.messages,
                     &latest,
                     &people,

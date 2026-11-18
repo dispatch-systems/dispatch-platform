@@ -24,8 +24,8 @@ use crate::{
     foundation::observability,
     manifest::{Feature, Reads, registry},
 };
-use chrono::NaiveDate;
-use chrono_tz::Tz;
+use jiff::civil::Date;
+use jiff::tz::TimeZone;
 use plan::Plan;
 use serde_json::json;
 use std::{
@@ -62,8 +62,8 @@ pub struct Reading {
     pub state: Arc<State>,
     pub dsp: String,
     /// The day its window opened on, where the DSP is: today, as the server reckons it.
-    pub day: NaiveDate,
-    pub timezone: Tz,
+    pub day: Date,
+    pub timezone: TimeZone,
     /// The reader, by its id, whose browser closes as it stops for the DSP.
     reader: &'static str,
     /// The feature reading, whose switch the browser it opens answers to.
@@ -277,9 +277,7 @@ fn plan(
     } else {
         None
     };
-    let timezone = timezone
-        .parse()
-        .map_err(|_| crate::Error::new("invalid_timezone", 400))?;
+    let timezone = crate::foundation::clock::zone(timezone)?;
     Ok(schedule.map(|schedule| Plan { schedule, timezone }))
 }
 /// How long `plan`'s reads may wait and run, in milliseconds.
@@ -296,6 +294,7 @@ fn spawn(
     reads: &Arc<Semaphore>,
     plan: Plan,
 ) -> Running {
+    let timeout = timeout(&plan);
     let (plans, receiver) = watch::channel(Some(plan));
     let progress = Arc::new(AtomicI64::new(now()));
     let task = task::Task {
@@ -309,7 +308,7 @@ fn spawn(
     let task = tasks.spawn(State::patiently(task::run(task, receiver)));
     Running {
         plans,
-        timeout: timeout(&plan),
+        timeout,
         progress,
         task,
     }
@@ -338,7 +337,7 @@ fn watchdog(
             json!({"reader":reader.id(),"dspId":key.1}),
         );
         stalled.task.abort();
-        let plan = *stalled.plans.borrow();
+        let plan = stalled.plans.borrow().clone();
         match plan {
             Some(plan) => {
                 keys.remove(&stalled.task.id());

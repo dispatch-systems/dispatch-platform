@@ -3,8 +3,10 @@
 //! `collection_schedules`, which also keeps the single time and interval the previous release
 //! reads it by.
 use crate::{Error, Result, ensure, foundation::timing};
-use chrono::{Datelike, NaiveDate, NaiveTime};
-use chrono_tz::Tz;
+use jiff::{
+    civil::{Date, Time},
+    tz::TimeZone,
+};
 use serde_json::Value;
 
 pub use crate::foundation::timing::{EVERY, EVERY_DAY, Timing, text, time};
@@ -49,13 +51,13 @@ impl Rule {
         Ok(Self { days: mask, timing })
     }
 
-    fn runs_on(&self, day: NaiveDate) -> bool {
-        self.days & (1 << day.weekday().num_days_from_monday()) != 0
+    fn runs_on(&self, day: Date) -> bool {
+        self.days & (1 << day.weekday().to_monday_zero_offset()) != 0
     }
 
     /// The first time it runs after `after` (milliseconds since the epoch) in `tz`. A local
     /// time a clock change repeats runs once, at its first; one it skips doesn't run.
-    pub fn next(&self, tz: Tz, after: i64) -> Option<i64> {
+    pub fn next(&self, tz: &TimeZone, after: i64) -> Option<i64> {
         // To a day past next week's, in case a clock change skips the one time it has.
         self.timing.next(tz, after, 15, |day| self.runs_on(day))
     }
@@ -82,16 +84,16 @@ impl Rule {
 }
 
 /// The first time any of `rules` runs after `after`, in `tz`.
-pub fn next(rules: &[Rule], tz: Tz, after: i64) -> Option<i64> {
+pub fn next(rules: &[Rule], tz: &TimeZone, after: i64) -> Option<i64> {
     rules.iter().filter_map(|rule| rule.next(tz, after)).min()
 }
 /// The next `count` times `rules` run after `after`, in `tz`, each once.
-pub fn upcoming(rules: &[Rule], tz: Tz, after: i64, count: usize) -> Vec<i64> {
+pub fn upcoming(rules: &[Rule], tz: &TimeZone, after: i64, count: usize) -> Vec<i64> {
     timing::upcoming(after, count, |from| next(rules, tz, from))
 }
 
-fn clock(at: NaiveTime) -> String {
-    at.format("%-I:%M %p").to_string()
+fn clock(at: Time) -> String {
+    at.strftime("%-I:%M %p").to_string()
 }
 fn duration(minutes: i64) -> String {
     match (minutes / 60, minutes % 60) {

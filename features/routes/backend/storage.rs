@@ -286,11 +286,7 @@ fn stored(db: &Db, row: &Value, only: Option<&str>) -> Result<Capture> {
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    let ms = |key: &str| {
-        chrono::DateTime::parse_from_rfc3339(s(row, key))
-            .map(|t| t.timestamp_millis())
-            .unwrap_or(0)
-    };
+    let ms = |key: &str| dispatch_core::db::millis(s(row, key)).unwrap_or(0);
     Ok(Capture {
         version: 1,
         collection: Collection::Routes,

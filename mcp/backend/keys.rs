@@ -103,9 +103,7 @@ fn expiry(value: Option<&str>) -> Result<Option<String>> {
     let Some(value) = value else {
         return Ok(None);
     };
-    let when = chrono::DateTime::parse_from_rfc3339(value)
-        .map_err(|_| Error::new("invalid_expiry", 400))?
-        .timestamp_millis();
+    let when = dispatch_core::db::millis(value).ok_or_else(|| Error::new("invalid_expiry", 400))?;
     ensure(
         when > now() + 60_000 && when <= now() + LONGEST,
         "invalid_expiry",
@@ -402,12 +400,13 @@ impl KeyStore for Store {
     fn agent_whoami(&self, caller: &Caller) -> Result<AgentWhoami> {
         let mut dsps = vec![];
         for dsp in &caller.dsps {
-            let zone: chrono_tz::Tz = dsp.timezone.parse().unwrap_or(chrono_tz::UTC);
+            let zone = dispatch_core::foundation::clock::zone(&dsp.timezone)
+                .unwrap_or(jiff::tz::TimeZone::UTC);
             dsps.push(AgentWhoamiDsp {
                 id: dsp.id.clone(),
                 name: dsp.name.clone(),
                 timezone: dsp.timezone.clone(),
-                today: dispatch_core::foundation::clock::today(zone).to_string(),
+                today: dispatch_core::foundation::clock::today(&zone).to_string(),
             });
         }
         Ok(AgentWhoami {

@@ -1,5 +1,6 @@
 use super::*;
 use crate::timecards::projection;
+use jiff::ToSpan;
 use serde_json::json;
 
 const COLUMNS: &[&str] = &[
@@ -21,9 +22,7 @@ const COLUMNS: &[&str] = &[
 ];
 fn period() -> Value {
     let dates = (0..14)
-        .map(|i| {
-            (NaiveDate::from_ymd_opt(2026, 9, 13).unwrap() + chrono::Duration::days(i)).to_string()
-        })
+        .map(|i| (jiff::civil::date(2026, 9, 13) + i.days()).to_string())
         .collect::<Vec<_>>();
     json!({"start":"2026-09-13","end":"2026-09-26","key":"2026-09-13_2026-09-26","dates":dates})
 }
@@ -56,8 +55,12 @@ fn punch(time: &str) -> String {
 fn page(code: &str, doctype: &str, sunday: Option<String>) -> String {
     let mut rows = String::new();
     for index in 0..14 {
-        let date = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap() + chrono::Duration::days(index);
-        let heading = format!("{} ({})", LABELS[index as usize % 7], date.format("%m/%d"));
+        let date = jiff::civil::date(2026, 9, 13) + index.days();
+        let heading = format!(
+            "{} ({})",
+            LABELS[index as usize % 7],
+            date.strftime("%m/%d")
+        );
         match (&sunday, index) {
             (Some(custom), 0) => rows.push_str(&custom.replace("HEADING", &heading)),
             _ if index % 7 == 0 => rows.push_str(&row(&[

@@ -124,6 +124,7 @@ class Relay(private val context: Context) {
             System.currentTimeMillis(),
             number,
             subscription,
+            answer.line?.name.orEmpty(),
         )
         pairings.save(paired, answer.key)
         connection.paired()

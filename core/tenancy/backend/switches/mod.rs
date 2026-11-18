@@ -167,11 +167,7 @@ impl Store {
             "SELECT changed_at FROM dsp_features WHERE dsp_id=? AND feature=? AND enabled=1",
             [dsp, id],
         )?;
-        Ok(found.and_then(|(at,)| {
-            chrono::DateTime::parse_from_rfc3339(&at)
-                .ok()
-                .map(|at| at.timestamp_millis())
-        }))
+        Ok(found.and_then(|(at,)| crate::db::millis(&at)))
     }
     /// Switches every feature on for a development or preview DSP, so its demo shows every
     /// page, but those that read a provider live (`live_readers`): nothing reads a provider for

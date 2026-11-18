@@ -63,7 +63,7 @@ pub fn build_origins(db: &Store, dsp: &str, reference: &Reference, count: usize)
     let zone = texts::zone(db, dsp).unwrap();
     // A finite fixture traversal, not a timing wait. One extra visit observes exact-chunk EOF.
     for _ in 0..=count / 256 {
-        if backfill::chunk(&connection, Transport::of(reference), reference.id(), zone).unwrap() {
+        if backfill::chunk(&connection, Transport::of(reference), reference.id(), &zone).unwrap() {
             return;
         }
     }

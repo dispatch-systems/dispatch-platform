@@ -6,6 +6,7 @@ use dispatch_core::{
     manifest::Keeper,
 };
 use dispatch_cortex as cortex;
+use jiff::ToSpan;
 use rusqlite::params;
 use std::collections::HashMap;
 
@@ -69,7 +70,7 @@ impl DvicStore for Store {
         weeks: usize,
         viewing: Option<&str>,
     ) -> Result<Value> {
-        let latest = report_week(clock::today(chrono_tz::UTC));
+        let latest = report_week(clock::today(&jiff::tz::TimeZone::UTC));
         let week = week.unwrap_or(&latest);
         weeks::parse_week(week)?;
         ensure(week <= latest.as_str(), "dvic_week_not_available", 400)?;
@@ -93,7 +94,7 @@ impl DvicStore for Store {
     /// Check the current and previous publication weeks, as a manual sync does; a schedule
     /// never reaches back for older ones.
     fn dvic_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
-        let latest = report_week(clock::today(chrono_tz::UTC));
+        let latest = report_week(clock::today(&jiff::tz::TimeZone::UTC));
         Ok(vec![(
             "dvic".into(),
             dvic_request(self, id, weeks_ending(&latest, 2)?)?,
@@ -221,7 +222,7 @@ impl DvicStore for Store {
         let db = self.dvic_db(id)?;
         let decode = |sql: &str| db.all(sql, [&station]);
         Ok(DvicStatus {
-            latest_week: report_week(clock::today(chrono_tz::UTC)),
+            latest_week: report_week(clock::today(&jiff::tz::TimeZone::UTC)),
             short_inspections: db.count(
                 "SELECT count(*) FROM dvic_inspections \
                  WHERE station=? AND short=1 AND scope_verified=1",
@@ -333,13 +334,13 @@ fn covered(db: &Db, station: &str) -> Result<Vec<DvicCoverage>> {
          ORDER BY report_date",
         [station],
     )?;
-    let mut stretches: Vec<(NaiveDate, NaiveDate)> = Vec::new();
+    let mut stretches: Vec<(Date, Date)> = Vec::new();
     for (date,) in dates {
-        let date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+        let date = dispatch_core::foundation::clock::date(&date)
             .map_err(|_| Error::new("invalid_stored_record", 500))?;
-        let (from, through) = (date - Duration::days(8), date - Duration::days(1));
+        let (from, through) = (date - 8.days(), date - 1.days());
         match stretches.last_mut() {
-            Some(last) if from <= last.1 + Duration::days(1) => last.1 = last.1.max(through),
+            Some(last) if from <= last.1 + 1.days() => last.1 = last.1.max(through),
             _ => stretches.push((from, through)),
         }
     }
@@ -360,15 +361,12 @@ pub(crate) fn bind_dvic_request(store: &Store, id: &str, weeks: Vec<String>) -> 
         "dvic_station_required",
         409,
     )?;
-    let timezone: chrono_tz::Tz = dsp
-        .timezone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
+    let timezone = dispatch_core::foundation::clock::zone(&dsp.timezone)?;
     let request = Request {
         collection: Collection::Dvic,
         station: profile.station_code,
         weeks,
-        date: clock::today(timezone).to_string(),
+        date: clock::today(&timezone).to_string(),
         timezone: dsp.timezone,
         dsp_name: dsp.name,
         dsp_abbreviation: profile.abbreviation,

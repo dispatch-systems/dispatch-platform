@@ -141,7 +141,7 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
         let zone = texts::zone(&db, &dsp).unwrap();
         // Crash/restart-equivalent: a committed chunk retains its exact native cursor; source
         // unaccounted topology mutation forces a fresh candidate, never partial readiness.
-        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        assert!(!backfill::chunk(&connection, transport, reference.id(), &zone).unwrap());
         let old_generation: (String,) = connection
             .one_as(
                 "SELECT generation FROM communications_origin_builds \
@@ -166,7 +166,7 @@ async fn clipped_origins_use_stored_run_first_names_and_prior_run_first_for_both
                 )
                 .unwrap(),
         };
-        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        assert!(!backfill::chunk(&connection, transport, reference.id(), &zone).unwrap());
         let restarted: (String,) = connection
             .one_as(
                 "SELECT generation FROM communications_origin_builds \
@@ -302,7 +302,7 @@ async fn candidate_progress_requires_audited_suffix_and_never_acknowledges_an_un
     let zone = texts::zone(&db, &dsp).unwrap();
     for reference in [&slack, &text] {
         let transport = Transport::of(reference);
-        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        assert!(!backfill::chunk(&connection, transport, reference.id(), &zone).unwrap());
         let before = candidate_checkpoint(&connection, reference);
         place_for_candidate(&db, &dsp, reference, "1700000000.100001", AT + 1);
         let appended = candidate_checkpoint(&connection, reference);
@@ -329,7 +329,7 @@ async fn candidate_progress_requires_audited_suffix_and_never_acknowledges_an_un
             )
         );
         assert!(!ready(&db, &state, &dsp, reference));
-        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        assert!(!backfill::chunk(&connection, transport, reference.id(), &zone).unwrap());
         let restarted = candidate_checkpoint(&connection, reference);
         assert_ne!(restarted.0, late.0);
         assert_eq!(restarted.1, late.3);
@@ -356,7 +356,7 @@ async fn candidate_progress_requires_audited_suffix_and_never_acknowledges_an_un
                 restarted.3 + 2
             )
         );
-        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        assert!(!backfill::chunk(&connection, transport, reference.id(), &zone).unwrap());
         let rebuilt = candidate_checkpoint(&connection, reference);
         assert_ne!(rebuilt.0, gap.0);
 
@@ -379,7 +379,7 @@ async fn candidate_progress_requires_audited_suffix_and_never_acknowledges_an_un
             invalid,
             (rebuilt.0.clone(), rebuilt.1, "{".into(), rebuilt.3 + 1)
         );
-        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        assert!(!backfill::chunk(&connection, transport, reference.id(), &zone).unwrap());
 
         let current = candidate_checkpoint(&connection, reference);
         connection.exec(
@@ -392,7 +392,7 @@ async fn candidate_progress_requires_audited_suffix_and_never_acknowledges_an_un
             unsupported,
             (current.0, current.1, current.2, current.3 + 1)
         );
-        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        assert!(!backfill::chunk(&connection, transport, reference.id(), &zone).unwrap());
         // An additional trigger write inside a legitimate placement is still unaccounted.
         let counted = candidate_checkpoint(&connection, reference);
         let trigger = match reference {
@@ -424,7 +424,7 @@ async fn candidate_progress_requires_audited_suffix_and_never_acknowledges_an_un
             candidate_checkpoint(&connection, reference),
             (counted.0, counted.1, counted.2, counted.3 + 2)
         );
-        assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        assert!(!backfill::chunk(&connection, transport, reference.id(), &zone).unwrap());
 
         let sql = match reference {
             Reference::Slack(_) => {
@@ -794,11 +794,7 @@ async fn exact_pause_threshold_and_recurring_slack_date_segments_keep_true_origi
     let name = db.find_dsp(&dsp).unwrap().name;
     db.keep_dsp_profile(&dsp, &name, "UTC", None, None).unwrap();
     let connection = db.dsp(&dsp).unwrap();
-    let at = |value: &str| {
-        chrono::DateTime::parse_from_rfc3339(value)
-            .unwrap()
-            .timestamp_millis()
-    };
+    let at = |value: &str| dispatch_core::db::millis(value).unwrap();
     connection.exec("UPDATE communications_messages SET direction=CASE WHEN ts>='1700000000.000100' \
         AND ts<'1700000000.000200' THEN 'in' ELSE 'out' END,sent_by=CASE WHEN ts>='1700000000.000100' \
         AND ts<'1700000000.000200' THEN NULL ELSE 'user_1' END,sender_name=CASE \
@@ -867,7 +863,7 @@ async fn origin_restarts_drain_obsolete_generations_without_deleting_source_hist
         );
         // The earlier transport's real upkeep can have published the other transport's
         // one-boundary generation. Finish one bounded ready visit before the restart baseline.
-        assert!(backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+        assert!(backfill::chunk(&connection, transport, reference.id(), &zone).unwrap());
         let source_rows = connection
             .all(
                 &format!("SELECT id,at,{body} FROM {source} WHERE conversation_id=? ORDER BY id"),
@@ -890,7 +886,7 @@ async fn origin_restarts_drain_obsolete_generations_without_deleting_source_hist
                     params![AT + (attempt % 2) + 1, reference.id()],
                 )
                 .unwrap();
-            assert!(!backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+            assert!(!backfill::chunk(&connection, transport, reference.id(), &zone).unwrap());
             assert!(
                 count() <= 701 + 256,
                 "restarts must drain abandoned candidates as fast as they create boundaries"
@@ -917,7 +913,7 @@ async fn origin_restarts_drain_obsolete_generations_without_deleting_source_hist
         assert!(count() <= 1402);
         for _ in 0..4 {
             let before = count();
-            assert!(backfill::chunk(&connection, transport, reference.id(), zone).unwrap());
+            assert!(backfill::chunk(&connection, transport, reference.id(), &zone).unwrap());
             let after = count();
             assert!((0..=256).contains(&(before - after)));
         }

@@ -2,8 +2,6 @@
 //! first day the expiry after the save keeps.
 use super::*;
 use crate::backend::tests::publish;
-use chrono::TimeZone;
-use chrono_tz::America::Chicago;
 use dispatch_core::testing;
 use dispatch_cortex::routes::Mode;
 use serde_json::json;
@@ -25,8 +23,12 @@ async fn a_window_saved_in_the_hour_before_midnight_names_the_day_the_expiry_aft
     publish(&state, &db, &dsp, "2026-09-25", Mode::Final).await;
     let window = json!({"days": 30});
     let saved_at = |hour, minute| {
-        let at = Chicago.with_ymd_and_hms(2026, 10, 25, hour, minute, 0);
-        deleted(&db, &dsp, &window, at.unwrap().timestamp_millis()).unwrap()
+        let chicago = dispatch_core::foundation::clock::zone("America/Chicago").unwrap();
+        let at = dispatch_core::foundation::clock::instant(
+            &chicago,
+            jiff::civil::datetime(2026, 10, 25, hour, minute, 0, 0),
+        );
+        deleted(&db, &dsp, &window, at.unwrap()).unwrap()
     };
     // Saved at 22:58, the expiry after it runs by 23:59 on Oct 25 and keeps Sep 25.
     assert_eq!(saved_at(22, 58), None);

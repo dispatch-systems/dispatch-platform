@@ -33,8 +33,7 @@ ts = ["dep:ts-rs", "dispatch-core/ts"]
 dispatch-core = { path = "../core" }
 axum = { workspace = true }
 base64 = { workspace = true }
-chrono = { workspace = true }
-chrono-tz = { workspace = true }
+jiff = { workspace = true }
 reqwest = { workspace = true }
 rmcp = { workspace = true }
 rusqlite = { workspace = true }

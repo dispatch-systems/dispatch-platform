@@ -23,8 +23,12 @@ tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net",
 aes-gcm = "0.11"
 argon2 = "0.6"
 base64 = "0.23"
-chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = "0.10"
+# Dates, times and timezones, with the timezone rules built in (`tzdb-bundle-always`) and the
+# machine's own never read: every build keeps the same rules, and a newer edition arrives as
+# an update to `jiff-tzdb`.
+jiff = { version = "1", default-features = false, features = ["std", "tz-fat", "tzdb-bundle-always", "perf-inline"] }
+# The rules jiff builds in, named for their edition, as `2026f`.
+jiff-tzdb = "1"
 flate2 = "1"
 fs2 = "0.4"
 getrandom = "0.4"

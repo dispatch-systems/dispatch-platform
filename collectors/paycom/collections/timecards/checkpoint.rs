@@ -10,6 +10,7 @@ use dispatch_core::{
     ensure,
     foundation::crypto,
 };
+use jiff::ToSpan;
 use rusqlite::params;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -249,16 +250,15 @@ impl Checkpoint {
 }
 fn validate_page(employee: &Value, period: &Value, records: &[Value]) -> Result<()> {
     ensure(records.len() == 14, "invalid_checkpoint", 502)?;
-    let start = chrono::NaiveDate::parse_from_str(s(period, "start"), "%Y-%m-%d")
+    let start = dispatch_core::foundation::clock::date(s(period, "start"))
         .map_err(|_| dispatch_core::Error::new("invalid_checkpoint", 502))?;
     for (index, record) in records.iter().enumerate() {
         ensure(
             record["employeeCode"] == employee["code"]
                 && s(record, "date")
                     == start
-                        .checked_add_signed(chrono::Duration::days(index as i64))
-                        .ok_or_else(|| dispatch_core::Error::new("invalid_checkpoint", 502))?
-                        .format("%Y-%m-%d")
+                        .checked_add((index as i64).days())
+                        .map_err(|_| dispatch_core::Error::new("invalid_checkpoint", 502))?
                         .to_string(),
             "invalid_checkpoint",
             502,

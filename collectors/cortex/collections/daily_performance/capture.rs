@@ -5,7 +5,7 @@ use crate::{
     discovery::{CollectionRequest, Discovery, Scope},
     performance::{DatasetCapture, MAX_ROWS, names_only},
 };
-use dispatch_core::{Error, Result, db::now, ensure, foundation::validate::token};
+use dispatch_core::{Result, db::now, ensure, foundation::validate::token};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 pub const JOB_KIND: &str = "cortex.daily_performance.collect";
@@ -60,8 +60,7 @@ impl Request {
         )?;
         let mut previous = None;
         for text in &self.dates {
-            let date = chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
-                .map_err(|_| Error::new("invalid_date", 400))?;
+            let date = dispatch_core::foundation::clock::date(text)?;
             ensure(&date.to_string() == text, "invalid_date", 400)?;
             ensure(previous < Some(date), "invalid_date_range", 400)?;
             previous = Some(date);

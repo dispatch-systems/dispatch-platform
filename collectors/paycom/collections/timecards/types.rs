@@ -1,12 +1,13 @@
 //! What a Paycom timecard collection is asked for: a pay period, or one employee's.
 use crate::fixtures;
-use chrono::{Duration, NaiveDate};
 use dispatch_core::{
     Error, Result,
     db::{FromRow, Row},
     ensure,
     foundation::validate as v,
 };
+use jiff::ToSpan;
+use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -30,32 +31,32 @@ impl FromRow for EmployeeTimecardPeriod {
 }
 
 impl EmployeeTimecardPeriod {
-    pub fn start(&self) -> Result<NaiveDate> {
+    pub fn start(&self) -> Result<Date> {
         v::date(&self.from)?;
         v::date(&self.to)?;
-        let start: NaiveDate = self
+        let start: Date = self
             .from
             .parse()
             .map_err(|_| Error::new("invalid_period", 400))?;
         ensure(
-            (start + Duration::days(PERIOD_DAYS - 1)).to_string() == self.to,
+            (start + (PERIOD_DAYS - 1).days()).to_string() == self.to,
             "invalid_period",
             400,
         )?;
         Ok(start)
     }
     pub fn shift(&self, periods: i64) -> Result<Self> {
-        let start = self.start()? + Duration::days(periods * PERIOD_DAYS);
+        let start = self.start()? + (periods * PERIOD_DAYS).days();
         Ok(Self {
             from: start.to_string(),
-            to: (start + Duration::days(PERIOD_DAYS - 1)).to_string(),
+            to: (start + (PERIOD_DAYS - 1).days()).to_string(),
         })
     }
     pub(crate) fn provider_period(&self) -> Result<Value> {
         let start = self.start()?;
         Ok(
             json!({"start":self.from,"end":self.to,"key":format!("{}_{}",self.from,self.to),
-            "dates":(0..PERIOD_DAYS).map(|i|(start+Duration::days(i)).to_string()).collect::<Vec<_>>()}),
+            "dates":(0..PERIOD_DAYS).map(|i|(start+i.days()).to_string()).collect::<Vec<_>>()}),
         )
     }
 }
@@ -84,7 +85,7 @@ impl PeriodSync {
             to: self.to.clone(),
         }
     }
-    pub fn date(&self, timezone: &str) -> Result<NaiveDate> {
+    pub fn date(&self, timezone: &str) -> Result<Date> {
         ensure(self.all_employees, "invalid_period", 400)?;
         self.period().start()?;
         super::collection_date(&json!({"date":self.from}), timezone)?
@@ -109,13 +110,11 @@ impl PeriodSync {
     }
     pub fn fixture(&self, timezone: &str) -> Result<Value> {
         let start = self.date(timezone)?;
-        let zone: chrono_tz::Tz = timezone
-            .parse()
-            .map_err(|_| Error::new("invalid_timezone", 400))?;
-        let today = dispatch_core::foundation::clock::today(zone);
+        let zone = dispatch_core::foundation::clock::zone(timezone)?;
+        let today = dispatch_core::foundation::clock::today(&zone);
         let mut data = fixtures::fixture_date(
             timezone,
-            Some((start + Duration::days(PERIOD_DAYS - 1)).min(today)),
+            Some((start + (PERIOD_DAYS - 1).days()).min(today)),
         )?;
         ensure(
             data["from"] == self.from && data["to"] == self.to,
@@ -130,7 +129,7 @@ impl PeriodSync {
             .flat_map(|employee| {
                 (0..PERIOD_DAYS)
                     .map(|i| {
-                        let date = (start + Duration::days(i)).to_string();
+                        let date = (start + i.days()).to_string();
                         cards
                             .iter()
                             .find(|card| {
@@ -181,11 +180,9 @@ impl EmployeeSync {
         }
     }
     pub fn fixture(&self, timezone: &str) -> Result<Value> {
-        let zone: chrono_tz::Tz = timezone
-            .parse()
-            .map_err(|_| Error::new("invalid_timezone", 400))?;
-        let today = dispatch_core::foundation::clock::today(zone);
-        let end = self.period().start()? + Duration::days(PERIOD_DAYS - 1);
+        let zone = dispatch_core::foundation::clock::zone(timezone)?;
+        let today = dispatch_core::foundation::clock::today(&zone);
+        let end = self.period().start()? + (PERIOD_DAYS - 1).days();
         let mut data = fixtures::fixture_date(timezone, Some(end.min(today)))?;
         data["employees"]
             .as_array_mut()
@@ -200,7 +197,7 @@ impl EmployeeSync {
         let start = self.period().start()?;
         let records = (0..PERIOD_DAYS)
             .map(|i| {
-                let date = (start + Duration::days(i)).to_string();
+                let date = (start + i.days()).to_string();
                 cards
                     .iter()
                     .find(|card| card["employeeCode"] == self.employee_code && card["date"] == date)

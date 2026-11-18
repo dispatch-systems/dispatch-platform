@@ -25,6 +25,7 @@ use dispatch_driver_match::DriverMatchStore;
 use dispatch_routes::RoutesStore;
 use dispatch_routes_contract::RouteDataChanged;
 use dispatch_timecard::TimecardStore;
+use jiff::ToSpan;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 use support::{Call, Server, Who};
@@ -407,9 +408,8 @@ async fn fallback_refusal_and_errors_keep_existing_coherence() {
             })
             .await
             .unwrap();
-        let shifted = (chrono::NaiveDate::parse_from_str(&day, "%Y-%m-%d").unwrap()
-            + chrono::Duration::days(offset))
-        .to_string();
+        let shifted =
+            (dispatch_core::foundation::clock::date(&day).unwrap() + offset.days()).to_string();
         assert_eq!(
             (first, last),
             if offset > 0 {
@@ -713,10 +713,10 @@ async fn cached_questions_and_decisions_refresh_while_unchanged_live_inputs_reus
 async fn historical_workday_membership_remains_a_broad_matching_input() {
     let (server, a, _b, who, read) = ready().await;
     let state = &server.state;
-    let today = chrono::NaiveDate::parse_from_str(&read.scope.date, "%Y-%m-%d").unwrap();
+    let today = dispatch_core::foundation::clock::date(&read.scope.date).unwrap();
     // Two real payroll publications cover both days even across a pay-period boundary.
     for back in [2, 1] {
-        let (at, date) = (a.clone(), today - chrono::Duration::days(back));
+        let (at, date) = (a.clone(), today - back.days());
         state
             .run_scoped(a.clone(), DataDomain::new("paycom"), move |db| {
                 let mut roster = dispatch_paycom::fixtures::fixture_date("UTC", Some(date))?;
@@ -734,7 +734,7 @@ async fn historical_workday_membership_remains_a_broad_matching_input() {
     }
     let mut second_day = None;
     for back in [2, 1] {
-        let date = (today - chrono::Duration::days(back)).to_string();
+        let date = (today - back.days()).to_string();
         let request = routes::Request::parse(&json!({"collection":"routes","mode":"final","date":date,
             "station":"TST1","timezone":"UTC","dspName":"Directory Proof","dspAbbreviation":"PROOF"}))
             .unwrap().unwrap();

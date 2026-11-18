@@ -1,6 +1,8 @@
 use super::*;
-use chrono_tz::America::Chicago;
 
+fn chicago() -> TimeZone {
+    clock::zone("America/Chicago").unwrap()
+}
 fn period() -> EmployeeTimecardPeriod {
     EmployeeTimecardPeriod {
         from: "2026-09-06".into(),
@@ -9,12 +11,9 @@ fn period() -> EmployeeTimecardPeriod {
 }
 /// A punch at a Chicago clock time, as the API sends one: in seconds since the epoch.
 fn punch(date: &str, clock: &str, kind: &str) -> Value {
-    let at = Chicago
-        .from_local_datetime(
-            &NaiveDateTime::parse_from_str(&format!("{date} {clock}"), "%Y-%m-%d %H:%M").unwrap(),
-        )
-        .unwrap();
-    json!({"entrytype":"1","punchtime":at.timestamp().to_string(),"punchtype":kind,"isdeleted":0})
+    let local = format!("{date}T{clock}").parse().unwrap();
+    let at = clock::instant(&chicago(), local).unwrap() / 1000;
+    json!({"entrytype":"1","punchtime":at.to_string(),"punchtype":kind,"isdeleted":0})
 }
 fn day<'a>(cards: &'a [Value], date: &str) -> &'a Value {
     cards.iter().find(|card| card["date"] == date).unwrap()
@@ -59,7 +58,7 @@ fn punches_become_a_periods_cards_paired_on_the_day_their_shift_began() {
         punch("2026-09-05", "22:00", "ID"),
         punch("2026-09-06", "02:00", "OD"),
     ];
-    let cards = cards(&rows, "A0B1", &period(), Chicago).unwrap();
+    let cards = cards(&rows, "A0B1", &period(), &chicago()).unwrap();
     assert_eq!(cards.len(), 14);
     assert!(cards.iter().all(|card| card["employeeCode"] == "A0B1"));
     let text = |value: &str| json!(value);
@@ -119,7 +118,32 @@ fn a_punch_it_cannot_place_fails_the_read_rather_than_becoming_a_wrong_card() {
         json!({"entrytype":1,"punchtime":"yesterday","punchtype":"ID"}),
         json!({"punchtime":"2026-09-07 08:00:00","punchtype":"ID"}),
     ] {
-        let refused = cards(std::slice::from_ref(&row), "A0B1", &period(), Chicago).unwrap_err();
+        let refused = cards(std::slice::from_ref(&row), "A0B1", &period(), &chicago()).unwrap_err();
         assert!(refused.is(codes::API_UNREADABLE), "{row}");
     }
+}
+
+#[test]
+fn a_punch_sent_as_a_clock_time_is_the_first_a_clock_change_repeats_and_none_it_skips() {
+    let sent = |at: &str, kind: &str| json!({"entrytype":1,"punchtime":at,"punchtype":kind});
+    // Clocks went back at 2:00 AM on November 1, so 1:30 AM came twice: the punch is the first,
+    // an hour after 12:30 AM.
+    let autumn = EmployeeTimecardPeriod {
+        from: "2026-11-01".into(),
+        to: "2026-11-14".into(),
+    };
+    let rows = [
+        sent("2026-11-01 00:30:00", "ID"),
+        sent("2026-11-01 01:30:00", "OD"),
+    ];
+    let read = cards(&rows, "A0B1", &autumn, &chicago()).unwrap();
+    assert_eq!(day(&read, "2026-11-01")["hours"], 1.0);
+    // They went forward at 2:00 AM on March 8, so no clock showed 2:30 AM.
+    let spring = EmployeeTimecardPeriod {
+        from: "2026-03-08".into(),
+        to: "2026-03-21".into(),
+    };
+    let skipped = [sent("2026-03-08 02:30:00", "ID")];
+    let refused = cards(&skipped, "A0B1", &spring, &chicago()).unwrap_err();
+    assert!(refused.is(codes::API_UNREADABLE));
 }

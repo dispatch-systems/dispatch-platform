@@ -33,8 +33,6 @@ use crate::backend::{
     texts::{model::TextConversation, storage::TextStore},
 };
 use crate::integrations::messages::incoming;
-use chrono::{NaiveDate, TimeZone};
-use chrono_tz::Tz;
 use dispatch_core::{
     State,
     accounts::{Context, SessionLifetime},
@@ -54,6 +52,8 @@ use dispatch_core::{
 use dispatch_routes_contract::{DayPhones, DriverPhone, RouteDataChanged, RouteDay};
 use dispatch_slack::{kit::Bot, testing as slack};
 use dispatch_vans_contract::Van;
+use jiff::civil::Date;
+use jiff::tz::TimeZone;
 use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -137,30 +137,32 @@ pub fn files_kept(db: &Store, dsp: &str) -> PathBuf {
     db::private_dir(&owner.join("files")).unwrap()
 }
 /// The DSP's own timezone, and its day today.
-pub async fn today(state: &Arc<State>, dsp: &str) -> (Tz, NaiveDate) {
+pub async fn today(state: &Arc<State>, dsp: &str) -> (TimeZone, Date) {
     let dsp = dsp.to_owned();
-    let zone: Tz = state
-        .read(move |db| Ok(db.find_dsp(&dsp)?.timezone))
+    let zone = state
+        .read(move |db| clock::zone(&db.find_dsp(&dsp)?.timezone))
         .await
-        .unwrap()
-        .parse()
         .unwrap();
-    (zone, clock::today(zone))
+    let day = clock::today(&zone);
+    (zone, day)
 }
 /// `hour`:`minute` on `day` in `zone`, in milliseconds.
-pub fn at(zone: Tz, day: NaiveDate, hour: u32, minute: u32) -> i64 {
-    zone.from_local_datetime(&day.and_hms_opt(hour, minute, 0).unwrap())
-        .earliest()
-        .unwrap()
-        .timestamp_millis()
+pub fn at(zone: &TimeZone, day: Date, hour: i8, minute: i8) -> i64 {
+    clock::instant(zone, day.at(hour, minute, 0, 0)).unwrap()
 }
 /// Moves the DSP to `zone`, as its owner might on Settings.
-pub async fn moved(state: &Arc<State>, dsp: &str, zone: Tz) {
-    let dsp = dsp.to_owned();
+pub async fn moved(state: &Arc<State>, dsp: &str, zone: &TimeZone) {
+    let (dsp, zone) = (dsp.to_owned(), zone.clone());
     state
         .run(move |db| {
             let name = db.find_dsp(&dsp)?.name;
-            db.keep_dsp_profile(&dsp, &name, zone.name(), None, None)
+            db.keep_dsp_profile(
+                &dsp,
+                &name,
+                zone.iana_name().unwrap_or_default(),
+                None,
+                None,
+            )
         })
         .await
         .unwrap();

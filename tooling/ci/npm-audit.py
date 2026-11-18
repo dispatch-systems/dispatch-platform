@@ -13,15 +13,7 @@ DENIED = {"high", "critical"}
 
 # Advisories the lockfile may hold, each on one exact version, with why it is safe and when it
 # goes.
-PICOMATCH = (
-    "picomatch has no fixed release. The advisory is a slow match of a crafted glob; picomatch "
-    "is here only under vite and typescript-eslint, which build and lint on a developer's "
-    "machine and in CI with the globs this repository's own configuration gives them. Nothing "
-    "served matches a pattern a request brings. Goes once picomatch releases a fix."
-)
-ALLOWED_ADVISORIES = {
-    ("GHSA-fc5q-39xc-vjpf", "picomatch", "4.0.7"): PICOMATCH,
-}
+ALLOWED_ADVISORIES = {}
 
 
 def problems(report, versions, advisories=ALLOWED_ADVISORIES):

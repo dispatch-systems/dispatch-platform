@@ -56,10 +56,9 @@ pub async fn download(state: &Arc<State>, vault: &Vault, dsp: &str, id: &str) ->
                     .one("SELECT * FROM dsps WHERE id=?", [&dsp])?
                     .ok_or_else(|| Error::new("dsp_not_found", 404))?;
                 let code = Some(s(&row, "code")).filter(|code| !code.is_empty());
-                let when = chrono::DateTime::from_timestamp_millis(taken)
-                    .ok_or_else(|| Error::new("backup_not_found", 404))?
-                    .with_timezone(&tz)
-                    .format("%Y-%m-%d-%H%M");
+                let taken = jiff::Timestamp::from_millisecond(taken)
+                    .map_err(|_| Error::new("backup_not_found", 404))?;
+                let when = tz.to_datetime(taken).strftime("%Y-%m-%d-%H%M");
                 Ok((format!("{}-backup-{when}.zip", code.unwrap_or(&dsp)), files))
             })
             .await?

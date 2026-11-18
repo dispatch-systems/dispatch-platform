@@ -68,8 +68,8 @@ async fn a_driver_picked_for_a_work_phone_nobody_has_keeps_its_texts_of_today_un
  {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
-    let now = |h, m| at(zone, day, h, m);
+    let yesterday = day.yesterday().unwrap();
+    let now = |h, m| at(&zone, day, h, m);
     let today = day.to_string();
     // Today Avery drives CX14 and Blake has 0102; 0103 was a work phone yesterday, nobody's
     // today.
@@ -154,24 +154,24 @@ async fn a_driver_picked_for_a_work_phone_is_answered_at_it_rather_than_their_ow
             "CX14",
             "1FTVAN214",
             168,
-            at(zone, day, 9, 20),
+            at(&zone, day, 9, 20),
         )],
     );
     let avery = phones(&[("A1", "2065550101")]);
-    let earlier = vec![saved(day.pred_opt().unwrap(), &[("C1", "2065550103")])];
+    let earlier = vec![saved(day.yesterday().unwrap(), &[("C1", "2065550103")])];
     phoned(&state, &dsp, Some(&today), avery, earlier).await;
     let asked = texted(
         &state,
         &dsp,
         "+12065550103",
         "This is Avery, my phone died",
-        at(zone, day, 9, 0),
+        at(&zone, day, 9, 0),
     )
     .await;
     let phone = filed(&state, &dsp, &asked).await;
 
     // Picked for it, Avery is answered at 0103, where they asked from.
-    let avery = picked(&state, &dsp, &phone.id, "A1", at(zone, day, 10, 0))
+    let avery = picked(&state, &dsp, &phone.id, "A1", at(&zone, day, 10, 0))
         .await
         .unwrap();
     let c = member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
@@ -185,7 +185,7 @@ async fn a_driver_picked_for_a_work_phone_is_answered_at_it_rather_than_their_ow
 async fn a_driver_picked_for_more_than_one_work_phone_is_answered_at_the_one_picked_last() {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let now = |h, m| at(zone, day, h, m);
+    let now = |h, m| at(&zone, day, h, m);
     let today = day.to_string();
     // Avery and Blake drive; 0102, 0103 and 0104 were work phones yesterday, nobody's today, and
     // each texts.
@@ -196,7 +196,7 @@ async fn a_driver_picked_for_more_than_one_work_phone_is_answered_at_the_one_pic
             route(&today, "B1", "CX09", "1FTVAN207", 159, now(9, 40)),
         ],
     );
-    let yesterday = day.pred_opt().unwrap();
+    let yesterday = day.yesterday().unwrap();
     let earlier = vec![saved(
         yesterday,
         &[
@@ -238,7 +238,7 @@ async fn a_driver_picked_for_more_than_one_work_phone_is_answered_at_the_one_pic
 async fn a_work_phone_two_drivers_have_is_its_own_until_one_is_picked_for_it() {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let now = |h, m| at(zone, day, h, m);
+    let now = |h, m| at(&zone, day, h, m);
     let today = day.to_string();
     // Avery's and Blake's records both show 0102 as their latest: it's no one driver's.
     routed(

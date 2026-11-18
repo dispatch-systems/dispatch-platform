@@ -20,8 +20,7 @@ ts = ["dep:ts-rs"]
 # Core's parts only: a collector names no feature.
 [dependencies]
 dispatch-core = { path = "../../core" }
-chrono = { workspace = true }
-chrono-tz = { workspace = true }
+jiff = { workspace = true }
 ego-tree = { workspace = true }
 futures-util = { workspace = true }
 getrandom = { workspace = true }

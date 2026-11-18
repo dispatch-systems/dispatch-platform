@@ -8,7 +8,6 @@ use crate::backend::{
     staging::stage_capture,
 };
 use crate::testing;
-use chrono::NaiveDate;
 use dispatch_core::{
     State,
     db::{Store, s},
@@ -227,7 +226,7 @@ fn requests_are_recognized_and_carry_a_scope_once_resolved() {
 }
 #[test]
 fn days_follow_the_mode() {
-    let today = NaiveDate::from_ymd_opt(2026, 9, 26).unwrap();
+    let today = jiff::civil::date(2026, 9, 26);
     assert_eq!(default_day(Mode::Final, today), "2026-09-25");
     assert_eq!(default_day(Mode::Snapshot, today), "2026-09-26");
     assert!(day_allowed(Mode::Final, "2026-09-25", today).is_ok());

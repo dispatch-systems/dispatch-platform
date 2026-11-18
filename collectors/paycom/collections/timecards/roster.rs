@@ -1,13 +1,14 @@
 //! Captured roster requests, complete employee validation and HTTP/browser selection.
 use super::{collect::fallback, validate_workforce};
 use crate::connection::{Driver, SEARCH};
-use chrono::{Datelike, NaiveDate};
 use dispatch_core::{
     Error, Result,
     collection::browser::http::Http,
     db::{self, s},
     ensure,
 };
+use jiff::ToSpan;
+use jiff::civil::Date;
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, time::Duration};
 use tokio::time::{Instant, sleep};
@@ -84,13 +85,13 @@ fn codes(value: &Value) -> Result<BTreeSet<String>> {
     }
     Ok(codes)
 }
-fn date(value: &str) -> Result<NaiveDate> {
-    let parsed = NaiveDate::parse_from_str(value, "%Y-%m-%d")
+fn date(value: &str) -> Result<Date> {
+    let parsed = dispatch_core::foundation::clock::date(value)
         .map_err(|_| Error::new("invalid_period", 409))?;
     ensure(parsed.to_string() == value, "invalid_period", 409)?;
     Ok(parsed)
 }
-fn selected_body(body: &Value, today: NaiveDate) -> Result<(Value, Value, BTreeSet<String>)> {
+fn selected_body(body: &Value, today: Date) -> Result<(Value, Value, BTreeSet<String>)> {
     let object = body
         .as_object()
         .ok_or_else(|| Error::new("roster_not_complete", 409))?;
@@ -110,18 +111,18 @@ fn selected_body(body: &Value, today: NaiveDate) -> Result<(Value, Value, BTreeS
     let start = date(s(body, "startDate"))?;
     let end = date(s(body, "endDate"))?;
     ensure(
-        start.weekday() == chrono::Weekday::Sun
-            && end.weekday() == chrono::Weekday::Sat
-            && (end - start).num_days() == 13,
+        start.weekday() == jiff::civil::Weekday::Sunday
+            && end.weekday() == jiff::civil::Weekday::Saturday
+            && i64::from((end - start).get_days()) == 13,
         "invalid_period",
         409,
     )?;
-    let offset = (today - start).num_days().div_euclid(14) * 14;
+    let offset = i64::from((today - start).get_days()).div_euclid(14) * 14;
     let start = start
-        .checked_add_signed(chrono::Duration::days(offset))
-        .ok_or_else(|| Error::new("invalid_period", 409))?;
+        .checked_add(offset.days())
+        .map_err(|_| Error::new("invalid_period", 409))?;
     let dates = (0..14)
-        .map(|i| (start + chrono::Duration::days(i)).to_string())
+        .map(|i| (start + i.days()).to_string())
         .collect::<Vec<_>>();
     let period = json!({"start":dates[0],"end":dates[13],"key":format!("{}_{}",dates[0],dates[13]),"dates":dates});
     let mut selected = body.clone();
@@ -238,7 +239,7 @@ impl Driver {
     pub(crate) async fn roster(
         &mut self,
         timezone: &str,
-        selected_date: Option<NaiveDate>,
+        selected_date: Option<Date>,
         http: bool,
     ) -> Result<Roster> {
         self.new_page().await?;
@@ -272,14 +273,12 @@ impl Driver {
             }
         };
         self.page.command("Fetch.disable", json!({})).await?;
-        let zone: chrono_tz::Tz = timezone
-            .parse()
-            .map_err(|_| Error::new("invalid_timezone", 400))?;
+        let zone = dispatch_core::foundation::clock::zone(timezone)?;
         let body: Value = serde_json::from_str(s(&observed, "postData"))
             .map_err(|_| Error::new("roster_not_complete", 409))?;
         let (body, period, codes) = selected_body(
             &body,
-            selected_date.unwrap_or_else(|| dispatch_core::foundation::clock::today(zone)),
+            selected_date.unwrap_or_else(|| dispatch_core::foundation::clock::today(&zone)),
         )?;
         let mut headers = serde_json::Map::new();
         if let Some(values) = observed["headers"].as_object() {

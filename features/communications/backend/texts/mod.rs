@@ -19,12 +19,13 @@ use crate::{
         storage::{Device, DeviceStore},
     },
 };
-use chrono::{Duration, NaiveDate, NaiveTime, TimeZone};
-use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result,
     db::{self, Store},
 };
+use jiff::ToSpan;
+use jiff::civil::Date;
+use jiff::tz::TimeZone;
 
 /// The minutes in a day: how far past its midnight a day may begin, as one clocks skip whole.
 const DAY_MINUTES: i64 = 24 * 60;
@@ -60,27 +61,22 @@ fn dispatch_phone(device: Device, now: i64) -> DispatchPhone {
     }
 }
 /// The DSP's own timezone, which its days are in.
-pub fn zone(db: &Store, dsp: &str) -> Result<Tz> {
-    db.find_dsp(dsp)?
-        .timezone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))
+pub fn zone(db: &Store, dsp: &str) -> Result<TimeZone> {
+    dispatch_core::foundation::clock::zone(&db.find_dsp(dsp)?.timezone)
 }
 /// `day`, YYYY-MM-DD: refused otherwise, as `invalid_date`.
-pub fn date(day: &str) -> Result<NaiveDate> {
-    NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))
+pub fn date(day: &str) -> Result<Date> {
+    dispatch_core::foundation::clock::date(day)
 }
 /// When `day` began in `zone`, in milliseconds: its first instant, at midnight, or where clocks
 /// went forward over midnight, at the first minute they showed after; a day they skipped whole
 /// began as the next did.
-pub fn began(zone: Tz, day: NaiveDate) -> Result<i64> {
-    let midnight = day.and_time(NaiveTime::MIN);
+pub fn began(zone: &TimeZone, day: Date) -> Result<i64> {
+    let midnight = day.at(0, 0, 0, 0);
     (0..=DAY_MINUTES)
         .find_map(|minute| {
-            zone.from_local_datetime(&(midnight + Duration::minutes(minute)))
-                .earliest()
+            dispatch_core::foundation::clock::instant(zone, midnight + minute.minutes())
         })
-        .map(|began| began.timestamp_millis())
         .ok_or_else(|| Error::new("invalid_date", 400))
 }
 

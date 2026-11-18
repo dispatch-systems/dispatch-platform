@@ -36,8 +36,8 @@ async fn started(state: &Arc<State>, bot: &Bot, user: &str) -> String {
 async fn days(state: &Arc<State>, dsp: &str) -> (String, String) {
     let dsp = dsp.to_owned();
     let zone = state.read(move |db| Ok(db.find_dsp(&dsp)?.timezone));
-    let today = clock::today(zone.await.unwrap().parse().unwrap());
-    (today.to_string(), today.pred_opt().unwrap().to_string())
+    let today = clock::today(&clock::zone(&zone.await.unwrap()).unwrap());
+    (today.to_string(), today.yesterday().unwrap().to_string())
 }
 /// The route today the Slack conversation `id`'s read has.
 async fn today_of(state: &Arc<State>, dsp: &str, id: &str) -> Option<Today> {

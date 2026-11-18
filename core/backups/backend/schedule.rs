@@ -7,14 +7,14 @@ use super::{
     contents,
     when::{self, EVERY_DAY, On, Timing, When},
 };
+use crate::foundation::clock;
 use crate::{
     Error, Result,
     db::{Db, FromRow, Row, Store, at, now},
     ensure,
     foundation::{crypto, validate as v},
 };
-use chrono::{Months, NaiveDate, TimeZone, Utc};
-use chrono_tz::Tz;
+use jiff::{Timestamp, ToSpan, civil::Date, tz::TimeZone};
 use rusqlite::params;
 use serde_json::Value;
 
@@ -112,7 +112,7 @@ impl Kept {
         }
     }
     /// It as the Backups tab shows it, its next run shown while the schedule is on.
-    pub fn shown(&self, tz: Tz, enabled: bool) -> BackupRule {
+    pub fn shown(&self, tz: &TimeZone, enabled: bool) -> BackupRule {
         let bits = |mask: i64, range: std::ops::RangeInclusive<i64>| {
             range.filter(|bit| mask & (1 << bit) != 0).collect()
         };
@@ -229,11 +229,10 @@ impl Kept {
 pub fn expires(taken: i64, keep: i64, unit: KeepUnit) -> i64 {
     let day = 24 * 60 * 60 * 1000;
     let months = |count: i64| {
-        Utc.timestamp_millis_opt(taken)
-            .single()
-            .and_then(|at| at.checked_add_months(Months::new(count as u32)))
-            .map(|at| at.timestamp_millis())
-            .unwrap_or(i64::MAX)
+        Timestamp::from_millisecond(taken)
+            .and_then(|at| TimeZone::UTC.to_datetime(at).checked_add(count.months()))
+            .and_then(|at| TimeZone::UTC.to_timestamp(at))
+            .map_or(i64::MAX, Timestamp::as_millisecond)
     };
     match unit {
         KeepUnit::Day => taken + keep * day,
@@ -253,13 +252,12 @@ pub struct Schedule {
 const RULES: &str = "SELECT * FROM backup_rules WHERE dsp_id=? ORDER BY position";
 
 /// Where the DSP is, which its rules' times are read in.
-pub fn timezone(db: &Store, dsp: &str) -> Result<Tz> {
+pub fn timezone(db: &Store, dsp: &str) -> Result<TimeZone> {
     let (zone,): (String,) = db
         .platform
         .one_as("SELECT timezone FROM dsps WHERE id=?", [dsp])?
         .ok_or_else(|| Error::new("dsp_not_found", 404))?;
-    zone.parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))
+    clock::zone(&zone)
 }
 
 /// The DSP's schedule as it's kept, or as every DSP's starts.
@@ -290,7 +288,7 @@ pub fn logged(db: &Store, dsp: &str) -> Result<String> {
         .rules
         .iter()
         .map(|rule| {
-            let mut shown = serde_json::to_value(rule.shown(tz, false))?;
+            let mut shown = serde_json::to_value(rule.shown(&tz, false))?;
             if let Some(shown) = shown.as_object_mut() {
                 shown.remove("id");
                 shown.remove("nextRun");
@@ -303,7 +301,7 @@ pub fn logged(db: &Store, dsp: &str) -> Result<String> {
 
 /// Keeps the schedule every DSP starts with for one that has none kept: a DSP's first is kept
 /// once there's somewhere to keep its backups.
-pub fn start(db: &Store, dsp: &str, tz: Tz) -> Result<()> {
+pub fn start(db: &Store, dsp: &str, tz: &TimeZone) -> Result<()> {
     if db
         .platform
         .one_as::<(i64,)>(
@@ -375,11 +373,11 @@ pub fn save(db: &Store, dsp: &str, value: &Value) -> Result<()> {
         )?;
         db.platform
             .exec("DELETE FROM backup_rules WHERE dsp_id=?", [dsp])?;
-        write_rules(&db.platform, dsp, &rules, tz)
+        write_rules(&db.platform, dsp, &rules, &tz)
     })
 }
 
-fn write_rules(platform: &Db, dsp: &str, rules: &[Kept], tz: Tz) -> Result<()> {
+fn write_rules(platform: &Db, dsp: &str, rules: &[Kept], tz: &TimeZone) -> Result<()> {
     for (position, kept) in rules.iter().enumerate() {
         let (on, days, dates, last) = match kept.when.on {
             On::Week(days) => (BackupOn::Week, days, 0, false),
@@ -441,14 +439,14 @@ fn write_rules(platform: &Db, dsp: &str, rules: &[Kept], tz: Tz) -> Result<()> {
 /// over it: on, each rule runs next when it would from now.
 pub fn switch(db: &Store, dsp: &str, enabled: bool) -> Result<()> {
     let tz = timezone(db, dsp)?;
-    start(db, dsp, tz)?;
+    start(db, dsp, &tz)?;
     db.platform.transaction(|| {
         db.platform.exec(
             "UPDATE backup_schedules SET enabled=? WHERE dsp_id=?",
             params![enabled, dsp],
         )?;
         if enabled {
-            moved_on(&db.platform, dsp, tz)?;
+            moved_on(&db.platform, dsp, &tz)?;
         }
         Ok(())
     })
@@ -456,7 +454,7 @@ pub fn switch(db: &Store, dsp: &str, enabled: bool) -> Result<()> {
 
 /// Moves each of the DSP's rules to the first time it runs from now where the DSP is, `tz`: as
 /// the schedule is turned on, or the DSP moves to another timezone.
-fn moved_on(platform: &Db, dsp: &str, tz: Tz) -> Result<()> {
+fn moved_on(platform: &Db, dsp: &str, tz: &TimeZone) -> Result<()> {
     let rules: Vec<Kept> = platform.query_as(RULES, [dsp])?;
     for kept in rules {
         platform.exec(
@@ -469,21 +467,18 @@ fn moved_on(platform: &Db, dsp: &str, tz: Tz) -> Result<()> {
 
 /// Runs the DSP's rules where it is now, `zone`, after its timezone changed.
 pub fn retime(platform: &Db, dsp: &str, zone: &str) -> Result<()> {
-    let tz: Tz = zone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
-    moved_on(platform, dsp, tz)
+    moved_on(platform, dsp, &clock::zone(zone)?)
 }
 
 /// When `rules` run, in the DSP's timezone `tz`: their next `count` runs, and which of them run on
 /// each of the coming weeks' days, from today.
-pub type Runs = (Vec<String>, Vec<(NaiveDate, Vec<usize>)>);
-pub fn runs(rules: &[When], tz: Tz, count: usize) -> Runs {
+pub type Runs = (Vec<String>, Vec<(Date, Vec<usize>)>);
+pub fn runs(rules: &[When], tz: &TimeZone, count: usize) -> Runs {
     let upcoming = when::upcoming(rules, tz, now(), count)
         .into_iter()
         .map(at)
         .collect();
-    let today = crate::foundation::clock::today(tz);
+    let today = clock::today(tz);
     (upcoming, when::calendar(rules, today, CALENDAR_DAYS))
 }
 
@@ -491,11 +486,11 @@ pub fn runs(rules: &[When], tz: Tz, count: usize) -> Runs {
 pub fn preview(db: &Store, dsp: &str, value: &Value, count: usize) -> Result<Runs> {
     v::fields(value, &["rules"])?;
     let rules: Vec<When> = parsed(value)?.into_iter().map(|kept| kept.when).collect();
-    Ok(runs(&rules, timezone(db, dsp)?, count))
+    Ok(runs(&rules, &timezone(db, dsp)?, count))
 }
 
 /// The rules of the DSP's that are due by `now`, each moved to its next run.
-pub fn due(platform: &Db, dsp: &str, tz: Tz, now: i64) -> Result<Vec<Kept>> {
+pub fn due(platform: &Db, dsp: &str, tz: &TimeZone, now: i64) -> Result<Vec<Kept>> {
     let rules: Vec<Kept> = platform.query_as(
         "SELECT r.* FROM backup_rules r JOIN backup_schedules s ON s.dsp_id=r.dsp_id \
          WHERE r.dsp_id=? AND s.enabled=1 AND r.next_run IS NOT NULL AND r.next_run<=? \

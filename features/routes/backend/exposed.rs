@@ -163,14 +163,14 @@ impl LiveRouteData for Live {
     }
     fn live_read(&self, db: &Store, dsp: &str) -> Result<Option<LiveRead>> {
         Ok(self.publication(db, dsp)?.and_then(|row| {
-            let collected = chrono::DateTime::parse_from_rfc3339(s(&row, "collected_at")).ok()?;
+            let collected_at = dispatch_core::db::millis(s(&row, "collected_at"))?;
             Some(LiveRead {
                 day: s(&row, "day").into(),
                 station: s(&row, "station").into(),
                 service_area_id: s(&row, "service_area_id").into(),
                 provider: s(&row, "provider").into(),
                 timezone: s(&row, "timezone").into(),
-                collected_at: collected.timestamp_millis(),
+                collected_at,
             })
         }))
     }

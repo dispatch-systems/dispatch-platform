@@ -189,7 +189,6 @@ async fn revoked_connection_manager_cannot_persist_a_pending_provider_result() {
 #[cfg(feature = "live_route_data")]
 #[tokio::test]
 async fn a_live_reader_never_takes_over_a_browser_a_member_opened() {
-    use chrono::Timelike;
     use dispatch_core::{collection::readers, testing};
     use dispatch_cortex as cortex;
     for password in ["fixture-password", "require-verification"] {
@@ -197,7 +196,13 @@ async fn a_live_reader_never_takes_over_a_browser_a_member_opened() {
         let dsp = server.dsp("Northline Logistics").await;
         // Northline at a station where it's late morning, inside Live Route Data's window since
         // eight, and the feature switched on.
-        let hour = chrono::Utc::now().hour() as i32;
+        let hour = i32::from(
+            dispatch_core::foundation::clock::local(
+                &jiff::tz::TimeZone::UTC,
+                dispatch_core::db::now(),
+            )
+            .hour(),
+        );
         let zone = format!("Etc/GMT{:+}", hour - 11);
         let setup_dsp = dsp.clone();
         server

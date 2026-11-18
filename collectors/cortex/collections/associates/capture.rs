@@ -2,7 +2,6 @@
 //! it, those it offboarded among them, each row kept as Amazon sent it beside the fields read
 //! from it, and the photos the DSP lacked. Every field is untrusted input, bounded here.
 use base64::{Engine, engine::general_purpose::STANDARD};
-use chrono::NaiveDate;
 use dispatch_core::{Error, Result, ensure, foundation::crypto::sha, foundation::validate::token};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -126,7 +125,7 @@ impl Associate {
             roles: list("roles"),
             qualifications: list("qualifications"),
             license_expires: text("driver_license_expiration_date", 10)
-                .filter(|day| NaiveDate::parse_from_str(day, "%Y-%m-%d").is_ok()),
+                .filter(|day| dispatch_core::foundation::clock::date(day).is_ok()),
             photo: text("photo_url", 2048).filter(|path| photo_address(path)),
             transporter_id,
             row,
