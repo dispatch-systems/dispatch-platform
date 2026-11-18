@@ -284,7 +284,7 @@ const COMMANDS: &[Spec] = &[
         "shot",
         &[
             "shot [--page <page>[?query]]",
-            "     [--tab <tab>]",
+            "     [--tab <tab> | --widget <id>]",
             "     [--click <name>...]",
             "     [--dsp <dsp> | --platform]",
             "     [--as <email>]",
@@ -296,12 +296,15 @@ const COMMANDS: &[Spec] = &[
          the one --dsp names, or on the platform owner's own pages with --platform, or --as a \
          demo account at the address of the DSP --dsp names, signed in as api signs in, on its \
          --tab, a page of Settings or a tab of the page, asked for what its address asks after \
-         ?, once each --click, a control by its accessible name, is clicked in turn. The window \
-         is --size, 1920x1080 unless told, a pixel of the PNG to a pixel of it, in --theme, light \
-         unless told.",
+         ?, once each --click, a control by its accessible name, is clicked in turn; or, with \
+         --widget, Home showing that widget at every size it declares, a PNG of each grid of \
+         them. The window is --size, 1920x1080 unless told, a pixel of the PNG to a pixel of it, \
+         in --theme, light unless told.",
     )
     .flags(&["--platform"])
-    .options(&["--page", "--tab", "--dsp", "--as", "--size", "--theme", "--click"]),
+    .options(&[
+        "--page", "--tab", "--widget", "--dsp", "--as", "--size", "--theme", "--click",
+    ]),
     spec(
         "browser",
         &[
@@ -877,6 +880,7 @@ fn run() -> Result<()> {
                     dsp: line.option("--dsp"),
                     platform: line.flag("--platform"),
                     tab: line.option("--tab"),
+                    widget: line.option("--widget"),
                 },
                 who: line.option("--as"),
                 size: line.option("--size").unwrap_or(shot::DESKTOP),

@@ -44,7 +44,9 @@ its own code imports and loads with it, so each looks and fits its size as the o
 count, with names under it once `tall` (two rows), which also has room for the footer; a row's
 second line and initials come in `detail` (three columns by two), and more at its end once
 `wide` (four columns). `sizesUpTo(most, first)` declares every size to `most`, added at `first`.
-A widget's own CSS, under its `className`, draws only what the kit doesn't.
+A widget's own CSS, under its `className`, draws only what the kit doesn't. Away from Production, Home
+shows one widget at every size it declares with `?sizes=<id>`, and `dispatchdev shot --widget
+<id>` saves each grid of them.
 
 A manifest is loaded up front, and outside a browser by the route table's tests. It stays
 small, imports no CSS, touches no browser API until it is called, and loads its pages lazily.

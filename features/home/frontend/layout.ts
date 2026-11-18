@@ -45,6 +45,21 @@ function nearest(placed: readonly Cells[], cells: Cells, left?: Cells) {
   return best;
 }
 
+/**
+ * Every one of `sizes` on grids of their own, as few as hold them, largest first: each where it
+ * first fits, nearest the top left of the first grid with room.
+ */
+export function sizePages(sizes: readonly WidgetCells[]) {
+  const pages: Cells[][] = [];
+  const largest = [...sizes].sort((a, b) => b.rows - a.rows || b.columns - a.columns);
+  for (const { columns: w, rows: h } of largest) {
+    const cells = { x: 0, y: 0, w, h };
+    const page = pages.find((placed) => nearest(placed, cells)) ?? (pages.push([]), pages.at(-1)!);
+    page.push({ ...cells, ...nearest(page, cells)! });
+  }
+  return pages;
+}
+
 /** The widget `id` names, as it is known now or once was. */
 export const widgetOf = (widgets: readonly Widget[], id: string) =>
   widgets.find((widget) => widget.id === id || widget.formerly?.includes(id));
