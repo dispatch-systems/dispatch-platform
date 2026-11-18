@@ -854,7 +854,7 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
   only while Dispatch Phone still is. A browser told of two lines is kept for
   each apart, and let go of for one alone, as the browser remembers each line keeping it. Each
   push names its line, and only that line's alerts in a window in front answer the worker for
-  it. Another line's Display section has the same choices (`lines::display`), on Settings'
+  it. Another line's Display section has the same choices (`lines::DISPLAY_FIELDS`), on Settings'
   Display page after Message display, each headed with its line's name while the page has both.
 
 ## The page's code

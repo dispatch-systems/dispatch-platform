@@ -64,26 +64,21 @@ const LIST_PREVIEW: Options = &[
     (ListPreview::Two.as_str(), "2 lines"),
 ];
 
-/// Dispatch Phone's own line's, under the name it shipped with.
-pub const DISPLAY: Section = display(
+/// Dispatch Phone's own line's, under the name it shipped with. Another line's has the same
+/// fields and words (`lines`), under its own id, name and permission.
+pub const DISPLAY: Section = section(
     "communications.display",
     "Message display",
     "communications.use",
+    FIELDS,
 )
-.aliases(&["dispatch_phone.display"]);
-
-/// A line's page's display, `id`, named `label`, for those holding `permission`: each member's own,
-/// on Settings' Display page, with the same choices as Dispatch Phone's own, which its page and
-/// alerts read.
-pub const fn display(id: &'static str, label: &'static str, permission: &'static str) -> Section {
-    section(id, label, permission, FIELDS)
-        .on("display")
-        .member()
-        .custom()
-        .keywords(KEYWORDS)
-}
+.on("display")
+.aliases(&["dispatch_phone.display"])
+.member()
+.custom()
+.keywords(KEYWORDS);
 /// What else search finds it by.
-const KEYWORDS: &[&str] = &[
+pub const KEYWORDS: &[&str] = &[
     "text size",
     "font",
     "bubbles",
@@ -96,7 +91,7 @@ const KEYWORDS: &[&str] = &[
 
 /// What each member chooses, a desktop's and then a phone's own, then how a new message alerts
 /// them.
-const FIELDS: &[Field] = &[
+pub const FIELDS: &[Field] = &[
     number("text_size", "Text size", 12, 20, Some(15)).unit("px"),
     choice(
         "line_spacing",

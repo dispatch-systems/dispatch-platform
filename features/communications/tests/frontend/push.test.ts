@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
+import { lineTexting } from '../../api/client.js';
 import { alertsInFront, followPush } from '../../frontend/alerts/push.js';
+import { DISPATCH_PHONE, type TextingLine } from '../../frontend/line.js';
 
 // What a browser's subscription comes to as the member chose at a DSP: made under the server's key
 // once its worker is active, kept, made again under a new key, or let go of, the server told of
@@ -20,6 +22,14 @@ const bytes = (text: string) =>
 const NORTH = 'dsp_north';
 const SUMMIT = 'dsp_summit';
 const WEST = 'dsp_west';
+/** Another feature's line of the DSP's phones, with its own page and routes. */
+const DESK: TextingLine = {
+  ...DISPATCH_PHONE,
+  id: 'front_desk',
+  name: 'Front Desk',
+  page: 'front-desk',
+  texting: lineTexting('/api/dsp/front-desk'),
+};
 /** A change no one ends. */
 const going = () => new AbortController().signal;
 
@@ -215,6 +225,26 @@ test('a page in front alerts of a push of its own DSP and line it shows open or 
   const desk = { ...push, line: 'front_desk' };
   assert(alertsInFront(desk, NORTH, {}, true, 'front_desk'));
   assert(!alertsInFront(push, NORTH, {}, true, 'front_desk'));
+});
+
+test('another line of the DSP keeps the browser apart, told on its own routes, and lets go of it alone', async (t) => {
+  const { asked, keepers } = browser(t, KEY, KEY, [NORTH]);
+  await followPush(true, NORTH, going(), DESK);
+  assert.deepEqual(keepers(), [NORTH, `${NORTH}:${DESK.id}`]);
+  assert.deepEqual(
+    asked.at(-1),
+    kept('https://push.example/old').replace('communications', 'front-desk'),
+  );
+  // Dispatch Phone's own letting go of it leaves it to the other line, still subscribed.
+  await followPush(false, NORTH, going());
+  assert.deepEqual(keepers(), [`${NORTH}:${DESK.id}`]);
+  assert(!asked.some((each) => each.startsWith('unsubscribe')));
+});
+
+test('a push of another line is answered by its own page in front alone', () => {
+  const push = { dsp: NORTH, page: DESK.page, conversation: 'cv_1' };
+  assert.equal(alertsInFront(push, NORTH, { conversation: 'cv_1' }, false, DESK.page), true);
+  assert.equal(alertsInFront(push, NORTH, { conversation: 'cv_1' }, true), undefined);
 });
 
 test('changes from several tabs at once each take their turn, losing no DSP that wants it', async (t) => {

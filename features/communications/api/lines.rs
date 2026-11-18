@@ -8,8 +8,8 @@
 //! browser (`Pushed`). Each sees and changes only that line's: another line's conversation, or a
 //! Slack one, isn't found. Each is refused, as not found, while Dispatch Phone is off for the DSP:
 //! its phones' address is Dispatch Phone's. Its page's display is a section of its own on Settings'
-//! Display page, with Dispatch Phone's choices (`display`), and its writes change Dispatch Phone's
-//! data (`DOMAIN`).
+//! Display page, with Dispatch Phone's fields (`DISPLAY_FIELDS`, `DISPLAY_KEYWORDS`), and its
+//! writes change Dispatch Phone's data (`DOMAIN`).
 pub use super::routes::{
     conversations::{
         conversation_of as conversation, done_of as done, send_of as send, typing_of as typing,
@@ -31,7 +31,7 @@ pub use super::routes::{
     },
 };
 pub use crate::backend::{
-    display::display,
+    display::{FIELDS as DISPLAY_FIELDS, KEYWORDS as DISPLAY_KEYWORDS},
     phone::storage::Line,
     push::{Pushed, pushing},
     storage::DOMAIN,

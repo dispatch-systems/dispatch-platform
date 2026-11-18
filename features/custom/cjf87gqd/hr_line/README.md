@@ -40,7 +40,7 @@ does HR Line see or change Dispatch Phone's own. Someone who texts both has a co
   who manage it. Each is Dispatch Phone's (`MessageAlerts`, `PhonesDown`) for HR Line's line.
 - **Pushed:** with Dispatch closed, or on a phone, each new text goes to each browser kept for HR
   Line, of a member who may use it with its Notifications on, titled "HR Line · " and who wrote,
-  opening HR Line's page (`backend::push::PUSHED`, through `lines::pushing`, every minute from
+  opening HR Line's page (`PUSHED`, through `lines::pushing`, every minute from
   its DSP's upkeep, `dsp_maintenance`, as after a restart). A browser is kept for HR Line apart
   from Dispatch Phone, and let go of for one alone.
 - **Its card:** HR Line, on Settings' DSP Connections beside Dispatch Phone's, for those who manage

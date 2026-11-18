@@ -23,7 +23,11 @@ const phrases: AuditPhrases = {
     'saved an HR Line name for ',
     strong(e.target ?? 'a number'),
   ],
-  'cjf87gqd_hr_line.number_blocked': (e, { strong }) => ['blocked ', strong(e.detail), ' on HR Line'],
+  'cjf87gqd_hr_line.number_blocked': (e, { strong }) => [
+    'blocked ',
+    strong(e.detail),
+    ' on HR Line',
+  ],
   'cjf87gqd_hr_line.number_unblocked': (e, { strong }) => [
     'unblocked ',
     strong(e.detail),
