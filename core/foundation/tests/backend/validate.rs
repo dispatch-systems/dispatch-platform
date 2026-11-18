@@ -47,3 +47,19 @@ fn a_timezone_is_one_the_database_names_written_as_it_writes_it() {
         assert_eq!(timezone(&given, "zone").is_ok(), known, "{zone}");
     }
 }
+
+#[test]
+fn a_date_is_of_a_year_days_can_be_counted_on_from() {
+    for (day, taken) in [
+        ("0001-01-01", true),
+        ("2026-11-18", true),
+        ("9000-12-31", true),
+        ("9001-01-01", false),
+        ("9999-12-31", false),
+        ("0000-12-31", false),
+        ("-9999-01-01", false),
+    ] {
+        assert_eq!(date(day).is_ok(), taken, "{day}");
+        assert_eq!(clock::date(day).is_ok(), taken, "{day}");
+    }
+}

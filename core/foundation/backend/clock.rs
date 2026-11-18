@@ -26,9 +26,14 @@ pub fn zone(name: &str) -> Result<TimeZone> {
         .filter(|zone| zone.iana_name() == Some(name))
         .ok_or_else(|| Error::new("invalid_timezone", 400))
 }
-/// A date written `YYYY-MM-DD`: refused otherwise, as `invalid_date`.
+/// A date written `YYYY-MM-DD`, of a year from 1 to 9000: refused otherwise, as `invalid_date`.
+/// The calendar ends with 9999, and counting past its end panics, so no date is taken so near
+/// either end that the days, weeks or periods a request counts on from it could leave it.
 pub fn date(text: &str) -> Result<Date> {
-    Date::strptime("%Y-%m-%d", text).map_err(|_| Error::new("invalid_date", 400))
+    Date::strptime("%Y-%m-%d", text)
+        .ok()
+        .filter(|date| (1..=9000).contains(&date.year()))
+        .ok_or_else(|| Error::new("invalid_date", 400))
 }
 /// Today in `zone`, or the day the server pins, so a test collects and seeds the same days
 /// whatever the date.
