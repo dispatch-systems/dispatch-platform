@@ -1,8 +1,9 @@
 //! Driver Match's upkeep: giving every ID the DSP's collections hold a code, after each
-//! collection and hourly, for every DSP.
+//! collection and hourly, for every DSP, and as a DSP's demo data is made.
 use super::DriverMatchStore;
 use dispatch_core::{
     Error, Result, State,
+    db::Store,
     foundation::observability,
     manifest::{
         Maintenance, Upkeep,
@@ -57,6 +58,12 @@ fn catch_up(state: Arc<State>, due: bool) -> Upkeep {
             }
         }
     })
+}
+
+/// A development or preview DSP's people get their codes as its demo data is made, as the first
+/// pass after startup would give them, so the features whose demo data comes after know them.
+pub fn demo(store: &Store, dsp: &str, _timezone: &str) -> Result<()> {
+    store.write_pass(dsp, store.read_pass(dsp)?).map(drop)
 }
 
 /// Whoever a collection brought in gets a Driver Match code. A failure here leaves the

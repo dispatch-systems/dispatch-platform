@@ -70,6 +70,7 @@ pub const FEATURE: Feature = Feature {
     }],
     // Its categories' changes and a writeup's deletion, filed under Settings.
     audit: Audit::NONE,
+    demo: Some(backend::demo::demo),
     ..feature("conduct")
 };
 

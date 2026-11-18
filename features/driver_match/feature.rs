@@ -94,6 +94,7 @@ pub const FEATURE: Feature = Feature {
         ],
     }],
     maintenance: &[backend::maintenance::MAINTENANCE],
+    demo: Some(backend::maintenance::demo),
     // Its events name drivers by their codes, and the log puts today's names to them.
     audit: Audit {
         subjects: &["driver"],

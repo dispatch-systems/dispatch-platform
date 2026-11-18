@@ -264,12 +264,22 @@ impl Store {
         Ok(dsps.into_iter().map(|(id,)| id).collect())
     }
     pub fn new_dsp(&self, name: &str, timezone: &str, actor: &str, permanent: bool) -> Result<Dsp> {
+        self.new_dsp_as(&crypto::id("dsp")?, name, timezone, actor, permanent)
+    }
+    /// The same, under the ID `id`, as the development fixtures give theirs.
+    pub fn new_dsp_as(
+        &self,
+        id: &str,
+        name: &str,
+        timezone: &str,
+        actor: &str,
+        permanent: bool,
+    ) -> Result<Dsp> {
         ensure(
             crate::foundation::clock::zone(timezone).is_ok(),
             "invalid_timezone",
             400,
         )?;
-        let id = crypto::id("dsp")?;
         self.platform.exec(
             INSERT_DSP,
             params![
@@ -282,10 +292,10 @@ impl Store {
                 crypto::custom_id()?
             ],
         )?;
-        self.seed_features(&id)?;
-        self.provision(&id)?;
-        self.audit(Some(actor), Some(&id), "dsp.created", "")?;
-        self.find_dsp(&id)
+        self.seed_features(id)?;
+        self.provision(id)?;
+        self.audit(Some(actor), Some(id), "dsp.created", "")?;
+        self.find_dsp(id)
     }
     pub fn provision(&self, id: &str) -> Result<()> {
         let dsp = self.find_dsp(id)?;
