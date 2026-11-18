@@ -47,7 +47,8 @@ second line and initials come in `detail` (three columns by two), and more at it
 A widget's own CSS, under its `className`, draws only what the kit doesn't. Away from Production, Home
 shows one widget at every size it declares with `?sizes=<id>`, and `dispatchdev shot --widget
 <id>` saves each grid of them. A widget's browser test checks them all with `expectEverySize(page,
-dspId, id)` from the test fixtures, once its data is in: on every grid, in a desktop's window and a
+dspId, id, ready)` from the test fixtures, on a page loaded anew with its data as it is then,
+`ready` waiting on each grid for what it should show: on every grid, in a desktop's window and a
 laptop's (1440×900), it fails naming each size where the widget doesn't load, shows nothing under
 its header, cuts its header's label, or runs past its frame. Home's own test checks every widget
 on the seeded DSP. In a single cell, the count's number takes the cell's height.

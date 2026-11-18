@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /** The windows a widget fits each size in: a desktop's, and a laptop's. */
 const WINDOWS = [
@@ -66,19 +66,29 @@ function problems(page: Page) {
 /**
  * Opens Home at every size the widget `id` declares, as `?sizes=` shows it away from Production,
  * in each of `WINDOWS`, and fails naming each size it doesn't fit, on every grid of them: in the
- * DSP `dspId`, as the page's signed-in account sees it, with whatever its data is then.
+ * DSP `dspId`, as the page's signed-in account sees it, with its data as it is then, each window
+ * a page loaded anew. `ready` waits, on each grid, for what the widget should show there, all its
+ * reads in, before the grid is measured.
  */
-export async function expectEverySize(page: Page, dspId: string, id: string) {
+export async function expectEverySize(
+  page: Page,
+  dspId: string,
+  id: string,
+  ready?: (grid: Locator) => Promise<void>,
+) {
   const window = page.viewportSize();
   for (const size of WINDOWS) {
     await page.setViewportSize(size);
+    // A new address's fragment alone keeps the page, and what it read before.
     await page.goto(`/#dsp/${dspId}/overview?sizes=${id}`);
+    await page.reload();
     // Home shows the member's own widgets for one the DSP doesn't have.
     const shown = page.locator('.home-cell').first();
     await expect(shown, `${id} in the DSP`).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Home', exact: true, level: 1 })).toHaveCount(0);
     const next = page.locator('.page-heading').getByRole('button', { name: 'Next', exact: true });
     for (let grid = 1; ; grid++) {
+      await ready?.(page.locator('.home-grid'));
       await expect
         .poll(() => problems(page), {
           message: `${id} in ${size.width}×${size.height}, grid ${grid}`,

@@ -72,14 +72,19 @@
   font-weight: inherit;
   text-align: center;
 }
-/* One column: its 0 over the days before it, across. */
+/* One column: its 0 over the days before it, across, the latest at the foot; the oldest that
+   don't fit wrap out of sight, whole. */
 .dvic-latest-days[data-across] {
-  flex-direction: column;
+  flex-direction: column-reverse;
+  flex-wrap: wrap;
+  align-content: flex-start;
   justify-content: space-evenly;
   gap: 5px;
+  overflow: hidden;
 }
 .dvic-latest-days[data-across] li {
   flex: none;
+  width: 100%;
   flex-direction: row;
   gap: 6px;
 }
