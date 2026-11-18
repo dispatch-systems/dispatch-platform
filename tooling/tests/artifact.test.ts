@@ -6,7 +6,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fixture } from '../../core/shell/tests/support/support.js';
 import { verifyArtifact, writeManifest } from '../build/artifact.js';
-import { dashboardGraphSizes, type DashboardAssets } from '../testing/dashboard-assets.js';
+import type { DashboardAssets } from '../testing/dashboard-assets.js';
+import { graphSizes, initialStylesheet } from '../testing/page-budgets.js';
 
 test(
   'installed artifact serves the complete platform directly from Rust and has no Node runtime payload',
@@ -78,46 +79,7 @@ test(
     const assets: DashboardAssets = JSON.parse(
       fs.readFileSync(path.join(artifact, 'tooling/build-info.json'), 'utf8'),
     ).dashboardAssets;
-    const graphs = [
-      { name: 'initial', entries: [], raw: 500_000, transferred: 115_000 },
-      {
-        name: 'DSP picker',
-        entries: ['../../core/platform_owner/frontend/dsps/picker.ts'],
-        raw: 500_000,
-        transferred: 120_000,
-      },
-      {
-        name: 'Settings profile',
-        // The page, the Profile panel and Driver Match's tab badge load together.
-        entries: [
-          '../../features/settings/frontend/index.ts',
-          '../../core/accounts/frontend/settings/ProfileBadge.tsx',
-          '../../features/driver_match/frontend/badge.ts',
-        ],
-        raw: 445_000,
-        transferred: 132_000,
-      },
-      {
-        name: 'daily Timecard',
-        entries: [
-          '../../features/timecard/frontend/index.ts',
-          '../../features/timecard/frontend/tabs/daily/TimecardsPage.tsx',
-        ],
-        raw: 500_000,
-        transferred: 150_000,
-      },
-      {
-        name: 'Collectors',
-        entries: ['../../core/collection/frontend/collectors/index.ts'],
-        raw: 490_000,
-        transferred: 145_000,
-      },
-    ];
-    for (const graph of graphs) {
-      const size = dashboardGraphSizes(path.join(artifact, 'dashboard'), assets, [
-        'index.html',
-        ...graph.entries,
-      ]);
+    for (const { graph, size } of graphSizes(path.join(artifact, 'dashboard'), assets)) {
       assert(
         size.scripts.raw < graph.raw,
         `${graph.name} complete JavaScript graph exceeds ${graph.raw} bytes`,
@@ -127,7 +89,7 @@ test(
         `${graph.name} transferred JavaScript graph exceeds ${graph.transferred} bytes`,
       );
       assert(
-        size.styles.raw < (graph.name === 'initial' ? 30_000 : 60_000),
+        size.styles.raw < graph.styles,
         `${graph.name} complete CSS graph exceeds its budget`,
       );
       t.diagnostic(
@@ -137,7 +99,7 @@ test(
     const stylesheet = document.match(/href="(\.?\/assets\/[^"]+\.css)"/)![1]!;
     const styles = await fetch(new URL(stylesheet, f.env.DISPATCH_ORIGIN));
     assert(
-      (await styles.arrayBuffer()).byteLength < 30_000,
+      (await styles.arrayBuffer()).byteLength < initialStylesheet,
       'initial common CSS stays below 30 KB; feature CSS loads with its route',
     );
 

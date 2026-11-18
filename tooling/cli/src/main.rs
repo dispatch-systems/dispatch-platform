@@ -192,7 +192,10 @@ const COMMANDS: &[Spec] = &[
         "check",
         &["check [--plan]"],
         "What stops the branch, then the rule checks, the TypeScript linter and clippy side by \
-         side, clippy in the checkout's own build. They pass again without running on a \
+         side, clippy in the checkout's own build. A diff that touches what the dashboard \
+         bundles also builds the dashboard alone, about half a minute, and measures its pages \
+         against their size budgets, a line each; over one, it measures main's in as long \
+         again, to say whether main was over first. They pass again without running on a \
          committed tree they passed on, as clippy does on Rust inputs it passed on; the checks \
          on the branch's PR run the tests. --plan only names them.",
     )
