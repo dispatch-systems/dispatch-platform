@@ -11,6 +11,16 @@ const shown = 4000;
 /** The section pointed out, and the ref its element takes, which scrolls to it once drawn. */
 export type Found = { section: string; reveal: RefCallback<HTMLElement> };
 
+/**
+ * What marks a section's element, to find it by the section's id; given `reveal`, it is pointed
+ * out (`data-found`), and `reveal` takes it once drawn.
+ */
+export const sectionElement = (id: string, reveal?: RefCallback<HTMLElement>) => ({
+  id: `settings-section-${id}`,
+  'data-settings-section': id,
+  ...(reveal && { 'data-found': '', ref: reveal }),
+});
+
 /** The section the address asks to point out, while it is pointed out. */
 export function useFound(): Found | undefined {
   const [asked, setAsked] = useState(() => {
