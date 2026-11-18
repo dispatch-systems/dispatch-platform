@@ -44,7 +44,8 @@ export function WidgetSizes({
         <div className="home-grid">
           {pages[shown]!.map((at) => (
             <div
-              key={`${at.w}x${at.h}`}
+              // Each widget's own frames: another's never shows under its heading.
+              key={`${widget.id}:${at.w}x${at.h}`}
               className="home-cell"
               data-columns={at.w}
               data-rows={at.h}

@@ -19,7 +19,7 @@ const listen = (changed: () => void) => {
 /** The widget `?sizes=` shows at every size, and the grid of them shown, from 0. */
 const readSizes = (query: URLSearchParams) => ({
   id: query.get('sizes'),
-  page: Math.max(0, Number(query.get('page') ?? 1) - 1 || 0),
+  page: Math.max(0, Math.trunc(Number(query.get('page') ?? 1)) - 1 || 0),
 });
 
 /**
