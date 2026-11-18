@@ -23,6 +23,7 @@ async fn latest(state: &Arc<State>, dsp: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test(start_paused = true)]
 async fn waiting_names_the_latest_message_each_waits_on_from_whom_its_with() {
     let (_root, state, bot) = support::connected(TEAM).await;
