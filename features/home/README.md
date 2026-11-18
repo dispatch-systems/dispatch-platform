@@ -30,4 +30,7 @@ open to every member.
   once, glides into place, and is kept behind it, made again on what another screen kept
   meanwhile.
 - **A widget** loads its own code when first shown and fails alone, saying it couldn't load.
+- **A widget at every size** (`?sizes=<id>`, away from Production): the widget alone, at each size
+  it declares, on as few of the grid's pages as hold them, largest first (`sizePages`), a page at
+  a time, for its author to look at; `dispatchdev shot --widget <id>` saves each page.
 - **Upkeep:** none.

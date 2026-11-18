@@ -557,6 +557,7 @@ fn settings_page(
         dsp,
         platform: false,
         tab: None,
+        widget: None,
     };
     let dsps = session["dsps"].as_array().map(Vec::as_slice).unwrap_or(&[]);
     let dsp = open.dsp_id(dsps)?;
@@ -858,6 +859,7 @@ pub fn run(
                             dsp,
                             platform: page.platform,
                             tab: tab.as_deref(),
+                            widget: None,
                         },
                         who: None,
                         size,

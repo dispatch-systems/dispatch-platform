@@ -18,6 +18,8 @@ const { values } = parseArgs({
     tab: { type: 'string' },
     /** A control by its accessible name, clicked once the page is ready, each in turn. */
     click: { type: 'string', multiple: true, default: [] },
+    /** Each page the header's Next turns to as well, saved beside the first as `-2.png` and on. */
+    pages: { type: 'boolean' },
     out: { type: 'string' },
   },
 });
@@ -108,6 +110,17 @@ try {
     await ready();
   }
   await page.screenshot({ path: values.out! });
+  if (values.pages) {
+    console.log(values.out);
+    const next = page.locator('.page-heading').getByRole('button', { name: 'Next', exact: true });
+    for (let at = 2; (await next.count()) && (await next.isEnabled()); at++) {
+      await next.click();
+      await ready();
+      const out = values.out!.replace(/\.png$/, `-${at}.png`);
+      await page.screenshot({ path: out });
+      console.log(out);
+    }
+  }
 } catch (error) {
   // Said alone, for `dispatchdev` to pass on.
   console.error(error instanceof Error ? error.message : error);

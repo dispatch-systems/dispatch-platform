@@ -78,3 +78,49 @@ test('a shot clicks each control it names in turn, then saves the window a pixel
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a shot of pages saves each one Next turns to, beside the first, until Next is disabled', async () => {
+  const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'dispatch-shot-test-'));
+  try {
+    // Three pages, white, red and blue; Next is disabled on the last.
+    const page = path.join(dir, 'pages.html');
+    fs.writeFileSync(
+      page,
+      `<script>const colours = ['rgb(255, 255, 255)', 'rgb(255, 0, 0)', 'rgb(0, 0, 255)'];
+        let at = 0;
+        function next(button) {
+          document.body.style.background = colours[++at];
+          button.disabled = at === colours.length - 1;
+        }</script>
+      <body style="background: rgb(255, 255, 255)">
+        <header class="page-heading"><button onclick="next(this)">Next</button></header>
+      </body>`,
+    );
+    const storage = path.join(dir, 'storage.json');
+    fs.writeFileSync(storage, JSON.stringify({ cookies: [], origins: [] }));
+    const { stdout } = await run(
+      process.execPath,
+      [
+        'node_modules/tsx/dist/cli.mjs',
+        'tooling/dev/shot.ts',
+        ...['--url', pathToFileURL(page).href, '--storage', storage, '--host', '127.0.0.1'],
+        ...['--size', '1920x1080', '--theme', 'light', '--out', path.join(dir, 'pages.png')],
+        '--pages',
+      ],
+      { cwd: root },
+    );
+    const saved = ['pages.png', 'pages-2.png', 'pages-3.png'].map((name) => path.join(dir, name));
+    assert.deepEqual(stdout.trim().split('\n'), saved);
+    assert.deepEqual(
+      saved.map((file) => read(file).first),
+      [
+        [255, 255, 255],
+        [255, 0, 0],
+        [0, 0, 255],
+      ],
+    );
+    assert(!fs.existsSync(path.join(dir, 'pages-4.png')));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

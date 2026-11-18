@@ -27,7 +27,12 @@ pub struct Open<'a> {
     /// The platform owner's own pages, outside any DSP, in place of a DSP's.
     pub platform: bool,
     pub tab: Option<&'a str>,
+    /// A widget by its id, at every size it declares, as Home shows it off Production: each grid of
+    /// them a screenshot.
+    pub widget: Option<&'a str>,
 }
+/// Home's page, which shows a widget at every size with `?sizes=<id>`.
+const HOME: &str = "overview";
 impl Open<'_> {
     /// Refuses what can't be opened together.
     pub fn check(&self) -> Result<()> {
@@ -38,6 +43,10 @@ impl Open<'_> {
         require(
             self.dsp.is_none() || !self.platform,
             "Choose --dsp or --platform.",
+        )?;
+        require(
+            self.widget.is_none() || (self.page.is_none() && self.tab.is_none() && !self.platform),
+            "--widget opens Home on the widget's sizes: leave out --page, --tab and --platform.",
         )
     }
     /// The id of the DSP it opens, of those a session lists: the one it names, else the first,
@@ -64,6 +73,14 @@ pub fn fragment(page: Option<&str>, dsp: Option<&str>, tab: Option<&str>) -> Str
         fragment.push_str(&format!("{joined}tab={}", encoded(tab)));
     }
     fragment
+}
+/// Home's fragment showing `widget` at every size, in the DSP `dsp` or the one signed in at.
+pub fn sizes(dsp: Option<&str>, widget: &str) -> String {
+    format!(
+        "{}?sizes={}",
+        fragment(Some(HOME), dsp, None),
+        encoded(widget)
+    )
 }
 /// A value as an address holds it, each byte but the unreserved ones escaped.
 fn encoded(value: &str) -> String {
@@ -126,6 +143,7 @@ fn file_name(shot: &Shot<'_>) -> String {
     let words = [
         Some(open.page.unwrap_or("home")),
         open.tab,
+        open.widget,
         open.dsp,
         open.platform.then_some("platform"),
     ]
@@ -200,7 +218,10 @@ pub fn run(root: &Path, shot: &Shot<'_>, runner: &dyn Runner) -> Result<String> 
     } else {
         None
     };
-    let fragment = fragment(open.page, dsp.as_deref(), open.tab);
+    let fragment = match open.widget {
+        Some(widget) => sizes(dsp.as_deref(), widget),
+        None => fragment(open.page, dsp.as_deref(), open.tab),
+    };
     let url = format!("{}/{fragment}", site.origin);
     // The browser takes the session in a file of its own kind, as private as the jar.
     let storage = server.scratch.join(format!("shot-{who}.json"));
@@ -239,6 +260,10 @@ pub fn run(root: &Path, shot: &Shot<'_>, runner: &dyn Runner) -> Result<String> 
     for click in shot.clicks {
         args.extend(["--click", click]);
     }
+    // Each grid of a widget's sizes, the script turning to the next and saving it beside the first.
+    if open.widget.is_some() {
+        args.push("--pages");
+    }
     // What the script says of the page, as a tab it lacks.
     let said = runner.command(&args, Some(root), 120)?;
     let said = String::from_utf8_lossy(&said);
@@ -246,7 +271,10 @@ pub fn run(root: &Path, shot: &Shot<'_>, runner: &dyn Runner) -> Result<String> 
         println!("{}", said.trim());
     }
     matches_window(&std::fs::read(png)?, shot.size)?;
-    println!("{png}");
+    // The script names each grid's screenshot it saved.
+    if open.widget.is_none() {
+        println!("{png}");
+    }
     Ok(fragment)
 }
 
@@ -287,6 +315,14 @@ mod tests {
             "{doubled}"
         );
         assert!(matches_window(b"GIF89a", DESKTOP).is_err());
+    }
+    #[test]
+    fn a_widget_opens_on_home_at_every_size() {
+        assert_eq!(
+            sizes(Some("dsp_2"), "dvic.latest"),
+            "#dsp/dsp_2/overview?sizes=dvic.latest"
+        );
+        assert_eq!(sizes(None, "dvic.latest"), "#overview?sizes=dvic.latest");
     }
     #[test]
     fn the_browser_takes_the_session_curl_keeps() {
