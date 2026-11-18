@@ -75,7 +75,11 @@ pub fn plan(root: &Path, runner: &dyn Runner) -> Result<Plan> {
 fn probes(workspace: &test_selection::Workspace) -> Option<String> {
     let probing = workspace.declaring("operator-probes");
     (!probing.is_empty()).then(|| {
-        let packages: Vec<String> = probing.iter().map(|name| format!("-p {name}")).collect();
+        // A manifest's name is whatever it says: quoted, so the shell runs it as one word.
+        let packages: Vec<String> = probing
+            .iter()
+            .map(|name| format!("-p {}", workspace::quote(name)))
+            .collect();
         format!(
             "cargo check --locked {} --tests --features operator-probes",
             packages.join(" ")
@@ -670,6 +674,13 @@ mod tests {
             ]
         );
         assert!(commands("docs/readme.md\n").is_empty());
+        // A name the shell would run as a command is passed as one word.
+        let manifest = format!("[package]\nname = \"probe; touch owned #\"\n\n{probing}");
+        write("collectors/paycom/Cargo.toml", &manifest);
+        let [command] = commands("core/accounts/backend/lib.rs\n")
+            .try_into()
+            .unwrap();
+        assert!(command.contains("-p 'probe; touch owned #'"), "{command}");
     }
     #[test]
     fn a_check_needs_a_committed_branch_of_its_own() {
