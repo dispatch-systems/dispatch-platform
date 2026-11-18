@@ -66,6 +66,32 @@ pub fn steps(commands: &[String]) -> Vec<Step> {
 fn builds(command: &str) -> bool {
     command.starts_with("cargo ") || [BUILD, FIXTURE, PACKAGE, RELEASE_PACKAGE].contains(&command)
 }
+/// Whether a step only builds, and so runs no tests: a build alone, where `cargo test` builds
+/// and runs them. Every other step waits its turn for the test slot.
+fn only_builds(command: &str) -> bool {
+    [BUILD, FIXTURE, PACKAGE, RELEASE_PACKAGE].contains(&command)
+        || command.starts_with("cargo build")
+}
+/// How far past its cores, as a multiple of them, a machine's load goes before its tests can
+/// fail for the load: their builds and time limits are sized for a machine that keeps up.
+const LOADED: f64 = 1.5;
+/// A line saying a machine with `cores` cores is loaded beyond what its tests are judged under,
+/// by its 1-minute `load` average; None when it isn't.
+fn loaded(load: f64, cores: usize) -> Option<String> {
+    (load > LOADED * cores as f64).then(|| {
+        format!(
+            "This machine's load is {load:.1} on {cores} cores: a test may fail for the load, \
+             not the code. The PR's checks are the judge."
+        )
+    })
+}
+/// This machine's 1-minute load average and its cores.
+fn load() -> Option<(f64, usize)> {
+    let mut averages = [0.0; 1];
+    let read = unsafe { libc::getloadavg(averages.as_mut_ptr(), 1) };
+    let cores = std::thread::available_parallelism().ok()?.get();
+    (read == 1).then_some((averages[0], cores))
+}
 /// Every file the checkout changed from where it left `origin/main`, committed or not, deleted
 /// files aside.
 pub fn changed(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
@@ -389,14 +415,18 @@ impl Run {
             PACKAGE if !self.debug_package => (RELEASE_PACKAGE, false),
             command => (command, true),
         };
-        // A step that builds waits its turn, and passes its slot on to what it starts.
-        let slot = if builds(&step.command) {
-            let env = std::env::vars().collect();
-            Slot::take(&self.root, &label(&step.command), &env, &crate::Native)?
-        } else {
-            None
+        // A step that runs tests waits its turn for the test slot, and one that builds for a
+        // build slot, in that order, and passes them on to what it starts.
+        let (vars, what) = (std::env::vars().collect(), label(&step.command));
+        let test = match only_builds(&step.command) {
+            true => None,
+            false => Slot::test(&self.root, &what, &vars, &crate::Native)?,
         };
-        let mut own = slot::passed_on(&self.tmp, &slot);
+        let build = match builds(&step.command) {
+            true => Slot::take(&self.root, &what, &vars, &crate::Native)?,
+            false => None,
+        };
+        let mut own = slot::passed_on(&self.tmp, test.iter().chain(&build));
         if isolated {
             own.extend([
                 ("CARGO_TARGET_DIR", self.build.as_os_str()),
@@ -455,6 +485,9 @@ pub fn run_commands(root: &Path, commands: &[String], keep: bool) -> Result<bool
     let logs = scratch.join("test").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;
     let _signal_log = crate::signals::run_log(logs.join("1.log"));
+    if let Some(line) = load().and_then(|(load, cores)| loaded(load, cores)) {
+        println!("{line}");
+    }
     let run = Run::start(root, &scratch)?;
     let mut passed = true;
     for (index, step) in steps(commands).iter().enumerate() {
@@ -557,8 +590,7 @@ impl Plan {
         }
         for step in &self.steps {
             // A build alone, or a step that also runs tests, as `cargo test` does.
-            let build = [BUILD, FIXTURE, PACKAGE, RELEASE_PACKAGE].contains(&step.command.as_str())
-                || step.command.starts_with("cargo build");
+            let build = only_builds(&step.command);
             println!("{} {}", if build { "Build:" } else { "Run:" }, step.command);
         }
         if self.steps.is_empty() {
@@ -670,6 +702,17 @@ mod tests {
                 "tooling/cli/dispatchdev build && '/opt/node/bin/node' 'tsx.mjs' '--test' 'a.test.ts' 'b.test.ts' 'c.test.ts' 'd.spec.ts'"
             ),
             "tooling/cli/dispatchdev build && node tsx.mjs --test (4 test files)"
+        );
+    }
+    #[test]
+    fn a_run_on_a_machine_loaded_past_its_cores_says_its_results_may_be_the_load() {
+        assert_eq!(loaded(6.0, 4), None);
+        assert_eq!(
+            loaded(35.2, 10).as_deref(),
+            Some(
+                "This machine's load is 35.2 on 10 cores: a test may fail for the load, not the \
+                 code. The PR's checks are the judge."
+            )
         );
     }
     #[test]

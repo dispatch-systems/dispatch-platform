@@ -95,7 +95,9 @@ the package.
 API tests, one at a time, a line each. Each run builds in a folder it holds under
 `.test-build/`, without incremental data, and deletes it when it ends, with the release build
 and package it made for the browser tests (`--keep` keeps them), so worktrees hold no test
-builds and several can test at once. The folders are numbered, so a run builds where the one
+builds and several can build at once. Their tests run one run at a time across every worktree:
+another waits for the test slot, saying what holds it, and a run on a machine loaded past one
+and a half times its cores says first that a test may fail for the load. The folders are numbered, so a run builds where the one
 before it did, and sccache, which keys a compile by its paths, serves it that run's compiles.
 Its commands, like `check`'s and `verify`'s, run in
 systemd scopes of one slice, `app-dispatchdev.slice`, which shares a low CPU weight and a
@@ -108,8 +110,9 @@ in progress, committed or not: `generate --check`, what a generator left to writ
 TypeScript, the changed files' format and lint, then its own tests as `test --owner` runs them.
 `dispatchdev check` stops a branch that isn't ready to push, on `main` or with changes not yet
 committed, then runs the rule checks (`npm run check:rules`, everything a push can fail on
-without a build), the TypeScript linter and clippy side by side; clippy builds in the
-checkout's own `target`, so a run after a small change takes seconds. A clippy pass is kept, in the repository's shared Git
+without a build), the TypeScript linter and clippy side by side, with the operator probes
+compiled after clippy as CI's lint job compiles them; clippy builds in the checkout's own
+`target`, so a run after a small change takes seconds. A clippy pass is kept, in the repository's shared Git
 folder, for the Rust inputs it ran on, so clippy passes again without running until one of them
 changes, and a whole pass is kept for the committed tree it ran on, so the same tree passes
 again at once; `--plan` only names them.
