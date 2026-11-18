@@ -706,11 +706,8 @@ test('--custom separates the owner folder from prefixed identities and fixes imp
   // Only the DSP with its custom ID has it: before the screenshot, its note gives one the ID and
   // switches the feature on, by the name its switch has, and the screenshot is of that DSP.
   const notes = plan.notes.join('\n');
-  assert.match(notes, /dsps\/<id>\/custom-id --data '\{"customId":"dsp42"\}'/);
-  assert.match(
-    notes,
-    /dsps\/<id>\/features --data '\{"feature":"dsp42_fuel_log","enabled":true\}'/,
-  );
+  assert.match(notes, /`dispatchdev dev custom-id <dsp> dsp42`/);
+  assert.match(notes, /`dispatchdev dev feature <dsp> dsp42_fuel_log on`/);
   assert.match(notes, /shot --dsp <id> --page dsp42-fuel-log/);
   for (const code of ['x', 'DSP42', '../dsp42', 'fs_cl', 'abcdefghijklmnopq'])
     await refused(/custom ID/, 'fuel_log', '--custom', code);
