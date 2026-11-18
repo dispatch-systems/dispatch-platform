@@ -10,7 +10,8 @@ counts, memory and fixed labels: what failed, how a collector that reads in more
 way read it, and why it fell back from its first way.
 
 A page follows its collections live with `useCollectionUpdates()` (`frontend/live-collection.ts`):
-one waiting request on `/api/dsp/collection-updates`, which the permissions features list in
+one waiting request on `/api/dsp/collection-updates`, shared by every page and widget following
+them at once, which the permissions features list in
 `live` may make, wakes as a run ends or a collector shows results partway, and its feature's
 `collected` and `collection` cache rules say which reads that refreshes. A member hears only of
 the collections kept by features whose `live` permissions it holds, so a hint, such as the
