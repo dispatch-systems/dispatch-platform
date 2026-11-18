@@ -2360,6 +2360,72 @@ fn publishing_after_a_commit_waits_for_dev_to_serve_it_first() {
 }
 
 #[test]
+fn publishing_after_the_start_of_a_commit_waits_for_the_one_commit_it_starts() {
+    let f = Fixture::new();
+    let commit = f.system.commit.clone();
+    f.dev(&commit, "ready", RUNNING);
+    let publish = |given: &str| {
+        f.system.calls.borrow_mut().clear();
+        f.publish(&["--after", given, "--bump", "major"])
+            .map_err(|error| error.to_string())
+    };
+    // Six hundred commits with nothing but a number, some of which start alike.
+    let stream: String = (1..=600)
+        .map(|n| {
+            format!(
+                "commit refs/heads/alike\ncommitter T <t@t> 0 +0000\ndata {}\n{n}\n\n",
+                n.to_string().len()
+            )
+        })
+        .collect();
+    let mut import = std::process::Command::new("git")
+        .args(["fast-import", "--quiet"])
+        .current_dir(&f.root)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    import
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stream.as_bytes())
+        .unwrap();
+    assert!(import.wait().unwrap().success());
+    let mut starts: Vec<_> = git(&f.root, &["rev-list", "alike"])
+        .lines()
+        .map(|line| line[..4].to_owned())
+        .collect();
+    starts.sort();
+    let alike = starts.windows(2).find(|pair| pair[0] == pair[1]).unwrap()[0].clone();
+    // A start that names no commit, or more than one, or isn't a hash, is refused before any
+    // wait for Dev.
+    for (given, refusal) in [
+        (
+            "0000000",
+            "--after 0000000 names no commit Dev's checkout has".to_owned(),
+        ),
+        (
+            &alike,
+            format!("--after {alike} starts more than one commit: give more of it"),
+        ),
+        (
+            "main",
+            "--after takes a commit's hash, or its first four characters or more".to_owned(),
+        ),
+    ] {
+        assert_eq!(publish(given), Err(refusal));
+        assert!(!f.system.has_call(&["git", "merge-base"]));
+    }
+    // One that names one commit waits for that commit, whole: Dev serves it, and the release
+    // goes on.
+    assert_eq!(publish(&commit[..7]).unwrap()["stage"], "complete");
+    assert!(
+        f.system
+            .has_call(&["git", "merge-base", "--is-ancestor", &commit])
+    );
+}
+
+#[test]
 fn publishing_after_a_commit_hands_the_release_to_the_host_tool_dev_installed_with_it() {
     let f = Fixture::new();
     let commit = f.system.commit.clone();
