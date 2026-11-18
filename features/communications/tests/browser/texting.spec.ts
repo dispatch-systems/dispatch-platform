@@ -580,9 +580,15 @@ test('bounded text windows keep the visible part anchored and defer eviction unt
   });
   await request;
   // Move after dispatch: restoration must use the current viewport, not the request's old offset.
-  await thread.evaluate((element) => {
-    element.scrollTop = 35;
-  });
+  // A user's scroll reaches the page with its event; this one's waits for the next frame, so the
+  // answer is released only once the thread has had it.
+  await thread.evaluate(
+    (element) =>
+      new Promise((resolve) => {
+        element.addEventListener('scroll', resolve, { once: true });
+        element.scrollTop = 35;
+      }),
+  );
   const anchor = await thread.evaluate((element) => {
     const top = element.getBoundingClientRect().top;
     const part = [
