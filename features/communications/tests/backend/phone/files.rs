@@ -1,17 +1,18 @@
 //! The bytes texts carry, as they arrive: a reported file's are kept with their own size, those
 //! sent again leave those before them kept should what keeps them fail, and those cut short leave
-//! nothing behind. A picture added for a text is its adder's alone until it goes, its bytes kept
-//! once however many pictures keep them, and one past what a text carries is refused before any of
-//! it is kept.
+//! nothing behind. A picture added for a text is its adder's alone until it goes, then its text's
+//! line's, its bytes kept once however many pictures keep them, and one past what a text carries
+//! is refused before any of it is kept.
 use super::*;
 use crate::backend::{
     phone::{
+        model::Outgoing,
         outbox::send,
-        storage::{DeviceStore, TextStore},
+        storage::{DeviceStore, Line, TextStore},
         support::{kept, outgoing, paired, reported, store},
     },
     storage::DOMAIN,
-    support::started,
+    support::{pair_to, started},
     texts::filing,
 };
 use axum::body::Bytes;
@@ -172,23 +173,35 @@ async fn a_picture_is_its_adders_alone_until_it_goes_and_its_bytes_are_kept_once
     crate::backend::phone::demo::demo(&db, &dsp, "America/Los_Angeles").unwrap();
     let folder = kept(&db, &dsp);
     let other = db.new_dsp("Other DSP", "UTC", &owner, false).unwrap().id;
+    let desk = Line {
+        id: "front_desk",
+        name: "Front Desk",
+        texting: true,
+    };
+    pair_to(&db, &dsp, desk, "+12065550111");
     let config = db.config.clone();
     drop(db);
     let state = State::new(config).unwrap();
     let sent = add(&state, &dsp, &owner, b"door").await;
+    let theirs = add(&state, &dsp, &owner, b"desk").await;
     // Two pictures of the same bytes, which are kept once.
     let unsent = add(&state, &dsp, &owner, b"dock").await;
     let twin = add(&state, &dsp, &owner, b"dock").await;
-    assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 2);
-    let outgoing = outgoing("(425) 555-0199", vec![sent.clone()], &owner);
+    assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 3);
+    let ours = outgoing("(425) 555-0199", vec![sent.clone()], &owner);
     let at = dsp.clone();
+    let on_desk = Outgoing {
+        line: Some(desk.id.to_owned()),
+        ..outgoing("(425) 555-0199", vec![theirs.clone()], &owner)
+    };
     state
         .run_scoped(dsp.clone(), DOMAIN, move |db| {
-            send(db, &at, &outgoing, now())
+            send(db, &at, &ours, now())?;
+            send(db, &at, &on_desk, now())
         })
         .await
         .unwrap();
-    let shown = |dsp: &str, id: &str, viewer: &str| {
+    let shown_on = |line: Option<&'static str>, dsp: &str, id: &str, viewer: &str| {
         let (state, dsp, id, viewer) = (
             state.clone(),
             dsp.to_owned(),
@@ -196,12 +209,13 @@ async fn a_picture_is_its_adders_alone_until_it_goes_and_its_bytes_are_kept_once
             viewer.to_owned(),
         );
         async move {
-            super::shown(&state, &dsp, None, &id, &viewer, None, false)
+            super::shown(&state, &dsp, line, &id, &viewer, None, false)
                 .await
                 .unwrap()
                 .is_some()
         }
     };
+    let shown = |dsp: &str, id: &str, viewer: &str| shown_on(None, dsp, id, viewer);
 
     // Not sent, a picture is its adder's alone; sent, anyone at the DSP sees it. Through another
     // DSP, nobody sees either.
@@ -209,6 +223,12 @@ async fn a_picture_is_its_adders_alone_until_it_goes_and_its_bytes_are_kept_once
     assert!(!shown(&dsp, &unsent, "usr_other").await);
     assert!(shown(&dsp, &sent, "usr_other").await);
     assert!(!shown(&other, &sent, &owner).await && !shown(&other, &unsent, &owner).await);
+
+    // Sent, its text's line decides, for its adder too: one sent on another line is seen on that
+    // line alone, and one sent on Dispatch Phone's own isn't seen on another.
+    assert!(shown_on(Some(desk.id), &dsp, &theirs, "usr_other").await);
+    assert!(!shown(&dsp, &theirs, &owner).await);
+    assert!(!shown_on(Some(desk.id), &dsp, &sent, &owner).await);
 }
 
 #[tokio::test]

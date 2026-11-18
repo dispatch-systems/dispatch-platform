@@ -87,6 +87,7 @@ pub fn keep_added(db: &Store, dsp: &str, added: Added, arrived: &Arrived) -> Res
 /// when it has one, to answer a page with, kept by the browser when the address asked for its
 /// `version`: none for one not the DSP's, one of another line's text, one whose bytes haven't come
 /// yet, and one added for a text not sent yet but by `viewer`, whose alone it is until it's sent.
+/// Once sent, its text's line decides for everyone, its adder too.
 pub async fn shown(
     state: &Arc<State>,
     dsp: &str,
@@ -104,7 +105,8 @@ pub async fn shown(
     if preview && !stored.file.mime.starts_with("image/") {
         return Ok(None);
     }
-    let theirs = of_line(&stored, line) || stored.added_by.as_deref() == Some(viewer);
+    let draft = stored.text_id.is_none() && stored.added_by.as_deref() == Some(viewer);
+    let theirs = of_line(&stored, line) || draft;
     match &stored.file.sha256 {
         Some(sha256) if theirs => {
             let (name, mime) = (&stored.file.name, &stored.file.mime);
