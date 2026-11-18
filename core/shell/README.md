@@ -46,7 +46,11 @@ second line and initials come in `detail` (three columns by two), and more at it
 `wide` (four columns). `sizesUpTo(most, first)` declares every size to `most`, added at `first`.
 A widget's own CSS, under its `className`, draws only what the kit doesn't. Away from Production, Home
 shows one widget at every size it declares with `?sizes=<id>`, and `dispatchdev shot --widget
-<id>` saves each grid of them.
+<id>` saves each grid of them. A widget's browser test checks them all with `expectEverySize(page,
+dspId, id)` from the test fixtures, once its data is in: on every grid, in a desktop's window and a
+laptop's (1440×900), it fails naming each size where the widget doesn't load, shows nothing under
+its header, cuts its header's label, or runs past its frame. Home's own test checks every widget
+on the seeded DSP. In a single cell, the count's number takes the cell's height.
 
 A manifest is loaded up front, and outside a browser by the route table's tests. It stays
 small, imports no CSS, touches no browser API until it is called, and loads its pages lazily.

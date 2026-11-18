@@ -24,4 +24,6 @@ test('{{widgetLabel}} shows on Home where a member places it{{#widgetOpens}}, an
   await widget.getByRole('link').click();
   await expect(page.getByRole('heading', { name: '{{widgetOpensLabel}}', level: 1 })).toBeVisible();
 {{/widgetOpens}}
+  // TODO(scaffold): once it draws under its header, check every size it declares, importing
+  // expectEverySize from the fixtures: await expectEverySize(page, dsp.id, '{{widgetId}}');
 });
