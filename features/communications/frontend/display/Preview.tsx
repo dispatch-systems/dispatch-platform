@@ -3,6 +3,7 @@ import { slackAttachments } from '../../api/client.js';
 import { Composer } from '../conversations/Composer.js';
 import { Drafts } from '../conversations/drafts.js';
 import { ListPane } from '../page/ListPane.js';
+import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { roleText } from '../shared/format.js';
 import { PartyFace } from '../conversations/party.js';
 import { PaneHead } from '../shared/PaneHead.js';
@@ -25,6 +26,7 @@ export function Preview({
   display,
   phone,
   profile,
+  texts,
   width,
   height,
   timeZone,
@@ -33,6 +35,8 @@ export function Preview({
   phone: boolean;
   /** Whether Jamal's profile is open. */
   profile: boolean;
+  /** Whether its conversations are by text, as another feature's line's all are. */
+  texts: boolean;
   width: number;
   height: number;
   timeZone: string;
@@ -46,12 +50,15 @@ export function Preview({
     today,
     workspace,
     limits,
-  } = useMemo(() => sample(now), [now]);
+  } = useMemo(() => sample(now, texts), [now, texts]);
   const title = useId();
   const page = useRef<HTMLDivElement>(null);
   const docked =
     useLayout(page, dockAt(display)) === 'docked' && display.profile_opens === 'beside';
-  const about = [roleText(open.with), workspace.name].join(' · ');
+  const about = texts
+    ? phoneText(open.number ?? '')
+    : [roleText(open.with), workspace.name].join(' · ');
+  const section = texts ? 'messaging' : 'slack';
   return (
     <div
       className={phone ? 'display-screen phone' : 'display-screen'}
@@ -70,8 +77,8 @@ export function Preview({
               <ListPane
                 inbox={inbox}
                 routes={{ groups: [], read: { error: '', retry: nothing }, choose: nothing }}
-                sections={['slack']}
-                section="slack"
+                sections={[section]}
+                section={section}
                 chooseSection={nothing}
                 working={inbox.workspaces}
                 choose={nothing}

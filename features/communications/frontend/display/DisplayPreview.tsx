@@ -57,10 +57,13 @@ function usePage(box: RefObject<HTMLElement | null>) {
 export function DisplayPreview({
   display: shown,
   phone,
+  texts,
   timeZone,
 }: {
   display: Display;
   phone: boolean;
+  /** Whether its conversations are by text, with no profile, as another feature's line's are. */
+  texts: boolean;
   timeZone: string;
 }) {
   const [size, setSize] = useState<'actual' | 'fit'>('fit');
@@ -78,15 +81,17 @@ export function DisplayPreview({
   return (
     <div className="display-preview">
       <div className="display-bar">
-        <label className="settings-toggle display-bar-switch">
-          <span>Profile</span>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={profile}
-            onChange={(event) => setProfile(event.target.checked)}
-          />
-        </label>
+        {!texts && (
+          <label className="settings-toggle display-bar-switch">
+            <span>Profile</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={profile}
+              onChange={(event) => setProfile(event.target.checked)}
+            />
+          </label>
+        )}
         {!phone && room.width >= ACTUAL_LEAST && (
           <Choice
             label="Size"
@@ -115,7 +120,8 @@ export function DisplayPreview({
               <Preview
                 display={shown}
                 phone={phone}
-                profile={profile}
+                profile={profile && !texts}
+                texts={texts}
                 width={width}
                 height={height}
                 timeZone={timeZone}

@@ -3,7 +3,7 @@ import test, { type TestContext } from 'node:test';
 import type { SettingsAnswer } from '../../../../core/settings/api/index.js';
 import { cacheLimits, dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { settingsRead, type Watching } from '../../../../core/shell/frontend/runtime/slots.js';
-import { waitingUrl } from '../../api/client.js';
+import { dispatchTexting } from '../../api/client.js';
 import type { DispatchPhone, WaitingMessage } from '../../api/index.js';
 import { alertMember } from '../../frontend/alerts/alerting.js';
 import {
@@ -274,7 +274,7 @@ test('what a tab reads for a turn that ended alerts no one', async (t) => {
   start();
   await sees('m2');
   // Half a minute on, it reads what waits again; meanwhile the member focuses another tab.
-  const asked = hold(waitingUrl);
+  const asked = hold(dispatchTexting.waitingUrl);
   t.mock.timers.tick(30_000);
   const give = await asked;
   const close = await other(true);
@@ -316,7 +316,7 @@ test('a message alerts as the member chose once it is read, not as the tab began
   start();
   await sees('m1');
   // Half a minute on, it reads what waits again; meanwhile the member turns notifications on.
-  const asked = hold(waitingUrl);
+  const asked = hold(dispatchTexting.waitingUrl);
   t.mock.timers.tick(30_000);
   const give = await asked;
   dataCache.put(settingsRead, chose(true));

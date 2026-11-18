@@ -12,6 +12,7 @@ import { groupsSection, lists, sectionOf, type Section } from '../inbox/sections
 import { started, type Target } from '../conversations/target.js';
 import type { Draft } from '../slack/groups/GroupDraft.js';
 import type { Pick } from '../slack/groups/groups.js';
+import { useLine } from '../line.js';
 
 // Pane selection, its browser-history step and the turn allowed to finish opening a target.
 type Address = { conversation?: string; group?: string };
@@ -61,6 +62,7 @@ export function useOpenedPane({
   chooseSection: (section: string) => void;
   showGroup: (group: Group) => void;
 }) {
+  const { page, texting } = useLine();
   const [opened, setOpened] = useState<Opened>(addressed);
   const { conversation: open, group } = opened.address;
   const drafting = opened.kind === 'draft' ? true : undefined;
@@ -106,13 +108,13 @@ export function useOpenedPane({
   useEffect(() => {
     const followed = () => {
       const next = addressed();
-      if (parseHash(location.hash).page !== 'communications') return;
+      if (parseHash(location.hash).page !== page) return;
       const shows = Boolean(next.address.conversation || next.address.group);
       if (shows || phone) adopt(next);
     };
     addEventListener('hashchange', followed);
     return () => removeEventListener('hashchange', followed);
-  }, [adopt, phone]);
+  }, [adopt, phone, page]);
   const select = useCallback((id?: string) => opening(atAddress({ conversation: id })), [opening]);
   const openGroup = useCallback((id: string) => opening(atAddress({ group: id })), [opening]);
   const closed = useCallback(() => opening(atAddress({})), [opening]);
@@ -130,7 +132,7 @@ export function useOpenedPane({
     if (target.kind === 'conversation') select(target.id);
     else {
       const turn = ++turns.current;
-      const begun = await started(target);
+      const begun = await started(target, texting);
       if (turns.current === turn) {
         setPinned({ kind: 'conversation', row: begun });
         select(begun.id);

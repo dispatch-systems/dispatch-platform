@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import { useFillsWindow } from '../../../../core/shell/frontend/runtime/fills.js';
-import { usePushKey } from '../../api/client.js';
+import { useSettings } from '../../../../core/settings/api/client.js';
 import { DisplayPreview } from './DisplayPreview.js';
 import { useDisplayChoices } from './useDisplayChoices.js';
 import { Choice, Segments, Sketch, Slider, Swatches, Switch, Tiles } from './controls.js';
@@ -20,30 +20,46 @@ import {
 } from './display.js';
 import { allowed as notificationsAllowed, canNotify } from '../alerts/notices.js';
 import { canPush } from '../alerts/push.js';
+import { DISPATCH_PHONE, keptAt, own, type TextingLine } from '../line.js';
 import '../communications.css';
 import './display.css';
 
-// Settings' Message display: each of the member's choices of how Communications looks, a
-// desktop's or a phone's own (the screen in use to start), beside a preview of the page with them,
-// which changes as they choose. A phone has the choices that apply on one. What they choose is
-// shown at once and saved a moment later, their own; Reset takes the screen back to its defaults.
-// Then how a new message alerts them, on any screen.
+// Settings' Message display, a line's section of the Display page: each of the member's choices of
+// how its page looks, a desktop's or a phone's own (the screen in use to start), beside a preview
+// of the page with them, which changes as they choose. A phone has the choices that apply on one.
+// What they choose is shown at once and saved a moment later, their own; Reset takes the screen
+// back to its defaults. Then how a new message alerts them, on any screen. Dispatch Phone's own
+// line has the profile's choices too. While the page holds two lines' sections, each is headed
+// with its line's name, one under the other.
 // The preview shows the screen chosen at its actual size, or a desktop's whole page, as big as
 // it is in this window, made to fit, as it starts (`frame`).
 
 // The choices scroll beside the preview while both fit in the window (display.css).
 const fillsWindow = '(width > 1240px) and (height >= 600px)';
 
-export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () => void }) {
-  useFillsWindow(fillsWindow);
-  const choices = useDisplayChoices(refresh);
+export function DisplaySettings({
+  view,
+  refresh,
+  line = DISPATCH_PHONE,
+}: {
+  view: DspView;
+  refresh: () => void;
+  line?: TextingLine;
+}) {
+  // The Display page's sections drawn by their owners are lines'.
+  const lines = useSettings().data?.sections.filter(
+    (each) => each.page === 'display' && each.custom,
+  ).length;
+  const several = (lines ?? 0) > 1;
+  useFillsWindow(several ? 'not all' : fillsWindow);
+  const choices = useDisplayChoices(line.display, refresh);
   const [screen, setScreen] = useState<Screen>(thisScreen);
   const shown = onScreen(choices.values, screen);
   const change = (changes: Partial<Display>) => choices.change(kept(changes, screen));
   const phone = screen === 'phone';
   // Notifications are offered where this browser shows them from the page, or from pushes the
   // server sends, and on only where it allows them, which turning them on asks.
-  const { data: push } = usePushKey();
+  const { data: push } = line.texting.usePushKey();
   const offered = canNotify() || (canPush() && Boolean(push?.key));
   const [allowed, setAllowed] = useState(notificationsAllowed);
   const notifications = async (on: boolean) => {
@@ -56,19 +72,23 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
   };
   const look = lookOf(shown);
   const bubbles = shown.style === 'bubbles';
+  // Profiles are Dispatch Phone's own line's.
+  const profiles = own(line);
   const sections = [
     ['look', 'Look'],
     ['text', 'Text'],
     ['messages', 'Messages'],
     ['colors', 'Colors'],
     ['list', 'List'],
-    ['profile', 'Profile'],
+    ...(profiles ? [['profile', 'Profile'] as const] : []),
     ['writing', 'Writing'],
     ['alerts', 'New messages'],
   ] as const;
-  const at = (id: string) => `message-display-${id}`;
+  const named = keptAt(line, 'message-display');
+  const at = (id: string) => `${named}-${id}`;
   return (
     <div className="message-display">
+      {several && <h2 className="display-line">{line.name}</h2>}
       <div className="display-choices">
         <div className="display-screens">
           <Choice
@@ -103,7 +123,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
                 <label key={each} className="display-look">
                   <input
                     type="radio"
-                    name="message-display-look"
+                    name={at('look')}
                     checked={look === each}
                     onChange={() => change(lookSizes(each))}
                   />
@@ -113,7 +133,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
               ))}
               {!look && (
                 <label className="display-look">
-                  <input type="radio" name="message-display-look" checked readOnly />
+                  <input type="radio" name={at('look')} checked readOnly />
                   <b>
                     <SlidersHorizontal size={20} aria-hidden="true" />
                   </b>
@@ -337,46 +357,48 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
             </div>
           </section>
 
-          <section className="settings-section" id={at('profile')} aria-label="Profile">
-            <h2>Profile</h2>
-            <div className="settings-fields">
-              {!phone && (
-                <>
-                  <Tiles
-                    label="Opens"
-                    value={shown.profile_opens}
-                    options={[
-                      ['beside', 'Beside', <Sketch key="beside" kind="beside" />],
-                      ['over', 'Over', <Sketch key="over" kind="over" />],
-                    ]}
-                    change={(profile_opens) => change({ profile_opens })}
-                  />
-                  <Slider
-                    label="Width"
-                    value={shown.profile_width}
-                    min={280}
-                    max={420}
-                    step={10}
-                    unit="px"
-                    scale={shown.text_size / 14}
-                    change={(profile_width) => change({ profile_width })}
-                  />
-                </>
-              )}
-              <Switch
-                label="Slide in"
-                on={shown.profile_slide}
-                change={(profile_slide) => change({ profile_slide })}
-              />
-              {!phone && (
+          {profiles && (
+            <section className="settings-section" id={at('profile')} aria-label="Profile">
+              <h2>Profile</h2>
+              <div className="settings-fields">
+                {!phone && (
+                  <>
+                    <Tiles
+                      label="Opens"
+                      value={shown.profile_opens}
+                      options={[
+                        ['beside', 'Beside', <Sketch key="beside" kind="beside" />],
+                        ['over', 'Over', <Sketch key="over" kind="over" />],
+                      ]}
+                      change={(profile_opens) => change({ profile_opens })}
+                    />
+                    <Slider
+                      label="Width"
+                      value={shown.profile_width}
+                      min={280}
+                      max={420}
+                      step={10}
+                      unit="px"
+                      scale={shown.text_size / 14}
+                      change={(profile_width) => change({ profile_width })}
+                    />
+                  </>
+                )}
                 <Switch
-                  label="Keep profile open"
-                  on={shown.keep_profile_open}
-                  change={(keep_profile_open) => change({ keep_profile_open })}
+                  label="Slide in"
+                  on={shown.profile_slide}
+                  change={(profile_slide) => change({ profile_slide })}
                 />
-              )}
-            </div>
-          </section>
+                {!phone && (
+                  <Switch
+                    label="Keep profile open"
+                    on={shown.keep_profile_open}
+                    change={(keep_profile_open) => change({ keep_profile_open })}
+                  />
+                )}
+              </div>
+            </section>
+          )}
 
           <section className="settings-section" id={at('writing')} aria-label="Writing">
             <h2>Writing</h2>
@@ -409,7 +431,12 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
         </div>
       </div>
 
-      <DisplayPreview display={shown} phone={phone} timeZone={view.dsp.timezone} />
+      <DisplayPreview
+        display={shown}
+        phone={phone}
+        texts={!own(line)}
+        timeZone={view.dsp.timezone}
+      />
     </div>
   );
 }

@@ -6,7 +6,7 @@ use crate::api::display::{
     BubbleShape, EmployeeColor, LineSpacing, ListPreview, ListRows, ListWidth, MessageLayout,
     MessageStyle, ProfileOpens, Spacing, TeamColor, TeamSide, Times,
 };
-use dispatch_core::manifest::{Section, choice, number, section, toggle};
+use dispatch_core::manifest::{Field, Section, choice, number, section, toggle};
 
 // The choices of each, a desktop's and a phone's alike.
 type Options = &'static [(&'static str, &'static str)];
@@ -64,192 +64,26 @@ const LIST_PREVIEW: Options = &[
     (ListPreview::Two.as_str(), "2 lines"),
 ];
 
-pub const DISPLAY: Section = section(
+/// Dispatch Phone's own line's, under the name it shipped with.
+pub const DISPLAY: Section = display(
     "communications.display",
     "Message display",
     "communications.use",
-    &[
-        number("text_size", "Text size", 12, 20, Some(15)).unit("px"),
-        choice(
-            "line_spacing",
-            "Line spacing",
-            LINE_SPACING,
-            LineSpacing::Normal.as_str(),
-        ),
-        choice("spacing", "Spacing", SPACING, Spacing::Comfortable.as_str()),
-        choice(
-            "layout",
-            "Layout",
-            &[
-                (MessageLayout::Full.as_str(), "Full width"),
-                (MessageLayout::Centred.as_str(), "Centred"),
-            ],
-            MessageLayout::Centred.as_str(),
-        ),
-        number("column_width", "Column width", 600, 1200, Some(720)).unit("px"),
-        choice("style", "Style", STYLE, MessageStyle::Bubbles.as_str()),
-        choice(
-            "team_side",
-            "Your team",
-            TEAM_SIDE,
-            TeamSide::Right.as_str(),
-        ),
-        choice(
-            "bubble_shape",
-            "Bubble shape",
-            BUBBLE_SHAPE,
-            BubbleShape::Round.as_str(),
-        ),
-        number("bubble_width", "Bubble width", 50, 90, Some(70)).unit("%"),
-        choice(
-            "times",
-            "Times",
-            &[
-                (Times::EachMessage.as_str(), "Each message"),
-                (Times::EachGroup.as_str(), "Each group"),
-                (Times::OnHover.as_str(), "On hover"),
-                (Times::AfterPause.as_str(), "After a pause"),
-            ],
-            Times::AfterPause.as_str(),
-        ),
-        toggle("message_photos", "Photos", true),
-        toggle("team_names", "Team names", true),
-        choice(
-            "team_color",
-            "Your team's color",
-            TEAM_COLOR,
-            TeamColor::Blue.as_str(),
-        ),
-        choice(
-            "employee_color",
-            "Employees' color",
-            EMPLOYEE_COLOR,
-            EmployeeColor::White.as_str(),
-        ),
-        choice(
-            "list_width",
-            "List width",
-            &[
-                (ListWidth::Narrow.as_str(), "Narrow"),
-                (ListWidth::Medium.as_str(), "Medium"),
-                (ListWidth::Wide.as_str(), "Wide"),
-            ],
-            ListWidth::Medium.as_str(),
-        ),
-        choice(
-            "list_rows",
-            "Rows",
-            LIST_ROWS,
-            ListRows::Comfortable.as_str(),
-        ),
-        choice(
-            "list_preview",
-            "Preview",
-            LIST_PREVIEW,
-            ListPreview::One.as_str(),
-        ),
-        toggle("list_photos", "Photos in the list", true),
-        toggle("waiting_time", "Waiting time", true),
-        choice(
-            "profile_opens",
-            "Profile opens",
-            &[
-                (ProfileOpens::Beside.as_str(), "Beside"),
-                (ProfileOpens::Over.as_str(), "Over"),
-            ],
-            ProfileOpens::Beside.as_str(),
-        ),
-        number("profile_width", "Profile width", 280, 420, Some(320)).unit("px"),
-        toggle("profile_slide", "Slide in", true),
-        toggle("keep_profile_open", "Keep profile open", false),
-        toggle("enter_sends", "Enter sends", true),
-        // How a new message from an employee alerts them, on any screen, while Dispatch is open.
-        toggle("sound", "Sound", true),
-        toggle("notifications", "Notifications", false),
-        // A phone's own, of the choices that apply on one.
-        number("phone_text_size", "Text size on a phone", 12, 20, Some(14)).unit("px"),
-        choice(
-            "phone_line_spacing",
-            "Line spacing on a phone",
-            LINE_SPACING,
-            LineSpacing::Normal.as_str(),
-        ),
-        choice(
-            "phone_spacing",
-            "Spacing on a phone",
-            SPACING,
-            Spacing::Comfortable.as_str(),
-        ),
-        choice(
-            "phone_style",
-            "Style on a phone",
-            STYLE,
-            MessageStyle::Bubbles.as_str(),
-        ),
-        choice(
-            "phone_team_side",
-            "Your team on a phone",
-            TEAM_SIDE,
-            TeamSide::Right.as_str(),
-        ),
-        choice(
-            "phone_bubble_shape",
-            "Bubble shape on a phone",
-            BUBBLE_SHAPE,
-            BubbleShape::Round.as_str(),
-        ),
-        number(
-            "phone_bubble_width",
-            "Bubble width on a phone",
-            60,
-            100,
-            Some(80),
-        )
-        .unit("%"),
-        choice(
-            "phone_times",
-            "Times on a phone",
-            PHONE_TIMES,
-            Times::EachGroup.as_str(),
-        ),
-        toggle("phone_message_photos", "Photos on a phone", true),
-        toggle("phone_team_names", "Team names on a phone", true),
-        choice(
-            "phone_team_color",
-            "Your team's color on a phone",
-            TEAM_COLOR,
-            TeamColor::Blue.as_str(),
-        ),
-        choice(
-            "phone_employee_color",
-            "Employees' color on a phone",
-            EMPLOYEE_COLOR,
-            EmployeeColor::Gray.as_str(),
-        ),
-        choice(
-            "phone_list_rows",
-            "Rows on a phone",
-            LIST_ROWS,
-            ListRows::Comfortable.as_str(),
-        ),
-        choice(
-            "phone_list_preview",
-            "Preview on a phone",
-            LIST_PREVIEW,
-            ListPreview::One.as_str(),
-        ),
-        toggle("phone_list_photos", "Photos in the list on a phone", true),
-        toggle("phone_waiting_time", "Waiting time on a phone", true),
-        toggle("phone_profile_slide", "Slide in on a phone", true),
-        // A phone's Return starts a line, as in its messaging apps; Send sends.
-        toggle("phone_enter_sends", "Enter sends on a phone", false),
-    ],
 )
-.on("display")
-.aliases(&["dispatch_phone.display"])
-.member()
-.custom()
-.keywords(&[
+.aliases(&["dispatch_phone.display"]);
+
+/// A line's page's display, `id`, named `label`, for those holding `permission`: each member's own,
+/// on Settings' Display page, with the same choices as Dispatch Phone's own, which its page and
+/// alerts read.
+pub const fn display(id: &'static str, label: &'static str, permission: &'static str) -> Section {
+    section(id, label, permission, FIELDS)
+        .on("display")
+        .member()
+        .custom()
+        .keywords(KEYWORDS)
+}
+/// What else search finds it by.
+const KEYWORDS: &[&str] = &[
     "text size",
     "font",
     "bubbles",
@@ -258,7 +92,186 @@ pub const DISPLAY: Section = section(
     "messages",
     "phone",
     "alerts",
-]);
+];
+
+/// What each member chooses, a desktop's and then a phone's own, then how a new message alerts
+/// them.
+const FIELDS: &[Field] = &[
+    number("text_size", "Text size", 12, 20, Some(15)).unit("px"),
+    choice(
+        "line_spacing",
+        "Line spacing",
+        LINE_SPACING,
+        LineSpacing::Normal.as_str(),
+    ),
+    choice("spacing", "Spacing", SPACING, Spacing::Comfortable.as_str()),
+    choice(
+        "layout",
+        "Layout",
+        &[
+            (MessageLayout::Full.as_str(), "Full width"),
+            (MessageLayout::Centred.as_str(), "Centred"),
+        ],
+        MessageLayout::Centred.as_str(),
+    ),
+    number("column_width", "Column width", 600, 1200, Some(720)).unit("px"),
+    choice("style", "Style", STYLE, MessageStyle::Bubbles.as_str()),
+    choice(
+        "team_side",
+        "Your team",
+        TEAM_SIDE,
+        TeamSide::Right.as_str(),
+    ),
+    choice(
+        "bubble_shape",
+        "Bubble shape",
+        BUBBLE_SHAPE,
+        BubbleShape::Round.as_str(),
+    ),
+    number("bubble_width", "Bubble width", 50, 90, Some(70)).unit("%"),
+    choice(
+        "times",
+        "Times",
+        &[
+            (Times::EachMessage.as_str(), "Each message"),
+            (Times::EachGroup.as_str(), "Each group"),
+            (Times::OnHover.as_str(), "On hover"),
+            (Times::AfterPause.as_str(), "After a pause"),
+        ],
+        Times::AfterPause.as_str(),
+    ),
+    toggle("message_photos", "Photos", true),
+    toggle("team_names", "Team names", true),
+    choice(
+        "team_color",
+        "Your team's color",
+        TEAM_COLOR,
+        TeamColor::Blue.as_str(),
+    ),
+    choice(
+        "employee_color",
+        "Employees' color",
+        EMPLOYEE_COLOR,
+        EmployeeColor::White.as_str(),
+    ),
+    choice(
+        "list_width",
+        "List width",
+        &[
+            (ListWidth::Narrow.as_str(), "Narrow"),
+            (ListWidth::Medium.as_str(), "Medium"),
+            (ListWidth::Wide.as_str(), "Wide"),
+        ],
+        ListWidth::Medium.as_str(),
+    ),
+    choice(
+        "list_rows",
+        "Rows",
+        LIST_ROWS,
+        ListRows::Comfortable.as_str(),
+    ),
+    choice(
+        "list_preview",
+        "Preview",
+        LIST_PREVIEW,
+        ListPreview::One.as_str(),
+    ),
+    toggle("list_photos", "Photos in the list", true),
+    toggle("waiting_time", "Waiting time", true),
+    choice(
+        "profile_opens",
+        "Profile opens",
+        &[
+            (ProfileOpens::Beside.as_str(), "Beside"),
+            (ProfileOpens::Over.as_str(), "Over"),
+        ],
+        ProfileOpens::Beside.as_str(),
+    ),
+    number("profile_width", "Profile width", 280, 420, Some(320)).unit("px"),
+    toggle("profile_slide", "Slide in", true),
+    toggle("keep_profile_open", "Keep profile open", false),
+    toggle("enter_sends", "Enter sends", true),
+    // How a new message from an employee alerts them, on any screen, while Dispatch is open.
+    toggle("sound", "Sound", true),
+    toggle("notifications", "Notifications", false),
+    // A phone's own, of the choices that apply on one.
+    number("phone_text_size", "Text size on a phone", 12, 20, Some(14)).unit("px"),
+    choice(
+        "phone_line_spacing",
+        "Line spacing on a phone",
+        LINE_SPACING,
+        LineSpacing::Normal.as_str(),
+    ),
+    choice(
+        "phone_spacing",
+        "Spacing on a phone",
+        SPACING,
+        Spacing::Comfortable.as_str(),
+    ),
+    choice(
+        "phone_style",
+        "Style on a phone",
+        STYLE,
+        MessageStyle::Bubbles.as_str(),
+    ),
+    choice(
+        "phone_team_side",
+        "Your team on a phone",
+        TEAM_SIDE,
+        TeamSide::Right.as_str(),
+    ),
+    choice(
+        "phone_bubble_shape",
+        "Bubble shape on a phone",
+        BUBBLE_SHAPE,
+        BubbleShape::Round.as_str(),
+    ),
+    number(
+        "phone_bubble_width",
+        "Bubble width on a phone",
+        60,
+        100,
+        Some(80),
+    )
+    .unit("%"),
+    choice(
+        "phone_times",
+        "Times on a phone",
+        PHONE_TIMES,
+        Times::EachGroup.as_str(),
+    ),
+    toggle("phone_message_photos", "Photos on a phone", true),
+    toggle("phone_team_names", "Team names on a phone", true),
+    choice(
+        "phone_team_color",
+        "Your team's color on a phone",
+        TEAM_COLOR,
+        TeamColor::Blue.as_str(),
+    ),
+    choice(
+        "phone_employee_color",
+        "Employees' color on a phone",
+        EMPLOYEE_COLOR,
+        EmployeeColor::Gray.as_str(),
+    ),
+    choice(
+        "phone_list_rows",
+        "Rows on a phone",
+        LIST_ROWS,
+        ListRows::Comfortable.as_str(),
+    ),
+    choice(
+        "phone_list_preview",
+        "Preview on a phone",
+        LIST_PREVIEW,
+        ListPreview::One.as_str(),
+    ),
+    toggle("phone_list_photos", "Photos in the list on a phone", true),
+    toggle("phone_waiting_time", "Waiting time on a phone", true),
+    toggle("phone_profile_slide", "Slide in on a phone", true),
+    // A phone's Return starts a line, as in its messaging apps; Send sends.
+    toggle("phone_enter_sends", "Enter sends on a phone", false),
+];
 
 #[cfg(test)]
 #[path = "../tests/backend/display.rs"]

@@ -3,12 +3,9 @@ import test from 'node:test';
 import type { ConversationWindow } from '../../api/index.js';
 import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
-import {
-  getConversationWindow,
-  quickRepliesUrl,
-  saveQuickReplies,
-  textAttachments,
-} from '../../api/client.js';
+import { dispatchTexting, quickRepliesUrl, saveQuickReplies } from '../../api/client.js';
+
+const { attachments: textAttachments, getConversationWindow } = dispatchTexting;
 
 /** A browser's request, as `upload` sends one, which the server refuses as `answer` says. */
 function refusing(answer: { status: number; body: unknown; requestId: string }) {

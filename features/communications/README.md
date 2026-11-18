@@ -852,7 +852,10 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
   before who wrote it and opening its own page, watched by an upkeep of its own
   (`lines::pushing`) while it and Dispatch Phone are on, and each push going, as its turn comes,
   only while Dispatch Phone still is. A browser told of two lines is kept for
-  each apart, and let go of for one alone.
+  each apart, and let go of for one alone, as the browser remembers each line keeping it. Each
+  push names its line, and only that line's alerts in a window in front answer the worker for
+  it. Another line's Display section has the same choices (`lines::display`), on Settings'
+  Display page after Message display, each headed with its line's name while the page has both.
 
 ## The page's code
 
@@ -882,6 +885,15 @@ the page's layout and the variables its parts draw by.
 - `replies/`: the DSP's quick replies, in the composer and in Settings.
 - `alerts/` and `display/`: new messages' alerts on every page, and pushes to the browser
   (`push.ts`); and Message display.
+- `line.ts`: the line the page texts on (`TextingLine`, in its context, `Line`): Dispatch Phone's
+  own (`DISPATCH_PHONE`), or another feature's, whose page, count, alerts, banner of phones down
+  and Display section are these same parts drawn for that line, calling its routes
+  (`lineTexting` in `api/client.ts`, as `linePhones` is for its card), with its own name, page,
+  permission and Display section; what the browser keeps of it, its drafts' pages, choices and
+  what its alerts saw, its own. Another line has no Slack, Today's Routes, groups, profile, quick
+  replies, GIFs or adding a number to a driver, nor Display's profile choices, its preview by
+  text. `lines.ts`, which that feature's manifest loads up front, fills its slots with them
+  (`lineSlots`).
 
 Where to add:
 
