@@ -837,11 +837,12 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
   longer knows (404, 410), or of a member who may no longer be told, is let go of. Dispatch's
   service worker (`app/frontend/public/service-worker.js`) shows every push, as browsers ask,
   penalising one that shows nothing. It first asks each window of Dispatch in front there whether it
-  alerts of it itself: one that does, of its own DSP, with its conversation or group open or showing
-  notifications from the page, has it shown silently and closed at once, or left to the page's own
-  notification of it; no such answer within a second, it stays shown. Where the worker serves the
-  page, the page's notifications go through it, under the message's tag, so a push of one shown
-  already takes its place. On a phone, pushes are its only notifications: Android's browser shows
+  alerts of it itself: one that does, of its own DSP and line (each push says its `line`, none for
+  Dispatch Phone's own, as one from before lines says none), with its conversation or group open
+  or showing notifications from the page, has it shown silently and closed at once, or left to the
+  page's own notification of it; no such answer within a second, it stays shown. Where the worker
+  serves the page, the page's notifications go through it, under the message's tag, so a push of
+  one shown already takes its place. On a phone, pushes are its only notifications: Android's browser shows
   them, and an iPhone's only for Dispatch added to its Home Screen (the web app manifest,
   `app/frontend/public/assets/manifest.webmanifest`). Each line's pushes are its own
   (`push::Pushed`): Dispatch Phone's (`OWN`), of what waits on its page, to members who may use

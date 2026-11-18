@@ -58,8 +58,8 @@ pub enum Answer {
 /// after the line's label if it has one, saying what as the list shows it, opening the
 /// conversation on the line's page at `address` (the DSP's page, up to its name), and tagged with
 /// the message, so the page's own notification of it takes its place rather than showing twice.
-/// The DSP, conversation and group it's of are for a page in front to say whether it alerts of it
-/// itself.
+/// The DSP, line (none for Dispatch Phone's own), conversation and group it's of are for a page in
+/// front to say whether it alerts of it itself: each line's page of its own line's alone.
 pub fn message(dsp: &str, pushed: &Pushed, waiting: &WaitingMessage, address: &str) -> Vec<u8> {
     let opens = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("open", &waiting.conversation_id)
@@ -74,6 +74,7 @@ pub fn message(dsp: &str, pushed: &Pushed, waiting: &WaitingMessage, address: &s
         "url": format!("{address}{}?{opens}", pushed.page),
         "tag": waiting.message.id,
         "dsp": dsp,
+        "line": pushed.line,
         "conversation": waiting.conversation_id,
         "group": waiting.group_id,
     })

@@ -191,7 +191,7 @@ test('a browser another DSP opened here still wants is let go of by this one alo
   ]);
 });
 
-test('a page in front alerts of a push of its own DSP it shows open or notifies of itself', () => {
+test('a page in front alerts of a push of its own DSP and line it shows open or notifies of itself', () => {
   const push = { dsp: NORTH, conversation: 'cv_1', group: 'gr_1' };
   for (const [pushed, inFront, notifies, alerts] of [
     [push, { conversation: 'cv_1' }, false, true],
@@ -202,12 +202,19 @@ test('a page in front alerts of a push of its own DSP it shows open or notifies 
     // Another DSP's, opened at the same address.
     [{ ...push, dsp: SUMMIT }, { conversation: 'cv_1' }, true, false],
     [{ dsp: NORTH, conversation: 'cv_1', group: null }, { group: undefined }, false, false],
+    // Dispatch Phone's own, as one from before lines says none, or another line's.
+    [{ ...push, line: null }, {}, true, true],
+    [{ ...push, line: 'front_desk' }, { conversation: 'cv_1' }, true, false],
   ] as const)
     assert.equal(
       alertsInFront(pushed, NORTH, inFront, notifies),
       alerts,
       JSON.stringify([pushed, inFront, notifies]),
     );
+  // Another line's page alerts of its own line's alone.
+  const desk = { ...push, line: 'front_desk' };
+  assert(alertsInFront(desk, NORTH, {}, true, 'front_desk'));
+  assert(!alertsInFront(push, NORTH, {}, true, 'front_desk'));
 });
 
 test('changes from several tabs at once each take their turn, losing no DSP that wants it', async (t) => {

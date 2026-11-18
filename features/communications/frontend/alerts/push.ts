@@ -146,16 +146,31 @@ function keep(endpoint: string, dsps: string[]) {
   }
 }
 
-/** A push, as the service worker asks a page in front about it. */
-export type Pushed = { dsp?: string; conversation?: string; group?: string | null };
+/**
+ * A push, as the service worker asks a page in front about it: of a line of the DSP's phones, none
+ * for Dispatch Phone's own, as a push before lines were says none.
+ */
+export type Pushed = {
+  dsp?: string;
+  line?: string | null;
+  conversation?: string;
+  group?: string | null;
+};
 
 /**
- * Whether a page of the DSP `dsp`, in front of the member with `inFront` open, alerts of `push`
- * itself, so the service worker shows it quietly: one of its own DSP's, of the conversation or
- * group open, or that it notifies of from the page (`notifies`).
+ * Whether a page of the DSP `dsp`'s line `line` (Dispatch Phone's own for none), in front of the
+ * member with `inFront` open, alerts of `push` itself, so the service worker shows it quietly: one
+ * of its own DSP's and line's, of the conversation or group open, or that it notifies of from the
+ * page (`notifies`). Another line's it leaves shown, as its own page alerts of it.
  */
-export function alertsInFront(push: Pushed, dsp: string, inFront: InFront, notifies: boolean) {
-  if (push.dsp !== dsp) return false;
+export function alertsInFront(
+  push: Pushed,
+  dsp: string,
+  inFront: InFront,
+  notifies: boolean,
+  line: string | null = null,
+) {
+  if (push.dsp !== dsp || (push.line ?? null) !== line) return false;
   const open =
     (push.conversation !== undefined && push.conversation === inFront.conversation) ||
     (Boolean(push.group) && push.group === inFront.group);

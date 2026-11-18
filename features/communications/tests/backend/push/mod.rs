@@ -293,6 +293,7 @@ async fn each_lines_texts_are_heard_and_pushed_on_its_own_alone() {
     let pushed = fixture::pushed(browser);
     assert_eq!(pushed.len(), 1);
     assert_eq!(pushed[0]["title"], "Front Desk · (425) 555-0199");
+    assert_eq!(pushed[0]["line"], "front_desk");
     let opens = format!(
         "{}/#dsp/{dsp}/front-desk?open={conversation}",
         state.config.origin
@@ -312,6 +313,7 @@ async fn each_lines_texts_are_heard_and_pushed_on_its_own_alone() {
     let pushed = fixture::pushed(browser);
     assert_eq!(pushed.len(), 2);
     assert_eq!(pushed[1]["title"], "(425) 555-0199");
+    assert_eq!(pushed[1]["line"], serde_json::Value::Null);
 }
 
 #[tokio::test]
