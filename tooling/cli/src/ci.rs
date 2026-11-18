@@ -431,6 +431,7 @@ fn land(root: &Path, runner: &dyn Runner, out: &mut dyn Write) -> Result<()> {
         out,
         started: runner.now(),
         said: Duration::ZERO,
+        last: None,
     };
     let (commit, number) = loop {
         match merged(root, &branch, runner) {
@@ -519,11 +520,14 @@ struct Wait<'a> {
     out: &'a mut dyn Write,
     started: Instant,
     said: Duration,
+    /// How the run was last found, which the wait ends on if GitHub's time ran out first.
+    last: Option<String>,
 }
 impl Wait<'_> {
     /// Waits to ask again, having found the run of `merge` as `now` says: once every
     /// `PROGRESS` it says so, and after `LANDS` it stops, saying to run `landed` again.
     fn pause(&mut self, merge: &str, now: &str) -> Result<()> {
+        self.last = Some(now.to_owned());
         let waited = self.runner.now().saturating_duration_since(self.started);
         if waited >= LANDS {
             return Err(format!(
@@ -553,6 +557,13 @@ impl Wait<'_> {
     ) -> Result<()> {
         if !error.is::<github::Unreachable>() {
             return Err(error);
+        }
+        // A call cut short by the limit itself says nothing new of the run.
+        let waited = self.runner.now().saturating_duration_since(self.started);
+        if waited >= LANDS
+            && let Some(last) = self.last.clone()
+        {
+            return self.pause(merge, &last);
         }
         self.pause(merge, &format!("GitHub didn't answer: {error}"))
     }
