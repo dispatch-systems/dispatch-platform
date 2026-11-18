@@ -28,11 +28,9 @@ fn delivery_gaps_use_only_flex_instants_and_an_exact_five_minute_threshold() {
         (360_000, true),
         (0, false),
     ] {
-        row.cortex[0].start =
-            (DateTime::parse_from_rfc3339(row.cortex[0].last_delivery.as_deref().unwrap())
-                .unwrap()
-                + chrono::Duration::milliseconds(milliseconds))
-            .to_rfc3339();
+        let delivered =
+            dispatch_core::db::millis(row.cortex[0].last_delivery.as_deref().unwrap()).unwrap();
+        row.cortex[0].start = dispatch_core::db::at(delivered + milliseconds);
         assert_eq!(
             delivery_gaps(Some(&row.cortex[0])).before,
             Some(DeliveryGap {

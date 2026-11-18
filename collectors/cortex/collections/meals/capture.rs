@@ -1,7 +1,6 @@
 //! Cortex meal evidence as collected. Browser data is untrusted input.
 use crate::discovery::Scope;
-use chrono::{NaiveDate, TimeZone};
-use dispatch_core::{Error, Result, db::now, ensure};
+use dispatch_core::{Error, Result, db::now, ensure, foundation::clock};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -82,13 +81,10 @@ impl Capture {
             "invalid_cortex_capture",
             502,
         )?;
-        let date = NaiveDate::parse_from_str(&expected.date, "%Y-%m-%d").unwrap();
-        let tz: chrono_tz::Tz = expected.timezone.parse().unwrap();
-        let start = tz
-            .from_local_datetime(&date.and_hms_opt(0, 0, 0).unwrap())
-            .earliest()
-            .ok_or_else(|| Error::new("invalid_date", 400))?
-            .timestamp_millis();
+        let date = clock::date(&expected.date).unwrap();
+        let tz = clock::zone(&expected.timezone).unwrap();
+        let start = clock::instant(&tz, date.at(0, 0, 0, 0))
+            .ok_or_else(|| Error::new("invalid_date", 400))?;
         let end = start + 48 * 3600000;
         let valid_time =
             |time: i64| time >= start && time < end && time <= self.finished_at + 60000;
@@ -179,13 +175,9 @@ impl Capture {
 }
 // Used only by the explicitly configured synthetic provider mode.
 pub fn fixture(scope: &Scope) -> Capture {
-    let tz: chrono_tz::Tz = scope.timezone.parse().unwrap();
-    let date = NaiveDate::parse_from_str(&scope.date, "%Y-%m-%d").unwrap();
-    let start = tz
-        .from_local_datetime(&date.and_hms_opt(12, 0, 0).unwrap())
-        .earliest()
-        .unwrap()
-        .timestamp_millis();
+    let tz = clock::zone(&scope.timezone).unwrap();
+    let date = clock::date(&scope.date).unwrap();
+    let start = clock::instant(&tz, date.at(12, 0, 0, 0)).unwrap();
     let observed = now();
     Capture {
         scope: scope.clone(),

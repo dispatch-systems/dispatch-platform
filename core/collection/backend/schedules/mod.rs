@@ -13,12 +13,12 @@ use crate::{
     ensure,
     manifest::{Collection, Collector, Keeper, registry},
 };
-use chrono_tz::Tz;
+use jiff::tz::TimeZone;
 
-fn timezone(tz: &str) -> Result<Tz> {
-    tz.parse().map_err(|_| Error::new("invalid_timezone", 400))
+fn timezone(tz: &str) -> Result<TimeZone> {
+    crate::foundation::clock::zone(tz)
 }
-fn next_run(rule: &Rule, tz: Tz, after: i64) -> Result<String> {
+fn next_run(rule: &Rule, tz: &TimeZone, after: i64) -> Result<String> {
     rule.next(tz, after)
         .map(at)
         .ok_or_else(|| Error::new("schedule_unresolvable", 400))

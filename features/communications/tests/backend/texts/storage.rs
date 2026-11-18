@@ -121,7 +121,7 @@ async fn a_done_from_before_migration_6_still_covers_its_texts_once_theyre_filed
     // number in the copy; that conversation was marked done at 7:00 as Done was kept before
     // migration 6, on the conversation alone. Migrations 6, 9 and 10 then run over it, as an
     // upgrade does.
-    let (at_dsp, done_at) = (dsp.clone(), at(zone, day, 7, 0));
+    let (at_dsp, done_at, done_zone) = (dsp.clone(), at(&zone, day, 7, 0), zone.clone());
     let texts = state
         .run(move |db| {
             before_filing(db, &at_dsp);
@@ -133,7 +133,7 @@ async fn a_done_from_before_migration_6_still_covers_its_texts_once_theyre_filed
                 ("Any van?", 6, 30),
                 ("Van 214 is flat", 7, 30),
             ] {
-                let written = at(zone, day, hour, minute);
+                let written = at(&done_zone, day, hour, minute);
                 let text = reported(db, &at_dsp, "+12065550101", body, written, 0);
                 copied(&database, &text.id, &conversation, None, false, "[]");
                 texts.push(text.id);
@@ -159,7 +159,7 @@ async fn a_done_from_before_migration_6_still_covers_its_texts_once_theyre_filed
     assert_eq!(avery.driver, theirs);
     assert_eq!(
         standing(&state, &dsp, &avery.id).await,
-        (ConversationState::Waiting, Some(at(zone, day, 7, 30)))
+        (ConversationState::Waiting, Some(at(&zone, day, 7, 30)))
     );
 }
 
@@ -205,7 +205,7 @@ async fn texts_filed_before_migration_9_read_as_they_did_their_done_block_and_se
                 &at_dsp,
                 "+12065550101",
                 "Which van?",
-                at(zone, day, 6, 30),
+                at(&zone, day, 6, 30),
                 0,
             );
             // and a number that texted, was blocked, and texted again while it was.

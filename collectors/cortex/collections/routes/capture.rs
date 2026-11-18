@@ -1,7 +1,6 @@
 //! What a routes collection reads from Cortex: a day's route list, the newer routes
 //! page's list and every itinerary, each kept as Amazon sent it.
 use crate::discovery::{CollectionRequest, Discovery, Scope};
-use chrono::NaiveDate;
 use dispatch_core::{Error, Result, db::now, ensure, text_enum};
 use flate2::{read::GzDecoder, write::GzEncoder};
 use serde::{Deserialize, Serialize};
@@ -339,12 +338,8 @@ pub(super) fn fixture_in(request: &Request, scope: &Scope) -> Result<Capture> {
     request.scope_request().validate_scope(scope)?;
     let started_at = now();
     let scope = scope.clone();
-    let midnight = NaiveDate::parse_from_str(&request.date, "%Y-%m-%d")
-        .map_err(|_| Error::new("invalid_date", 400))?
-        .and_hms_opt(8, 0, 0)
-        .unwrap()
-        .and_utc()
-        .timestamp_millis();
+    let day = dispatch_core::foundation::clock::date(&request.date)?;
+    let midnight = dispatch_core::foundation::clock::utc(day.at(8, 0, 0, 0));
     let hour = 3_600_000;
     let drivers = [
         ("driver-1", "Fixture", "Driver", "CX101", "12065550190"),

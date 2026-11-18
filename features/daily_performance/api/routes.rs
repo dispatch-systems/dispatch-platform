@@ -12,6 +12,7 @@ use dispatch_core::{
     },
 };
 use dispatch_cortex::daily_performance::JOB_KIND;
+use jiff::ToSpan;
 const VIEW: Dsp = Dsp("daily_performance.view");
 const COLLECT: Dsp = Dsp("daily_performance.collect");
 pub fn routes() -> Vec<Route> {
@@ -35,9 +36,8 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let body = &input.body;
     v::fields(body, &["requestId", "date", "from", "to"])?;
     let key = v::text(body, "requestId", 1, 100)?;
-    let default_date = (super::super::backend::storage::today(db, c.dsp_id())?
-        - chrono::Duration::days(1))
-    .to_string();
+    let default_date =
+        (super::super::backend::storage::today(db, c.dsp_id())? - 1.days()).to_string();
     let (from, to) = if body.get("from").is_some() || body.get("to").is_some() {
         dispatch_core::ensure(body.get("date").is_none(), "invalid_input", 400)?;
         (v::text(body, "from", 10, 10)?, v::text(body, "to", 10, 10)?)

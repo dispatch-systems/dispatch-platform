@@ -38,7 +38,7 @@ pub(crate) fn latest_period(store: &Store, id: &str) -> Result<Value> {
 
 /// A period on or before `latest`, a whole number of pay periods back, and not before 2000.
 fn check_period(latest: &EmployeeTimecardPeriod, period: &EmployeeTimecardPeriod) -> Result<()> {
-    let offset = (latest.start()? - period.start()?).num_days();
+    let offset = i64::from((latest.start()? - period.start()?).get_days());
     ensure(
         period.from.as_str() >= EARLIEST_DATE && offset >= 0 && offset % PERIOD_DAYS == 0,
         "invalid_period",
@@ -65,8 +65,8 @@ pub(crate) fn timecard_period(
     .ok_or_else(|| Error::new("timecard_period_unavailable", 404))?;
     let period = if let Some(date) = date {
         v::date(date)?;
-        let day: chrono::NaiveDate = date.parse().map_err(|_| Error::new("invalid_date", 400))?;
-        latest.shift((day - latest.start()?).num_days().div_euclid(PERIOD_DAYS))?
+        let day: jiff::civil::Date = date.parse().map_err(|_| Error::new("invalid_date", 400))?;
+        latest.shift(i64::from((day - latest.start()?).get_days()).div_euclid(PERIOD_DAYS))?
     } else {
         requested.unwrap_or(&latest).clone()
     };

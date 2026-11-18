@@ -12,8 +12,8 @@ use crate::{
     discovery::Scope,
     performance::{Dataset, DatasetCapture, Read},
 };
-use chrono::NaiveDate;
 use dispatch_core::{Error, Result, collection::browser::Run, db::now};
+use jiff::{ToSpan, civil::Date};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -26,13 +26,12 @@ const RANGE_DAYS: usize = 7;
 
 /// The request's days as runs of consecutive days of at most a week, first and last of each.
 fn runs(dates: &[String]) -> Result<Vec<(String, String)>> {
-    let mut runs: Vec<(String, String, NaiveDate, usize)> = Vec::new();
+    let mut runs: Vec<(String, String, Date, usize)> = Vec::new();
     for text in dates {
-        let date = NaiveDate::parse_from_str(text, "%Y-%m-%d")
-            .map_err(|_| Error::new("invalid_date", 400))?;
+        let date = dispatch_core::foundation::clock::date(text)?;
         match runs.last_mut() {
             Some((_, last, previous, days))
-                if previous.succ_opt() == Some(date) && *days < RANGE_DAYS =>
+                if previous.tomorrow().ok() == Some(date) && *days < RANGE_DAYS =>
             {
                 *last = text.clone();
                 *previous = date;
@@ -61,10 +60,10 @@ fn split(
         return Some(BTreeMap::from([(from.to_owned(), rows.to_vec())]));
     }
     let (first, last) = (
-        NaiveDate::parse_from_str(from, "%Y-%m-%d").ok()?,
-        NaiveDate::parse_from_str(to, "%Y-%m-%d").ok()?,
+        dispatch_core::foundation::clock::date(from).ok()?,
+        dispatch_core::foundation::clock::date(to).ok()?,
     );
-    let days = first.iter_days().take_while(|day| *day <= last);
+    let days = first.series(1.day()).take_while(|day| *day <= last);
     if !dataset.station && !rows.iter().any(|row| row["data_date"].is_string()) {
         return Some(days.map(|day| (day.to_string(), rows.to_vec())).collect());
     }

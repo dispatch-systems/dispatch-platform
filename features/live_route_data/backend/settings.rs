@@ -1,11 +1,10 @@
 //! Live Route Data's settings, on its own page of a DSP's Settings, which draws them from this
 //! declaration alone.
-use chrono::{Weekday, WeekdaySet};
 use dispatch_core::{
     Error, Result,
     db::Store,
     ensure,
-    manifest::{Schedule, Section, choice, days, section, time, toggle},
+    manifest::{Days, Schedule, Section, choice, days, section, time, toggle},
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -20,7 +19,7 @@ pub const COLLECTION: Section = section(
     "Collection",
     "live_route_data.manage",
     &[
-        days("days", "Days", WeekdaySet::ALL),
+        days("days", "Days", Days::ALL),
         time("start", "Start", "08:00"),
         time("stop", "Stop", "21:00"),
         choice("every", "Every", EVERY, "5"),
@@ -42,7 +41,7 @@ const EVERY: &[(&str, &str)] = &[
 /// `COLLECTION`'s values, each field by its id: its default until the DSP saves one.
 #[derive(Deserialize)]
 pub struct Collection {
-    pub days: Vec<Weekday>,
+    pub days: Days,
     pub start: String,
     pub stop: String,
     /// How often it reads, in minutes: one of `EVERY`'s.
@@ -55,7 +54,7 @@ impl Collection {
     pub fn schedule(&self) -> Result<Schedule> {
         let minutes: u64 = (self.every.parse()).map_err(|_| Error::new("invalid_input", 400))?;
         let every = Duration::from_secs(minutes * 60);
-        Schedule::new(&self.days, &self.start, &self.stop, every)
+        Schedule::new(self.days, &self.start, &self.stop, every)
     }
 }
 

@@ -3,13 +3,13 @@
 //! matches `DOMParser` with scripting off, so no provider script runs. Anything a
 //! browser would read differently fails closed; each job still proves these records
 //! equal rendered ones before relying on them.
-use chrono::{Datelike, NaiveDate};
 use ego_tree::NodeRef;
 use html5ever::{
     ParseOpts, QualName, local_name, ns,
     tendril::TendrilSink,
     tree_builder::{QuirksMode, TreeBuilderOpts},
 };
+use jiff::ToSpan;
 use scraper::{ElementRef, Html, HtmlTreeSink, Node};
 use serde::Serialize;
 use serde_json::Value;
@@ -204,21 +204,19 @@ fn period(key: &str) -> Read<Vec<String>> {
         .split_once('_')
         .ok_or(Unreadable::Invalid("invalid_period"))?;
     let parse = |value: &str| {
-        NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        dispatch_core::foundation::clock::date(value)
             .ok()
             .filter(|d| d.to_string() == value)
             .ok_or(Unreadable::Invalid("invalid_period"))
     };
     let (start, end) = (parse(start)?, parse(end)?);
-    if start.weekday() != chrono::Weekday::Sun
-        || end.weekday() != chrono::Weekday::Sat
-        || (end - start).num_days() != 13
+    if start.weekday() != jiff::civil::Weekday::Sunday
+        || end.weekday() != jiff::civil::Weekday::Saturday
+        || i64::from((end - start).get_days()) != 13
     {
         return invalid("invalid_period");
     }
-    Ok((0..14)
-        .map(|i| (start + chrono::Duration::days(i)).to_string())
-        .collect())
+    Ok((0..14).map(|i| (start + i.days()).to_string()).collect())
 }
 fn number_or_null(value: Option<f64>) -> bool {
     value.is_none_or(|v| v.is_finite() && v >= 0.)

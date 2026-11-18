@@ -7,7 +7,6 @@ pub(crate) mod people;
 pub(crate) mod period;
 pub(crate) mod sync;
 // Cortex meal evidence and atomic publication. Browser data is untrusted input.
-use chrono::NaiveDate;
 use dispatch_core::{
     Result,
     db::{Store, at, s},
@@ -262,9 +261,8 @@ pub(crate) fn kept_routes(store: &Store, dsp: &str, scope: &Scope) -> Result<Vec
         row[field]
             .as_str()
             .map(|text| {
-                chrono::DateTime::parse_from_rfc3339(text)
-                    .map(|t| t.timestamp_millis())
-                    .map_err(|_| dispatch_core::Error::new("invalid_cortex_capture", 500))
+                dispatch_core::db::millis(text)
+                    .ok_or_else(|| dispatch_core::Error::new("invalid_cortex_capture", 500))
             })
             .transpose()
     };
@@ -324,7 +322,7 @@ pub(crate) fn kept_routes(store: &Store, dsp: &str, scope: &Scope) -> Result<Vec
 }
 pub(crate) fn meal_publications(store: &Store, dsp: &str, date: &str) -> Result<Value> {
     ensure(
-        NaiveDate::parse_from_str(date, "%Y-%m-%d").is_ok(),
+        dispatch_core::foundation::clock::date(date).is_ok(),
         "invalid_date",
         400,
     )?;

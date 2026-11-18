@@ -874,12 +874,8 @@ async fn selected_and_latest_sender_context_reset_at_dsp_midnight_and_survive_bo
         ("2024-03-10T08:30:00Z", "2024-03-11T07:00:00Z", false),
         ("2024-11-03T07:30:00Z", "2024-11-04T08:00:00Z", false),
     ] {
-        let previous = chrono::DateTime::parse_from_rfc3339(previous)
-            .unwrap()
-            .timestamp_millis();
-        let first = chrono::DateTime::parse_from_rfc3339(first)
-            .unwrap()
-            .timestamp_millis();
+        let previous = dispatch_core::db::millis(previous).unwrap();
+        let first = dispatch_core::db::millis(first).unwrap();
         for cutoff in [100, 651] {
             let (_root, db, state, dsp, _slack, text) = fixture(701);
             let name = db.find_dsp(&dsp).unwrap().name;
@@ -1199,10 +1195,10 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
         ),
     ] {
         let budget = ReadBudget::new(&db.0);
-        let _ = context::read(&store, &dsp, &reference, selected, numbers, Some(zone)).unwrap();
-        let _ = context::read(&store, &dsp, &reference, latest, numbers, Some(zone)).unwrap();
+        let _ = context::read(&store, &dsp, &reference, selected, numbers, Some(&zone)).unwrap();
+        let _ = context::read(&store, &dsp, &reference, latest, numbers, Some(&zone)).unwrap();
         let exact =
-            origins::read(&db, &reference, zone, selected, latest, &people, numbers).unwrap();
+            origins::read(&db, &reference, &zone, selected, latest, &people, numbers).unwrap();
         drop(budget);
         assert!(exact.ready);
         for facts in [exact.selected.unwrap(), exact.latest.unwrap()] {
@@ -1281,8 +1277,9 @@ async fn window_seeks_bound_work_at_both_ends_and_inside_a_long_tied_history() {
         ),
     ] {
         let budget = ReadBudget::new(&db.0);
-        let _ = context::read(&store, &dsp, &reference, latest, numbers, Some(zone)).unwrap();
-        let exact = origins::read(&db, &reference, zone, latest, latest, &people, numbers).unwrap();
+        let _ = context::read(&store, &dsp, &reference, latest, numbers, Some(&zone)).unwrap();
+        let exact =
+            origins::read(&db, &reference, &zone, latest, latest, &people, numbers).unwrap();
         drop(budget);
         assert!(exact.ready);
         let facts = exact.selected.unwrap();

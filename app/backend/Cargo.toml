@@ -123,8 +123,7 @@ dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }
 dispatch-weekly-scorecard = { path = "../../features/weekly_scorecard", features = ["ts"] }
 
 base64 = { workspace = true }
-chrono = { workspace = true }
-chrono-tz = { workspace = true }
+jiff = { workspace = true }
 reqwest = { workspace = true }
 rusqlite = { workspace = true }
 schemars = { workspace = true }

@@ -3,13 +3,14 @@
 //! the inspections that fell short, so a driver it never names was never short in what it has
 //! collected; and a day outside what it has collected is unknown, which every answer says.
 use crate::toolbox::{Answer, Cx, Refusal, Reply, Tool};
-use chrono::{Datelike, Duration, NaiveDate};
 use dispatch_core::{
     db::Store,
     foundation::names,
     manifest::people::{Everyone, Source},
 };
 use dispatch_dvic_contract::{self as dvic, Asked, ShortInspections};
+use jiff::ToSpan;
+use jiff::civil::Date;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::Arc};
@@ -130,8 +131,10 @@ impl Tool for DvicShortInspections {
 }
 
 /// The DSP's own date today, in its time zone.
-fn today(timezone: &str) -> NaiveDate {
-    dispatch_core::foundation::clock::today(timezone.parse().unwrap_or(chrono_tz::UTC))
+fn today(timezone: &str) -> Date {
+    dispatch_core::foundation::clock::today(
+        &dispatch_core::foundation::clock::zone(timezone).unwrap_or(jiff::tz::TimeZone::UTC),
+    )
 }
 
 /// The search, read at once.
@@ -140,7 +143,7 @@ fn search(
     people: &Everyone,
     dsp: &str,
     name: &str,
-    today: NaiveDate,
+    today: Date,
     input: &Search,
 ) -> Answer<Found> {
     // The toolbox refuses first where DVIC is off; this answers only for a DSP whose DVIC was
@@ -166,7 +169,7 @@ fn search(
                 .min();
             (first.and_then(parse).unwrap_or(today).min(today), today)
         }
-        None => (today - Duration::days(6), today),
+        None => (today - 6.days(), today),
     };
     let (from, to) = (from.to_string(), to.to_string());
     let mut read = Vec::new();
@@ -236,7 +239,7 @@ fn read_all(
 
 /// The days a search names, or none for its default: one way at most, each day a real one,
 /// none after today, and at most a year.
-fn range(input: &Search, today: NaiveDate) -> Result<Option<(NaiveDate, NaiveDate)>, Refusal> {
+fn range(input: &Search, today: Date) -> Result<Option<(Date, Date)>, Refusal> {
     let invalid = |message: &str| Refusal::new("invalid_input", message);
     let ways = [
         input.date.is_some(),
@@ -265,12 +268,12 @@ fn range(input: &Search, today: NaiveDate) -> Result<Option<(NaiveDate, NaiveDat
         if !(1..=LONGEST).contains(&days) {
             return Err(invalid("`last_days` is 1 to 366."));
         }
-        (today - Duration::days(days - 1), today)
+        (today - (days - 1).days(), today)
     } else if let Some(week) = input.week {
-        let sunday = today - Duration::days(i64::from(today.weekday().num_days_from_sunday()));
+        let sunday = today - (i64::from(today.weekday().to_sunday_zero_offset())).days();
         match week {
             Week::This => (sunday, today),
-            Week::Last => (sunday - Duration::days(7), sunday - Duration::days(1)),
+            Week::Last => (sunday - 7.days(), sunday - 1.days()),
         }
     } else {
         return Ok(None);
@@ -282,14 +285,14 @@ fn range(input: &Search, today: NaiveDate) -> Result<Option<(NaiveDate, NaiveDat
     if to > today {
         return Err(invalid(&format!("The range ends after today, {today}.")));
     }
-    if (to - from).num_days() >= LONGEST {
+    if i64::from((to - from).get_days()) >= LONGEST {
         return Err(invalid("Ask for a year at most."));
     }
     Ok(Some((from, to)))
 }
 
-fn parse(value: &str) -> Option<NaiveDate> {
-    NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d").ok()
+fn parse(value: &str) -> Option<Date> {
+    dispatch_core::foundation::clock::date(value.trim()).ok()
 }
 
 /// The drivers each name asked for is, and the names DVIC has never recorded. A name that
@@ -421,7 +424,10 @@ fn inspection(row: dvic::Inspection) -> Inspection {
 
 /// A day as people read it: Oct 4.
 fn day(date: &str) -> String {
-    parse(date).map_or_else(|| date.to_owned(), |date| date.format("%b %-d").to_string())
+    parse(date).map_or_else(
+        || date.to_owned(),
+        |date| date.strftime("%b %-d").to_string(),
+    )
 }
 /// What the answer says, in a sentence or two, for the agent to read out.
 fn summary(found: &Found) -> String {

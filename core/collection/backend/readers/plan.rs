@@ -1,21 +1,25 @@
 //! When a DSP's reading happens: its window's instants on each day, the days it opens on, the
 //! grid of reads from the window's start, and what its task does next.
+use crate::foundation::clock;
 use crate::manifest::Schedule;
-use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveDateTime, TimeZone};
-use chrono_tz::Tz;
+use jiff::{
+    ToSpan,
+    civil::{Date, DateTime},
+    tz::TimeZone,
+};
 
 /// A DSP's reading as the server plans it: its reader's schedule there, and where the DSP is.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Plan {
     pub schedule: Schedule,
-    pub timezone: Tz,
+    pub timezone: TimeZone,
 }
 
 /// One day's window, in milliseconds since the epoch: open from `open` until `close`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Day {
     /// The day it opens on, where the DSP is.
-    pub date: NaiveDate,
+    pub date: Date,
     pub open: i64,
     pub close: i64,
 }
@@ -26,7 +30,7 @@ pub enum Step {
     /// Reads for the day open now.
     Read(Day),
     /// Stops a day it started, whose window has ended.
-    Stop(NaiveDate),
+    Stop(Date),
     /// Nothing until then, unless its plan changes.
     Wait(i64),
 }
@@ -46,17 +50,13 @@ impl Plan {
     /// `date`'s window, whether or not it opens that day, as a day started stops at its own
     /// close: from its start that day until its stop, the next day's when the stop is no later
     /// than the start.
-    pub fn day(&self, date: NaiveDate) -> Day {
+    pub fn day(&self, date: Date) -> Day {
         let (start, stop) = (self.schedule.start(), self.schedule.stop());
-        let ends = if stop > start {
-            date
-        } else {
-            date + Duration::days(1)
-        };
+        let ends = if stop > start { date } else { date + 1.day() };
         Day {
             date,
-            open: self.instant(date.and_time(start)),
-            close: self.instant(ends.and_time(stop)),
+            open: self.instant(date.to_datetime(start)),
+            close: self.instant(ends.to_datetime(stop)),
         }
     }
 
@@ -64,7 +64,7 @@ impl Plan {
     /// on a day it opens on.
     pub fn open_at(&self, at: i64) -> Option<Day> {
         let today = self.date(at);
-        [today - Duration::days(1), today]
+        [today - 1.day(), today]
             .into_iter()
             .filter(|date| self.opens_on(*date))
             .map(|date| self.day(date))
@@ -75,7 +75,7 @@ impl Plan {
     pub fn next(&self, at: i64) -> Day {
         let today = self.date(at);
         (0..=7)
-            .map(|days| today + Duration::days(days))
+            .map(|days| today + days.days())
             .filter(|date| self.opens_on(*date))
             .map(|date| self.day(date))
             .find(|day| day.open > at)
@@ -100,13 +100,7 @@ impl Plan {
     /// at once when that has passed, while the slot is before its close; never once it has
     /// ended, though its window was moved to end later: the next day's window is the next to
     /// read.
-    pub fn step(
-        &self,
-        now: i64,
-        after: i64,
-        unstopped: &[NaiveDate],
-        ended: Option<NaiveDate>,
-    ) -> Step {
+    pub fn step(&self, now: i64, after: i64, unstopped: &[Date], ended: Option<Date>) -> Step {
         let open = self.open_at(now).filter(|day| !ended_by(ended, day.date));
         let mut until = match open {
             Some(day) => day.close,
@@ -144,7 +138,7 @@ impl Plan {
     /// that has passed, while
     /// it's before the day's close and the day hasn't ended; otherwise the start of the next day
     /// it opens on, as a day that ended never reads again.
-    pub fn next_read(&self, now: i64, after: i64, ended: Option<NaiveDate>) -> i64 {
+    pub fn next_read(&self, now: i64, after: i64, ended: Option<Date>) -> i64 {
         let open = self.open_at(now).filter(|day| !ended_by(ended, day.date));
         if let Some(due) = open.and_then(|day| self.due(&day, now, after)) {
             return due;
@@ -164,35 +158,25 @@ impl Plan {
     }
 
     /// Whether its window opens on `date`, where the DSP is.
-    fn opens_on(&self, date: NaiveDate) -> bool {
+    fn opens_on(&self, date: Date) -> bool {
         self.schedule.opens_on(date.weekday())
     }
     /// The day it is at `at` where the DSP is.
-    fn date(&self, at: i64) -> NaiveDate {
-        DateTime::from_timestamp_millis(at)
-            .unwrap_or_default()
-            .with_timezone(&self.timezone)
-            .date_naive()
+    fn date(&self, at: i64) -> Date {
+        clock::local(&self.timezone, at).date()
     }
 
     /// A local time where the DSP is, in milliseconds since the epoch: one a clock change
     /// repeats at its first, and one it skips as the clock resumes.
-    fn instant(&self, local: NaiveDateTime) -> i64 {
+    fn instant(&self, local: DateTime) -> i64 {
         (0..=180)
-            .find_map(|minutes| {
-                self.timezone
-                    .from_local_datetime(&(local + Duration::minutes(minutes)))
-                    .earliest()
-            })
-            .map_or_else(
-                || local.and_utc().timestamp_millis(),
-                |at| at.timestamp_millis(),
-            )
+            .find_map(|minutes| clock::instant(&self.timezone, local + minutes.minutes()))
+            .unwrap_or_else(|| clock::utc(local))
     }
 }
 
 /// Whether `date` has ended, `ended` being the last day that did, its stop begun or done.
-fn ended_by(ended: Option<NaiveDate>, date: NaiveDate) -> bool {
+fn ended_by(ended: Option<Date>, date: Date) -> bool {
     ended.is_some_and(|last| date <= last)
 }
 

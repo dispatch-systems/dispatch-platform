@@ -2,30 +2,31 @@
 //! days it opens on; its grid from the window's start; and what it does next, kept across
 //! restarts.
 use super::*;
-use chrono::Weekday::{self, *};
+use crate::manifest::Days;
+use jiff::civil::Weekday::{self, *};
 
-const CHICAGO: Tz = chrono_tz::America::Chicago;
+fn chicago() -> TimeZone {
+    clock::zone("America/Chicago").unwrap()
+}
 const MINUTES: i64 = 60_000;
-const EVERY_DAY: &[Weekday] = &[Mon, Tue, Wed, Thu, Fri, Sat, Sun];
+const EVERY_DAY: &[Weekday] = &[
+    Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday,
+];
 const FIVE_MINUTES: std::time::Duration = std::time::Duration::from_secs(300);
 
-fn date(text: &str) -> NaiveDate {
+fn date(text: &str) -> Date {
     text.parse().unwrap()
 }
 /// The instant of a local time in Chicago, read as the clock there shows it.
 fn local(text: &str) -> i64 {
-    let at = NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S").unwrap();
-    CHICAGO
-        .from_local_datetime(&at)
-        .earliest()
-        .unwrap()
-        .timestamp_millis()
+    let at = DateTime::strptime("%Y-%m-%d %H:%M:%S", text).unwrap();
+    clock::instant(&chicago(), at).unwrap()
 }
 /// Reading on `days` every `every` from `start` until `stop` in Chicago.
 fn reading(days: &[Weekday], start: &str, stop: &str, every: std::time::Duration) -> Plan {
     Plan {
-        schedule: Schedule::new(days, start, stop, every).unwrap(),
-        timezone: CHICAGO,
+        schedule: Schedule::new(Days::of(days), start, stop, every).unwrap(),
+        timezone: chicago(),
     }
 }
 /// Reading every day, every five minutes from `start` until `stop` in Chicago.
@@ -96,7 +97,7 @@ fn reads_fall_on_a_grid_of_its_interval_from_the_window_start() {
 #[test]
 fn a_window_opens_only_on_its_days_the_next_as_much_as_a_week_on() {
     // 2026-10-20 is a Tuesday.
-    let plan = reading(&[Tue, Thu], "08:00", "21:00", FIVE_MINUTES);
+    let plan = reading(&[Tuesday, Thursday], "08:00", "21:00", FIVE_MINUTES);
     assert_eq!(
         plan.open_at(local("2026-10-20 12:00:00")),
         Some(plan.day(date("2026-10-20")))
@@ -108,13 +109,13 @@ fn a_window_opens_only_on_its_days_the_next_as_much_as_a_week_on() {
         Step::Wait(local("2026-10-22 08:00:00"))
     );
     // On Tuesdays alone, once Tuesday's has opened the next is a week on.
-    let weekly = reading(&[Tue], "08:00", "21:00", FIVE_MINUTES);
+    let weekly = reading(&[Tuesday], "08:00", "21:00", FIVE_MINUTES);
     assert_eq!(
         weekly.next(local("2026-10-20 08:00:00")).open,
         local("2026-10-27 08:00:00")
     );
     // Overnight from a Tuesday, it's open past midnight into Wednesday all the same.
-    let overnight = reading(&[Tue], "20:00", "02:00", FIVE_MINUTES);
+    let overnight = reading(&[Tuesday], "20:00", "02:00", FIVE_MINUTES);
     assert_eq!(
         overnight.open_at(local("2026-10-21 01:00:00")),
         Some(overnight.day(date("2026-10-20")))
@@ -235,7 +236,7 @@ fn a_started_day_stops_as_its_window_closes_before_a_later_day_reads() {
 #[test]
 fn a_started_day_on_a_day_no_longer_chosen_reads_no_more_and_stops_as_its_window_closes() {
     // Tuesday's day started, then the DSP chose Mondays alone.
-    let plan = reading(&[Mon], "08:00", "21:00", FIVE_MINUTES);
+    let plan = reading(&[Monday], "08:00", "21:00", FIVE_MINUTES);
     let today = date("2026-10-20");
     let last = local("2026-10-20 12:00:00");
     assert_eq!(
@@ -284,7 +285,7 @@ fn a_day_that_ended_reads_no_more_though_its_window_is_moved_to_end_later() {
 #[test]
 fn it_reads_next_at_the_open_days_next_slot_and_otherwise_at_the_next_days_start() {
     // 2026-10-20 is a Tuesday.
-    let plan = reading(&[Tue, Thu], "08:00", "21:00", FIVE_MINUTES);
+    let plan = reading(&[Tuesday, Thursday], "08:00", "21:00", FIVE_MINUTES);
     let today = date("2026-10-20");
     assert_eq!(
         plan.next_read(local("2026-10-20 07:00:00"), i64::MIN, None),
@@ -305,7 +306,7 @@ fn it_reads_next_at_the_open_days_next_slot_and_otherwise_at_the_next_days_start
         local("2026-10-22 08:00:00")
     );
     // A day that ended reads no more, though its window opens again later that day.
-    let afternoon = reading(&[Tue, Thu], "14:00", "18:00", FIVE_MINUTES);
+    let afternoon = reading(&[Tuesday, Thursday], "14:00", "18:00", FIVE_MINUTES);
     assert_eq!(
         afternoon.next_read(local("2026-10-20 12:00:00"), last, Some(today)),
         local("2026-10-22 14:00:00")

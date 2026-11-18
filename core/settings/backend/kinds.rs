@@ -6,25 +6,17 @@ use crate::{
     Result,
     db::Store,
     ensure,
-    manifest::settings::{Field, Kind, Listed, Options},
+    manifest::settings::{Days, Field, Kind, Listed, Options},
 };
-use chrono::Weekday;
 use serde_json::Value;
 
-/// The days of the week from Monday, each by the name a days field keeps it by, and its label.
-const WEEK: [(&str, &str); 7] = [
-    ("mon", "Mon"),
-    ("tue", "Tue"),
-    ("wed", "Wed"),
-    ("thu", "Thu"),
-    ("fri", "Fri"),
-    ("sat", "Sat"),
-    ("sun", "Sun"),
-];
-/// A day's place in `WEEK`, by the name a days field keeps it by.
+/// The days of the week from Monday, each by its label.
+const WEEK: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/// A day's place in the week from Monday, by the name a days field keeps it by.
 fn place(day: &Value) -> Option<usize> {
-    WEEK.iter()
-        .position(|(name, _)| Some(*name) == day.as_str())
+    Days::NAMES
+        .iter()
+        .position(|name| Some(*name) == day.as_str())
 }
 
 /// Its value until one is saved.
@@ -38,11 +30,7 @@ pub(crate) fn default(field: &Field) -> Value {
         Kind::Pick { default, .. } => default.map_or(Value::Null, Value::from),
         Kind::Many { default, .. } => Value::from(default.to_vec()),
         Kind::Number { default, .. } => default.map_or(Value::Null, Value::from),
-        Kind::Days { default } => Value::from(
-            (default.iter(Weekday::Mon))
-                .map(|day| WEEK[day.num_days_from_monday() as usize].0)
-                .collect::<Vec<_>>(),
-        ),
+        Kind::Days { default } => Value::from(default.names().collect::<Vec<_>>()),
     }
 }
 
@@ -267,7 +255,7 @@ pub(crate) fn fits(field: &Field, value: &Value) -> bool {
         Kind::Time { .. } => value.as_str().is_some_and(is_time),
         Kind::Timezone { .. } => value
             .as_str()
-            .is_some_and(|zone| zone.parse::<chrono_tz::Tz>().is_ok()),
+            .is_some_and(|zone| crate::foundation::clock::zone(zone).is_ok()),
     }
 }
 
@@ -303,7 +291,7 @@ pub(crate) fn shown(
         }
         Kind::Days { .. } => {
             let labels: Vec<&str> = (value.as_array()?.iter())
-                .filter_map(|day| Some(WEEK[place(day)?].1))
+                .filter_map(|day| Some(WEEK[place(day)?]))
                 .collect();
             (!labels.is_empty()).then(|| labels.join(", "))
         }
@@ -343,5 +331,5 @@ fn is_code(text: &str) -> bool {
 }
 /// Whether `text` is a time of day, `HH:MM`.
 pub(crate) fn is_time(text: &str) -> bool {
-    text.len() == 5 && chrono::NaiveTime::parse_from_str(text, "%H:%M").is_ok()
+    text.len() == 5 && jiff::civil::Time::strptime("%H:%M", text).is_ok()
 }

@@ -6,7 +6,6 @@ use crate::{
     api::types::ToolLevel,
     testing::{self, agent, call_tool, serving},
 };
-use chrono::Duration;
 use dispatch_core::{
     Result,
     accounts::api::types::Dsp,
@@ -22,6 +21,7 @@ use dispatch_routes_contract::{self as route, DriverRoutes};
 use dispatch_slack_contract::{self as slack, ChatAccounts};
 use dispatch_timecard_contract as timecard;
 use dispatch_weekly_scorecard_contract::{self as scorecard, DriverScorecards};
+use jiff::ToSpan;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, sync::Mutex};
 
@@ -68,10 +68,8 @@ fn rows_of(ids: &[String], from: &str, to: &str) -> Vec<(String, String)> {
 }
 /// `day` at `hour`:`minute` UTC, in epoch milliseconds: an hour past 23 is on a later day.
 fn at(day: &str, hour: i64, minute: i64) -> i64 {
-    let midnight = parse(day).unwrap().and_hms_opt(0, 0, 0).unwrap();
-    (midnight + Duration::minutes(hour * 60 + minute))
-        .and_utc()
-        .timestamp_millis()
+    let midnight = parse(day).unwrap().at(0, 0, 0, 0);
+    clock::utc(midnight + (hour * 60 + minute).minutes())
 }
 fn person(code: &str, name: &str, ids: &[(&'static SourceInfo, &[&str])]) -> Person {
     Person {
@@ -657,8 +655,8 @@ async fn an_agent_looks_up_a_driver_with_what_the_features_on_know_of_them() {
     // By their code, the last 7 days, and only the sections asked for.
     let code = found["person"]["code"].as_str().unwrap();
     let (week, _) = call(json!({"driver": code, "sections": ["roster"]})).await;
-    let today = clock::today(chrono_tz::America::Los_Angeles);
-    let days = [today - Duration::days(6), today].map(|day| json!(day.to_string()));
+    let today = clock::today(&clock::zone("America/Los_Angeles").unwrap());
+    let days = [today - 6.days(), today].map(|day| json!(day.to_string()));
     assert_eq!([&week["from"], &week["to"]], [&days[0], &days[1]]);
     assert_eq!(week["inspections"], Value::Null);
 }

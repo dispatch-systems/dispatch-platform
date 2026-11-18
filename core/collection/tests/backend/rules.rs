@@ -3,9 +3,7 @@ use crate::foundation::timing::MAX_TIMES;
 use serde_json::json;
 
 fn ms(value: &str) -> i64 {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .unwrap()
-        .timestamp_millis()
+    crate::db::millis(value).unwrap()
 }
 fn at(value: i64) -> String {
     crate::db::at(value)
@@ -16,8 +14,8 @@ fn rule(value: Value) -> Rule {
 
 #[test]
 fn a_rule_runs_on_its_days_at_its_local_times_across_clock_changes() {
-    let chicago: Tz = "America/Chicago".parse().unwrap();
-    let new_york: Tz = "America/New_York".parse().unwrap();
+    let chicago = crate::foundation::clock::zone("America/Chicago").unwrap();
+    let new_york = crate::foundation::clock::zone("America/New_York").unwrap();
     let weekdays = rule(json!({"kind":"times","days":[0,1,2,3,4],"times":["14:00","06:00"]}));
     let repeat = rule(json!({"kind":"repeat","days":[5],"every":120,"from":"22:00","to":"02:00"}));
     let all_day = rule(json!({"kind":"repeat","days":[0,1,2,3,4,5,6],"every":720,
@@ -27,71 +25,71 @@ fn a_rule_runs_on_its_days_at_its_local_times_across_clock_changes() {
         // Friday 2:00 PM has passed: Monday 6:00 AM.
         (
             &weekdays,
-            chicago,
+            &chicago,
             "2026-01-09T20:30:00Z",
             "2026-01-12T12:00:00.000Z",
         ),
         (
             &weekdays,
-            chicago,
+            &chicago,
             "2026-01-12T12:00:00Z",
             "2026-01-12T20:00:00.000Z",
         ),
         // Saturday's 10:00 PM to 2:00 AM carries past midnight into Sunday, 2:00 AM included.
         (
             &repeat,
-            chicago,
+            &chicago,
             "2026-01-11T05:00:00Z",
             "2026-01-11T06:00:00.000Z",
         ),
         (
             &repeat,
-            chicago,
+            &chicago,
             "2026-01-11T07:00:00Z",
             "2026-01-11T08:00:00.000Z",
         ),
         (
             &repeat,
-            chicago,
+            &chicago,
             "2026-01-11T08:00:00Z",
             "2026-01-18T04:00:00.000Z",
         ),
         // All day from 6:00 AM: 6:00 PM, then 6:00 AM again, never 6:00 AM twice.
         (
             &all_day,
-            chicago,
+            &chicago,
             "2026-01-10T12:00:00Z",
             "2026-01-11T00:00:00.000Z",
         ),
         (
             &all_day,
-            chicago,
+            &chicago,
             "2026-01-11T00:00:00Z",
             "2026-01-11T12:00:00.000Z",
         ),
         // The spring change skips 2:30 AM, so 1:30 AM runs, then next Sunday's 1:30 AM.
         (
             &night,
-            new_york,
+            &new_york,
             "2026-03-08T05:00:00Z",
             "2026-03-08T06:30:00.000Z",
         ),
         (
             &night,
-            new_york,
+            &new_york,
             "2026-03-08T06:30:00Z",
             "2026-03-15T05:30:00.000Z",
         ),
         // The fall change repeats 1:30 AM, which runs once, at its first.
         (
             &night,
-            new_york,
+            &new_york,
             "2026-11-01T05:00:00Z",
             "2026-11-01T05:30:00.000Z",
         ),
         (
             &night,
-            new_york,
+            &new_york,
             "2026-11-01T05:30:00Z",
             "2026-11-01T07:30:00.000Z",
         ),
@@ -106,7 +104,7 @@ fn a_rule_runs_on_its_days_at_its_local_times_across_clock_changes() {
         );
     }
     let both = [weekdays.clone(), weekdays];
-    let runs: Vec<String> = upcoming(&both, chicago, ms("2026-01-12T11:00:00Z"), 3)
+    let runs: Vec<String> = upcoming(&both, &chicago, ms("2026-01-12T11:00:00Z"), 3)
         .into_iter()
         .map(at)
         .collect();

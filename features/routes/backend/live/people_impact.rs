@@ -60,7 +60,7 @@ pub(super) fn people_impact(store: &Store, dsp: &str, read: &Shaped) -> Result<P
         || held["timezone"].as_str() != Some(scope.timezone.as_str())
         || held["collected_at"]
             .as_str()
-            .is_none_or(|stamp| chrono::DateTime::parse_from_rfc3339(stamp).is_err())
+            .is_none_or(|stamp| dispatch_core::db::millis(stamp).is_none())
         || (
             s(held, "day"),
             s(held, "station"),
@@ -107,7 +107,7 @@ pub(super) fn people_impact(store: &Store, dsp: &str, read: &Shaped) -> Result<P
         // Check every write against the held row, so a temporary rename restored by a
         // duplicate is conservative too. Unknown date spellings never certify no change.
         let canonical = |date: &str| {
-            chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+            dispatch_core::foundation::clock::date(date)
                 .is_ok_and(|parsed| parsed.to_string() == date)
         };
         if !identifier(&driver.id, 512)

@@ -139,7 +139,7 @@ impl Store {
                     ),
                     None => None,
                 };
-                let key = storage::save_rule(&db, row, collects, rule, position, enabled, tz)?;
+                let key = storage::save_rule(&db, row, collects, rule, position, enabled, &tz)?;
                 kept.push(key);
             }
             for row in &before {
@@ -182,7 +182,7 @@ impl Store {
                     self.check_schedule_sources(id, row.collection)?;
                 }
                 let next = if enabled {
-                    Some(next_run(&row.rule, tz, now())?)
+                    Some(next_run(&row.rule, &tz, now())?)
                 } else {
                     None
                 };
@@ -203,7 +203,7 @@ impl Store {
         let tz = timezone(&self.find_dsp(id)?.timezone)?;
         let rules: Vec<Rule> = requested.into_iter().map(|(_, _, rule)| rule).collect();
         Ok(ScheduleRuns {
-            runs: rules::upcoming(&rules, tz, now(), UPCOMING)
+            runs: rules::upcoming(&rules, &tz, now(), UPCOMING)
                 .into_iter()
                 .map(at)
                 .collect(),
@@ -244,9 +244,9 @@ impl Store {
                 }) {
                     continue;
                 }
-                let anchor = anchor(legacy(&row.rule).2, tz, now())?;
+                let anchor = anchor(legacy(&row.rule).2, &tz, now())?;
                 let deadline = if row.enabled {
-                    Some(next_run(&row.rule, tz, now())?)
+                    Some(next_run(&row.rule, &tz, now())?)
                 } else {
                     None
                 };

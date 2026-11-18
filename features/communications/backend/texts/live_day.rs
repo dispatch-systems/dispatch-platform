@@ -16,8 +16,6 @@ use crate::backend::{
     model::{ConversationKind, ConversationState},
     today,
 };
-use chrono::NaiveDate;
-use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result,
     db::{Store, now},
@@ -25,6 +23,8 @@ use dispatch_core::{
 use dispatch_routes_contract::{
     self as routes, DayPhones, DriverPhone, DriverRoutes, LiveRouteData, RouteDay,
 };
+use jiff::civil::Date;
+use jiff::tz::TimeZone;
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashMap, HashSet},
@@ -53,7 +53,7 @@ impl LiveDay {
         let Some(day) = reader.live_day(db, dsp)? else {
             return Ok(None);
         };
-        let from = began(zone(db, dsp)?, date(&day)?)?;
+        let from = began(&zone(db, dsp)?, date(&day)?)?;
         Ok(Some(Self {
             reader,
             source: reader.source().as_str().to_owned(),
@@ -247,14 +247,14 @@ pub fn waits_from(db: &Store, dsp: &str, at: i64) -> Result<Option<i64>> {
         return Ok(Some(live.from));
     }
     match after_stop(db, dsp, at)? {
-        Some((zone, day)) => Ok(Some(began(zone, day)?)),
+        Some((zone, day)) => Ok(Some(began(&zone, day)?)),
         None => Ok(None),
     }
 }
 /// When the two hours after the day before `day` stopped end, in `zone`, while they run into
 /// `day`, past its midnight: none else.
-pub fn after_stop_into(db: &Store, dsp: &str, zone: Tz, day: NaiveDate) -> Result<Option<i64>> {
-    let Some(before) = day.pred_opt() else {
+pub fn after_stop_into(db: &Store, dsp: &str, zone: &TimeZone, day: Date) -> Result<Option<i64>> {
+    let Some(before) = day.yesterday().ok() else {
         return Ok(None);
     };
     let Some(kept) = db.communications_live_day_on(dsp, &before.to_string())? else {
@@ -265,12 +265,12 @@ pub fn after_stop_into(db: &Store, dsp: &str, zone: Tz, day: NaiveDate) -> Resul
 }
 /// The day live route data held last, in the DSP's `zone`, while at `at` the two hours after it
 /// ended last.
-fn after_stop(db: &Store, dsp: &str, at: i64) -> Result<Option<(Tz, NaiveDate)>> {
+fn after_stop(db: &Store, dsp: &str, at: i64) -> Result<Option<(TimeZone, Date)>> {
     let Some(kept) = db.communications_live_day(dsp)? else {
         return Ok(None);
     };
     let (zone, day) = (zone(db, dsp)?, date(&kept.day)?);
-    let over = at >= ended(zone, day, kept.ended_at, at)? + AFTER_STOP_MS;
+    let over = at >= ended(&zone, day, kept.ended_at, at)? + AFTER_STOP_MS;
     Ok((!over).then_some((zone, day)))
 }
 
@@ -303,11 +303,11 @@ pub fn watched(db: &Store, dsp: &str, at: i64) -> Result<Option<Watched>> {
             match kept.ended_at {
                 None => Some(Watched::Ended {
                     day: kept.day,
-                    at: ended(zone, day, None, at)?,
+                    at: ended(&zone, day, None, at)?,
                 }),
                 Some(ended) if at >= ended + AFTER_STOP_MS => Some(Watched::Over {
                     day: kept.day,
-                    from: began(zone, day)?,
+                    from: began(&zone, day)?,
                 }),
                 Some(_) => None,
             }
@@ -331,9 +331,10 @@ pub fn keep(db: &Store, dsp: &str, watched: &Watched) -> Result<()> {
 }
 
 /// When the live day `day` ended, kept as `ended_at`, or else `at`: never after the day did.
-fn ended(zone: Tz, day: NaiveDate, ended_at: Option<i64>, at: i64) -> Result<i64> {
+fn ended(zone: &TimeZone, day: Date, ended_at: Option<i64>, at: i64) -> Result<i64> {
     let next = day
-        .succ_opt()
+        .tomorrow()
+        .ok()
         .ok_or_else(|| Error::new("invalid_date", 400))?;
     Ok(ended_at.unwrap_or(at).min(began(zone, next)?))
 }

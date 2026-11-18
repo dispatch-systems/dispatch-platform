@@ -603,8 +603,8 @@ impl Native {
 
 /// Whether the day is past where its station is, as the application tells Cortex.
 fn historical(scope: &Scope) -> &'static str {
-    let zone: chrono_tz::Tz = scope.timezone.parse().unwrap_or(chrono_tz::UTC);
-    if scope.date < clock::today(zone).to_string() {
+    let zone = clock::zone(&scope.timezone).unwrap_or(jiff::tz::TimeZone::UTC);
+    if scope.date < clock::today(&zone).to_string() {
         "true"
     } else {
         "false"

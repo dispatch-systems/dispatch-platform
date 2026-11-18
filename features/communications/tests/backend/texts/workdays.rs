@@ -4,7 +4,7 @@ use crate::backend::{
     support::{self, at, driver, filed, phoned, route, saved, started, texted, today, van},
     texts::reading,
 };
-use chrono::{Days, NaiveDate};
+use jiff::{ToSpan, civil::Date};
 
 #[tokio::test]
 async fn each_workday_shows_its_route_and_van_however_far_apart_and_however_many_days_between() {
@@ -12,14 +12,14 @@ async fn each_workday_shows_its_route_and_van_however_far_apart_and_however_many
     let (zone, day) = today(&state, &dsp).await;
     // Avery texted on 0101 four hundred days ago, a hundred and fifty days ago and yesterday, and
     // drove every day from the first, each in a van of its own, named by how many days in it is.
-    let ago = |days| day.checked_sub_days(Days::new(days)).unwrap();
+    let ago = |days: i64| day - days.days();
     let texted_on = [ago(400), ago(150), ago(1)];
     let driven: Vec<_> = ago(400)
-        .iter_days()
+        .series(1.day())
         .take_while(|each| *each < day)
         .enumerate()
         .map(|(n, each)| {
-            let wave = at(zone, each, 9, 0);
+            let wave = at(&zone, each, 9, 0);
             route(
                 &each.to_string(),
                 "A1",
@@ -47,7 +47,7 @@ async fn each_workday_shows_its_route_and_van_however_far_apart_and_however_many
             &dsp,
             "+12065550101",
             "At the station",
-            at(zone, each, 9, 0),
+            at(&zone, each, 9, 0),
         )
         .await;
     }
@@ -66,7 +66,7 @@ async fn each_workday_shows_its_route_and_van_however_far_apart_and_however_many
         .map(|each| (each.day, each.route, each.van))
         .collect();
     let shown =
-        |each: NaiveDate, n: &str| (each.to_string(), Some(format!("CX{n}")), Some(n.to_owned()));
+        |each: Date, n: &str| (each.to_string(), Some(format!("CX{n}")), Some(n.to_owned()));
     assert_eq!(
         workdays,
         [
@@ -77,8 +77,8 @@ async fn each_workday_shows_its_route_and_van_however_far_apart_and_however_many
     );
     // A historical selection and its separate latest seed need their own exact local days.
     // Keep the original sparse-day/route/van assertions above, then enlarge this same fixture.
-    let yesterday = at(zone, texted_on[2], 10, 0);
-    let tail = at(zone, day, 10, 0);
+    let yesterday = at(&zone, texted_on[2], 10, 0);
+    let tail = at(&zone, day, 10, 0);
     let (shared, at_dsp, conversation, template) =
         (state.clone(), dsp.clone(), id.clone(), text.clone());
     let page = state.run(move |db| {

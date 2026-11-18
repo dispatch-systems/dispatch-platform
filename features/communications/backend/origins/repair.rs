@@ -5,8 +5,8 @@ use super::{
     source::{Topology, Transport, by_id, flags, neighbor},
     state,
 };
-use chrono_tz::Tz;
 use dispatch_core::{Result, db::Db, ensure};
+use jiff::tz::TimeZone;
 use rusqlite::params;
 
 /// A real SQLite write before any adjacency/state read. If a caller already established a
@@ -50,7 +50,7 @@ pub(crate) fn boundary(
     transport: Transport,
     conversation: &str,
     generation: &str,
-    zone: Tz,
+    zone: &TimeZone,
     previous: Option<&Topology>,
     row: &Topology,
 ) -> Result<()> {
@@ -206,7 +206,7 @@ fn mutate<T>(
             {
                 continue;
             }
-            let zone: Tz = zone.parse().map_err(|_| invariant())?;
+            let zone = dispatch_core::foundation::clock::zone(zone).map_err(|_| invariant())?;
             let generation = entry.generation.as_deref().ok_or_else(invariant)?;
             let repaired = db.transaction(|| {
                 if changed {
@@ -242,7 +242,7 @@ fn mutate<T>(
                             transport,
                             &conversation,
                             generation,
-                            zone,
+                            &zone,
                             previous.as_ref(),
                             &row,
                         )?;
@@ -284,7 +284,7 @@ fn advance_candidate(
 ) -> Result<()> {
     if candidate.epoch != entry.epoch
         || candidate.algorithm != algorithm()
-        || candidate.zone.parse::<Tz>().is_err()
+        || dispatch_core::foundation::clock::zone(&candidate.zone).is_err()
     {
         return Ok(());
     }

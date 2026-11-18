@@ -17,7 +17,7 @@ pub fn validate_workforce(value: &Value) -> Result<()> {
     v::date(s(value, "to"))?;
     ensure(s(value, "from") <= s(value, "to"), "invalid_period", 400)?;
     ensure(
-        chrono::DateTime::parse_from_rfc3339(s(value, "collectedAt")).is_ok(),
+        dispatch_core::db::millis(s(value, "collectedAt")).is_some(),
         "invalid_collection_time",
         400,
     )?;
@@ -129,7 +129,7 @@ pub fn sources(value: &Value) -> &[Value] {
     value["sources"].as_array().map_or(&[], Vec::as_slice)
 }
 /// A missing date preserves scheduled/current-period collection behavior.
-pub fn collection_date(request: &Value, timezone: &str) -> Result<Option<chrono::NaiveDate>> {
+pub fn collection_date(request: &Value, timezone: &str) -> Result<Option<jiff::civil::Date>> {
     v::fields(request, &["date"])?;
     let Some(value) = request.get("date") else {
         return Ok(None);
@@ -137,15 +137,12 @@ pub fn collection_date(request: &Value, timezone: &str) -> Result<Option<chrono:
     let value = value
         .as_str()
         .ok_or_else(|| Error::new("invalid_date", 400))?;
-    let date = chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
-        .map_err(|_| Error::new("invalid_date", 400))?;
-    let tz: chrono_tz::Tz = timezone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
+    let date = dispatch_core::foundation::clock::date(value)?;
+    let tz = dispatch_core::foundation::clock::zone(timezone)?;
     ensure(
         date.to_string() == value
             && value >= "2000-01-01"
-            && date <= dispatch_core::foundation::clock::today(tz),
+            && date <= dispatch_core::foundation::clock::today(&tz),
         "invalid_date",
         400,
     )?;

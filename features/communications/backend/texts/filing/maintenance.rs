@@ -71,7 +71,7 @@ pub async fn overdue(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
             let sender = sender_name(db, &mut senders, text.sent_by.as_deref())?;
             let filed = unread(db, &at_dsp, &text.number);
             db.place_communications_text(&at_dsp, &text.id, &filed, sender.as_deref())?;
-            if let Some(zone) = zone {
+            if let Some(zone) = &zone {
                 let day = clock::day(zone, text.at).to_string();
                 db.note_communications_refiling(&at_dsp, &day, at)?;
             }

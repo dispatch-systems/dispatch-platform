@@ -27,10 +27,7 @@ pub fn diagnostics(db: &Store, dsp: &str, since: i64) -> Result<Value> {
     let jobs = db
         .recent_jobs(Some(dsp))?
         .into_iter()
-        .filter(|job| {
-            chrono::DateTime::parse_from_rfc3339(&job.created_at)
-                .is_ok_and(|date| date.timestamp_millis() >= since)
-        })
+        .filter(|job| crate::db::millis(&job.created_at).is_some_and(|created| created >= since))
         .take(20)
         .map(|job| {
             json!({

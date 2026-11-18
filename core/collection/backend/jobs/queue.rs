@@ -514,11 +514,8 @@ impl Store {
                 facts.push(("through", None, Some((*last).to_owned())));
             }
         }
-        if let Some(started) = job
-            .started_at
-            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
-        {
-            let seconds = (now() - started.timestamp_millis()).max(0) / 1000;
+        if let Some(started) = job.started_at.and_then(crate::db::millis) {
+            let seconds = (now() - started).max(0) / 1000;
             facts.push(("duration", None, Some(seconds.to_string())));
         }
         (schedule, facts)

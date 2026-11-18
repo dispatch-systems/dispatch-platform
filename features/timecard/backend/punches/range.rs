@@ -7,6 +7,7 @@ use dispatch_core::{
     foundation::validate,
 };
 use dispatch_paycom as paycom;
+use jiff::ToSpan;
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, sync::Arc};
@@ -32,8 +33,8 @@ pub(crate) fn daily_sources(
     validate::date(from)?;
     validate::date(to)?;
     ensure(from <= to, "invalid_date", 400)?;
-    let first = chrono::NaiveDate::parse_from_str(from, "%Y-%m-%d").unwrap();
-    let last = chrono::NaiveDate::parse_from_str(to, "%Y-%m-%d").unwrap();
+    let first = dispatch_core::foundation::clock::date(from).unwrap();
+    let last = dispatch_core::foundation::clock::date(to).unwrap();
     let db = store.collector(id, paycom::PROVIDER)?;
     let publications = db.all(
         "SELECT id,period_from,period_to,collected_at FROM publications \
@@ -41,7 +42,7 @@ pub(crate) fn daily_sources(
         params![to, from, if from == to { 1 } else { -1 }],
     )?;
     let mut days = BTreeMap::new();
-    for day in first.iter_days().take_while(|day| *day <= last) {
+    for day in first.series(1.day()).take_while(|day| *day <= last) {
         let day = day.to_string();
         let publication = publications
             .iter()

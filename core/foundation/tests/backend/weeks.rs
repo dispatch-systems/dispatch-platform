@@ -1,6 +1,6 @@
 use super::*;
-fn date(value: &str) -> NaiveDate {
-    NaiveDate::parse_from_str(value, "%Y-%m-%d").unwrap()
+fn date(value: &str) -> Date {
+    crate::foundation::clock::date(value).unwrap()
 }
 #[test]
 fn weeks_run_sunday_to_saturday_and_are_named_after_the_saturday() {

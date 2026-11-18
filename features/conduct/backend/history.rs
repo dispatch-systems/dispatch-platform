@@ -3,7 +3,6 @@ use super::{categories, overview, standing, writeups};
 use crate::api::types::{
     ConductContext, ConductHistory, ConductImpact, ConductStepDown, ConductWriteupRow,
 };
-use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result, State,
     accounts::Context,
@@ -174,8 +173,7 @@ fn context_from(
     date: &str,
     edit: &str,
 ) -> Result<ConductContext> {
-    let on =
-        NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))?;
+    let on = dispatch_core::foundation::clock::date(date)?;
     let (filter, mut values) = matching(store, dsp, everyone, person, "")?;
     values.extend(
         [category, date, edit]
@@ -237,8 +235,7 @@ pub(crate) fn impact(
         for row in &mut rows {
             row.person = overview::now(&everyone, &row.person, &row.person_name).code;
         }
-        let today = NaiveDate::parse_from_str(&overview::today(c)?, "%Y-%m-%d")
-            .map_err(|_| Error::new("invalid_date", 400))?;
+        let today = dispatch_core::foundation::clock::date(&overview::today(c)?)?;
         let before = standing::work_out(&[category.clone()], &rows, today).standings;
         category.step_down = step;
         let after = standing::work_out(&[category], &rows, today).standings;

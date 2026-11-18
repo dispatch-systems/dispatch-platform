@@ -23,12 +23,11 @@ fn clients_are_named_without_their_whole_user_agent() {
 #[test]
 fn expiries_are_a_minute_to_five_years_away() {
     assert_eq!(expiry(None).unwrap(), None);
-    let soon = chrono::Utc::now() + chrono::Duration::days(30);
-    let kept = expiry(Some(&soon.to_rfc3339())).unwrap().unwrap();
+    // A time days from now, written with its offset as a client may.
+    let after = |days: i64| at(now() + days * 86_400_000).replace('Z', "+00:00");
+    let kept = expiry(Some(&after(30))).unwrap().unwrap();
     assert!(kept.ends_with('Z') && kept > iso());
-    let past = chrono::Utc::now() - chrono::Duration::days(1);
-    assert!(expiry(Some(&past.to_rfc3339())).is_err());
-    let far = chrono::Utc::now() + chrono::Duration::days(6 * 366);
-    assert!(expiry(Some(&far.to_rfc3339())).is_err());
+    assert!(expiry(Some(&after(-1))).is_err());
+    assert!(expiry(Some(&after(6 * 366))).is_err());
     assert!(expiry(Some("next tuesday")).is_err());
 }

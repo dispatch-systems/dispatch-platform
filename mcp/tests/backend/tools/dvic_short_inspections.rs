@@ -14,7 +14,7 @@ use dispatch_cortex::{
 use dispatch_dvic::DvicStore;
 use serde_json::{Value, json};
 
-fn day(value: &str) -> NaiveDate {
+fn day(value: &str) -> Date {
     parse(value).unwrap()
 }
 fn search(arguments: Value) -> Search {
@@ -163,10 +163,12 @@ pub(crate) fn ready() -> (tempfile::TempDir, Store, String) {
 }
 /// The request a collection of `weeks` carries, dated today as publication binds it.
 pub(crate) fn request(weeks: &[&str]) -> Request {
-    let date = chrono::Utc::now()
-        .with_timezone(&chrono_tz::America::Los_Angeles)
-        .date_naive()
-        .to_string();
+    let date = dispatch_core::foundation::clock::local(
+        &dispatch_core::foundation::clock::zone("America/Los_Angeles").unwrap(),
+        dispatch_core::db::now(),
+    )
+    .date()
+    .to_string();
     Request::parse(&json!({"collection":"dvic","station":"TST1","weeks":weeks,
         "date":date,"timezone":"America/Los_Angeles",
         "dspName":"Fixture Delivery","dspAbbreviation":"FXTR"}))

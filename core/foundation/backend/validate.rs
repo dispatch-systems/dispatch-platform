@@ -1,5 +1,6 @@
+use crate::foundation::clock;
 use crate::{Result, ensure};
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use serde_json::Value;
 pub fn fields(v: &Value, allowed: &[&str]) -> Result<()> {
     ensure(
@@ -49,29 +50,26 @@ pub fn integer(v: &Value, key: &str, min: i64, max: i64) -> Result<i64> {
 }
 pub fn timezone(v: &Value, key: &str) -> Result<String> {
     let tz = text(v, key, 1, 80)?;
-    ensure(tz.parse::<chrono_tz::Tz>().is_ok(), "invalid_timezone", 400)?;
+    clock::zone(tz)?;
     Ok(tz.into())
 }
 pub fn date(value: &str) -> Result<()> {
     ensure(
-        value.len() == 10
-            && chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
-                .is_ok_and(|d| d.format("%Y-%m-%d").to_string() == value),
+        value.len() == 10 && clock::date(value).is_ok_and(|date| date.to_string() == value),
         "invalid_date",
         400,
     )
 }
 /// The days `from` to `to`, each YYYY-MM-DD: `from` first, and `longest` days at most, counting
 /// both.
-pub fn days(from: &str, to: &str, longest: i64) -> Result<(NaiveDate, NaiveDate)> {
+pub fn days(from: &str, to: &str, longest: i64) -> Result<(Date, Date)> {
     let day = |value: &str| {
         date(value)?;
-        NaiveDate::parse_from_str(value, "%Y-%m-%d")
-            .map_err(|_| crate::Error::new("invalid_date", 400))
+        clock::date(value)
     };
     let (from, to) = (day(from)?, day(to)?);
     ensure(
-        (0..longest).contains(&(to - from).num_days()),
+        (0..longest).contains(&i64::from((to - from).get_days())),
         "invalid_input",
         400,
     )?;

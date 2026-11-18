@@ -43,7 +43,7 @@ fn api_credentials_are_an_sid_a_token_and_at_most_a_sunday_to_count_pay_periods_
             parsed.token.as_str(),
             parsed.period_start
         ),
-        ("abc123", "t0ken", NaiveDate::from_ymd_opt(2026, 11, 1))
+        ("abc123", "t0ken", Date::new(2026, 11, 1).ok())
     );
     assert!(Credentials::parse(&json!({"sid":"abc123","token":"t0ken"})).is_ok());
     for refused in [

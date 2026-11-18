@@ -262,9 +262,9 @@ impl Objects {
             ),
         };
         let query = canonical_query(query);
-        let at = chrono::DateTime::from_timestamp_millis(now())
-            .unwrap_or_default()
-            .format("%Y%m%dT%H%M%SZ")
+        let at = jiff::Timestamp::from_millisecond(now())
+            .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
+            .strftime("%Y%m%dT%H%M%SZ")
             .to_string();
         let authorization = Signing {
             method: method.as_str(),

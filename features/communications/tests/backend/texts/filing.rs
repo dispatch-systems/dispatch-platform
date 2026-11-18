@@ -26,8 +26,6 @@ use crate::backend::{
     texts::{contacts, filing, reading, reply, storage::TextStore},
 };
 use crate::{Communications, ConversationState};
-use chrono::NaiveDate;
-use chrono_tz::Tz;
 use dispatch_core::{
     State,
     db::now,
@@ -155,8 +153,11 @@ async fn a_work_phones_texts_are_the_drivers_whose_latest_phone_it_is_that_day_t
  {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
-    let (now, then) = (|h, m| at(zone, day, h, m), |h, m| at(zone, yesterday, h, m));
+    let yesterday = day.yesterday().unwrap();
+    let (now, then) = (
+        |h, m| at(&zone, day, h, m),
+        |h, m| at(&zone, yesterday, h, m),
+    );
     // Today, as read live: Avery handed 0101 to Blake at noon and took 0105, so 0101 is Blake's
     // latest. Yesterday, as saved: 0101 was Casey's, and 0102, which no one has today, Dana's.
     phoned(
@@ -214,7 +215,7 @@ async fn a_work_phones_texts_are_the_drivers_whose_latest_phone_it_is_that_day_t
 async fn answered_work_conversations_are_listed_past_more_than_a_page_waiting_on_the_live_day() {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
+    let yesterday = day.yesterday().unwrap();
     // Yesterday, as saved: Casey had 0101, and a page and one more drivers another work phone
     // each, none of them held today.
     let held: Vec<(String, String)> = (0..=PAGE)
@@ -234,10 +235,10 @@ async fn answered_work_conversations_are_listed_past_more_than_a_page_waiting_on
     )
     .await;
     // Casey texted yesterday; each of the others' phones texts today, and waits.
-    let back = at(zone, yesterday, 18, 0);
+    let back = at(&zone, yesterday, 18, 0);
     texted(&state, &dsp, "+12065550101", "Back at the station", back).await;
     for (n, (_, phone)) in held.iter().take(PAGE + 1).enumerate() {
-        let written = at(zone, day, 8, n as u32);
+        let written = at(&zone, day, 8, n as i8);
         texted(
             &state,
             &dsp,
@@ -270,7 +271,7 @@ async fn a_phone_handed_to_another_driver_takes_the_days_conversation_with_it_bo
         &dsp,
         "+12065550101",
         "Which van?",
-        at(zone, day, 8, 0),
+        at(&zone, day, 8, 0),
     )
     .await;
     let conversation = filed(&state, &dsp, &asked).await.id;
@@ -309,7 +310,7 @@ async fn todays_texts_both_ways_go_to_the_driver_whose_work_phone_it_is_once_liv
         &dsp,
         "+12065550104",
         "Which van?",
-        at(zone, day, 6, 30),
+        at(&zone, day, 6, 30),
     )
     .await;
     let number = filed(&state, &dsp, &asked).await;
@@ -378,7 +379,7 @@ async fn todays_texts_go_to_the_driver_whose_work_phone_it_is_by_the_next_upkeep
         &dsp,
         "+12065550104",
         "Which van?",
-        at(zone, day, 6, 30),
+        at(&zone, day, 6, 30),
     )
     .await;
     assert_eq!(
@@ -410,7 +411,7 @@ async fn a_text_marked_done_stays_done_filed_under_a_driver_whose_own_still_wait
         &dsp,
         "+12065550101",
         "Which van?",
-        at(zone, day, 6, 30),
+        at(&zone, day, 6, 30),
     )
     .await;
     let number = filed(&state, &dsp, &early).await.id;
@@ -424,7 +425,7 @@ async fn a_text_marked_done_stays_done_filed_under_a_driver_whose_own_still_wait
         &dsp,
         "+12065550101",
         "Tire light",
-        at(zone, day, 8, 0),
+        at(&zone, day, 8, 0),
     )
     .await;
 
@@ -441,7 +442,7 @@ async fn a_text_marked_done_stays_done_filed_under_a_driver_whose_own_still_wait
         .unwrap();
     assert_eq!(
         (shown.state, shown.waiting_since),
-        (ConversationState::Waiting, Some(at(zone, day, 8, 0)))
+        (ConversationState::Waiting, Some(at(&zone, day, 8, 0)))
     );
 }
 
@@ -485,20 +486,20 @@ async fn a_saved_days_texts_go_to_the_driver_whose_work_phone_it_was_once_the_da
     let (zone, day) = today(&state, &dsp).await;
     // Yesterday where the DSP is; and a day long gone in Beirut, whose clocks went from midnight
     // to 01:00 that day, written in the hour after.
-    let beirut: Tz = "Asia/Beirut".parse().unwrap();
-    let skipped = NaiveDate::from_ymd_opt(2026, 3, 29).unwrap();
+    let beirut = dispatch_core::foundation::clock::zone("Asia/Beirut").unwrap();
+    let skipped = jiff::civil::date(2026, 3, 29);
     for (zone, day, phone, (hour, minute)) in [
-        (zone, day.pred_opt().unwrap(), "2065550101", (18, 0)),
+        (zone, day.yesterday().unwrap(), "2065550101", (18, 0)),
         (beirut, skipped, "2065550102", (1, 30)),
     ] {
-        moved(&state, &dsp, zone).await;
+        moved(&state, &dsp, &zone).await;
         // The day's text, relayed late, comes before the day is saved: nothing says whose it is.
         let late = texted(
             &state,
             &dsp,
             &format!("+1{phone}"),
             "Dropped the keys at the station",
-            at(zone, day, hour, minute),
+            at(&zone, day, hour, minute),
         )
         .await;
         assert_eq!(
@@ -523,7 +524,7 @@ async fn a_days_texts_stay_with_the_driver_whose_work_phone_it_was_once_routes_e
 {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
+    let yesterday = day.yesterday().unwrap();
     // Yesterday, while live route data held it, Avery had 0101 and texted from it.
     let avery = phones(&[("avery", "2065550101")]);
     phoned(
@@ -534,7 +535,7 @@ async fn a_days_texts_stay_with_the_driver_whose_work_phone_it_was_once_routes_e
         Vec::new(),
     )
     .await;
-    let written = at(zone, yesterday, 16, 0);
+    let written = at(&zone, yesterday, 16, 0);
     let text = texted(&state, &dsp, "+12065550101", "Back at the station", written).await;
     assert_eq!(filed(&state, &dsp, &text).await.driver, driver("avery"));
 
@@ -547,8 +548,8 @@ async fn a_days_texts_stay_with_the_driver_whose_work_phone_it_was_once_routes_e
 async fn a_saved_days_texts_stay_where_they_are_while_routes_cant_read_the_day() {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
-    let (written, late) = (at(zone, yesterday, 16, 0), at(zone, yesterday, 17, 0));
+    let yesterday = day.yesterday().unwrap();
+    let (written, late) = (at(&zone, yesterday, 16, 0), at(&zone, yesterday, 17, 0));
     // Saved with Avery's phone 0101: yesterday's text from it is theirs.
     let avery = saved(yesterday, &[("avery", "2065550101")]);
     phoned(&state, &dsp, None, Vec::new(), vec![avery]).await;
@@ -650,8 +651,22 @@ async fn a_drivers_work_conversation_changes_as_their_work_phone_or_route_change
     routed(
         &dsp,
         vec![
-            route(&today, "A1", "CX14", "1FTVAN214", 120, at(zone, day, 9, 20)),
-            route(&today, "B1", "CX15", "1FTVAN215", 110, at(zone, day, 9, 20)),
+            route(
+                &today,
+                "A1",
+                "CX14",
+                "1FTVAN214",
+                120,
+                at(&zone, day, 9, 20),
+            ),
+            route(
+                &today,
+                "B1",
+                "CX15",
+                "1FTVAN215",
+                110,
+                at(&zone, day, 9, 20),
+            ),
         ],
     );
     const BLAKES: (&str, &str) = ("B1", "2065550303");
@@ -697,10 +712,24 @@ async fn a_drivers_work_conversation_changes_as_their_work_phone_or_route_change
     assert_eq!(heard(&[BLAKES]).await, (false, false));
     // Routes takes Blake off CX15, and puts them back, their phone the same: each is heard, as
     // their Work chip shows only while they work.
-    let averys = route(&today, "A1", "CX14", "1FTVAN214", 120, at(zone, day, 9, 20));
+    let averys = route(
+        &today,
+        "A1",
+        "CX14",
+        "1FTVAN214",
+        120,
+        at(&zone, day, 9, 20),
+    );
     routed(&dsp, vec![averys.clone()]);
     assert_eq!(heard(&[BLAKES]).await, (false, true));
-    let blakes = route(&today, "B1", "CX15", "1FTVAN215", 110, at(zone, day, 9, 20));
+    let blakes = route(
+        &today,
+        "B1",
+        "CX15",
+        "1FTVAN215",
+        110,
+        at(&zone, day, 9, 20),
+    );
     routed(&dsp, vec![averys, blakes]);
     assert_eq!(heard(&[BLAKES]).await, (false, true));
 }
@@ -723,7 +752,7 @@ async fn an_upkeep_with_nothing_to_file_or_expire_writes_nothing() {
         &dsp,
         "+12065550101",
         "At the station",
-        at(zone, day, 9, 0),
+        at(&zone, day, 9, 0),
     )
     .await;
     let kept = cached(&state, &dsp);
@@ -845,7 +874,7 @@ async fn another_lines_texts_are_never_filed_listed_or_counted_however_long_they
 async fn a_text_that_cant_be_filed_as_it_comes_is_kept_waiting_and_the_next_upkeep_files_it() {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
+    let yesterday = day.yesterday().unwrap();
     // Yesterday was saved with Avery's phone 0101; then reading a day's phones fails.
     let avery = saved(yesterday, &[("avery", "2065550101")]);
     phoned(&state, &dsp, None, Vec::new(), vec![avery]).await;
@@ -853,7 +882,7 @@ async fn a_text_that_cant_be_filed_as_it_comes_is_kept_waiting_and_the_next_upke
 
     // A text of yesterday's, relayed late, is kept: the phone hears it was, though it's filed
     // nowhere yet.
-    let written = at(zone, yesterday, 16, 0);
+    let written = at(&zone, yesterday, 16, 0);
     let late = texted(&state, &dsp, "+12065550101", "Back at the station", written).await;
     let (at_dsp, id) = (dsp.clone(), late.clone());
     let kept = state
@@ -874,9 +903,9 @@ async fn a_saved_days_texts_go_where_they_belong_by_the_next_upkeep_once_filing_
 {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
+    let yesterday = day.yesterday().unwrap();
     // Yesterday's text, relayed late before the day is saved, is its number's.
-    let written = at(zone, yesterday, 16, 0);
+    let written = at(&zone, yesterday, 16, 0);
     let late = texted(&state, &dsp, "+12065550101", "Back at the station", written).await;
     assert_eq!(
         filed(&state, &dsp, &late).await.kind,
@@ -911,13 +940,13 @@ async fn a_text_that_cant_be_filed_for_ten_minutes_goes_under_its_number_until_i
 {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
+    let yesterday = day.yesterday().unwrap();
     // Yesterday was saved with Avery's phone 0101; then reading a day's phones fails, and a text of
     // yesterday's, relayed late, waits to be filed.
     let avery = saved(yesterday, &[("avery", "2065550101")]);
     phoned(&state, &dsp, None, Vec::new(), vec![avery]).await;
     failing(&dsp, true);
-    let written = at(zone, yesterday, 16, 0);
+    let written = at(&zone, yesterday, 16, 0);
     let late = texted(&state, &dsp, "+12065550101", "Back at the station", written).await;
     let unfiled = || {
         let (at_dsp, id) = (dsp.clone(), late.clone());

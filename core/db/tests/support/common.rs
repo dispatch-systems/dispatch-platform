@@ -225,7 +225,7 @@ pub fn seeded() -> (tempfile::TempDir, Store) {
 /// Pins the day every clock reads as today, wherever it is, for the whole process, as a test
 /// server's `DISPATCH_FIXTURE_TODAY` does; none unpins it. A test that pins a day unpins it as it
 /// ends.
-pub fn pin_today(day: Option<chrono::NaiveDate>) {
+pub fn pin_today(day: Option<jiff::civil::Date>) {
     crate::foundation::clock::pin(day);
 }
 

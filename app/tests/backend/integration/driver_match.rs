@@ -19,10 +19,11 @@ use dispatch_driver_match::{
 use dispatch_driver_profiles::DriverProfilesStore;
 use dispatch_paycom::fixtures;
 use dispatch_timecard::TimecardStore;
+use jiff::ToSpan;
 use serde_json::{Value, json};
 
 /// A day inside the fixture's pay period, so its timecards exist whatever today is.
-const DAY: chrono::NaiveDate = chrono::NaiveDate::from_ymd_opt(2026, 9, 12).unwrap();
+const DAY: jiff::civil::Date = jiff::civil::date(2026, 9, 12);
 
 /// A DSP whose Paycom roster and Amazon meal breaks name the same people in different
 /// ways: a short form, a two-part surname, an exact match, a driver Paycom lacks and an
@@ -389,7 +390,7 @@ fn someone_only_amazon_saw_long_ago_has_left_and_is_not_asked_about() {
     dispatch_backend::install();
     let (_root, db, id, _) = ready();
     let old = Scope {
-        date: (DAY - chrono::Duration::days(40)).to_string(),
+        date: (DAY - 40.days()).to_string(),
         station: "DEMO1".into(),
         service_area_id: "area-demo".into(),
         provider: "provider-demo".into(),

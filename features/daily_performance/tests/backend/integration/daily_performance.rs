@@ -10,6 +10,7 @@ use dispatch_cortex::{
     discovery::CollectionRequest,
 };
 use dispatch_daily_performance::DailyPerformanceStore;
+use jiff::ToSpan;
 use serde_json::{Value, json};
 fn ready() -> (tempfile::TempDir, Store, String) {
     testing::install(
@@ -365,8 +366,10 @@ fn the_days_per_job_migration_keeps_every_row_and_allows_a_job_its_days() {
 #[test]
 fn a_finished_day_that_shrank_waits_for_a_second_read() {
     let (_root, store, dsp) = ready();
-    let today = dispatch_core::foundation::clock::today(chrono_tz::America::Los_Angeles);
-    let yesterday = (today - chrono::Duration::days(1)).to_string();
+    let today = dispatch_core::foundation::clock::today(
+        &dispatch_core::foundation::clock::zone("America/Los_Angeles").unwrap(),
+    );
+    let yesterday = (today - 1.days()).to_string();
     let date = yesterday.as_str();
     let shrink = |capture: &mut daily_performance::Capture| {
         capture.datasets[0].rows.pop();
@@ -434,8 +437,10 @@ fn a_finished_day_that_shrank_waits_for_a_second_read() {
 #[test]
 fn a_finished_day_gone_empty_waits_half_a_day() {
     let (_root, store, dsp) = ready();
-    let today = dispatch_core::foundation::clock::today(chrono_tz::America::Los_Angeles);
-    let yesterday = (today - chrono::Duration::days(1)).to_string();
+    let today = dispatch_core::foundation::clock::today(
+        &dispatch_core::foundation::clock::zone("America/Los_Angeles").unwrap(),
+    );
+    let yesterday = (today - 1.days()).to_string();
     let empty = |capture: &mut daily_performance::Capture| capture.datasets[0].rows.clear();
     let (full, _) = publish_with(&store, &dsp, &yesterday, "full", |_| {});
     let data = store.daily_performance_db(&dsp).unwrap();

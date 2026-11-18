@@ -18,13 +18,13 @@ pub(crate) fn read(
     reference: &Reference,
     messages: &[Message],
     numbers: Option<&Numbers>,
-    zone: Option<chrono_tz::Tz>,
+    zone: Option<&jiff::tz::TimeZone>,
 ) -> Result<MessageRenderContext> {
     let (Some(first), Some(last)) = (messages.first(), messages.last()) else {
         return Ok(MessageRenderContext::default());
     };
     let zone = match zone {
-        Some(zone) => zone,
+        Some(zone) => zone.clone(),
         None => texts::zone(db, dsp)?,
     };
     let connection = db.dsp(dsp)?;
@@ -47,7 +47,7 @@ pub(crate) fn read(
     // Nearest outgoing seek first, local-day comparison second. No derived local-date SQL
     // filter, UTC truncation, 24-hour subtraction, incoming-suffix scan or day/run walk.
     let sent_before = probe(first, false, true)?
-        .filter(|row| clock::day(zone, row.at) == clock::day(zone, first.at))
+        .filter(|row| clock::day(&zone, row.at) == clock::day(&zone, first.at))
         .and_then(|row| row.sender);
     Ok(MessageRenderContext {
         previous,

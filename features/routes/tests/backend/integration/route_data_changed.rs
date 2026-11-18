@@ -21,6 +21,7 @@ use dispatch_cortex::{
 };
 use dispatch_routes::RoutesStore;
 use dispatch_routes_contract::{DayPhones, DriverPhone, RouteDataChanged};
+use jiff::ToSpan;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
@@ -74,13 +75,17 @@ const EAST: &str = "Etc/GMT-14";
 
 /// The bootstrapped DSP's day `back` days before today: it keeps UTC.
 fn day(back: i64) -> String {
-    (chrono::Utc::now().date_naive() - chrono::Duration::days(back)).to_string()
+    (dispatch_core::foundation::clock::local(&jiff::tz::TimeZone::UTC, dispatch_core::db::now())
+        .date()
+        - back.days())
+    .to_string()
 }
 /// Moves the DSP to `zone`, as its owner might on Settings: today there.
 fn moved(db: &Store, dsp: &str, zone: &str) -> String {
     let name = db.find_dsp(dsp).unwrap().name;
     db.keep_dsp_profile(dsp, &name, zone, None, None).unwrap();
-    dispatch_core::foundation::clock::today(zone.parse().unwrap()).to_string()
+    dispatch_core::foundation::clock::today(&dispatch_core::foundation::clock::zone(zone).unwrap())
+        .to_string()
 }
 /// The fixture's read of `day`, at the DSP's station: final, or a snapshot of today.
 fn read(day: &str, mode: Mode) -> Capture {

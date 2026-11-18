@@ -11,7 +11,6 @@ pub(crate) use driver::driver;
 pub(crate) use driver::Driver;
 
 use crate::codes;
-use chrono::{Datelike, NaiveDate, Weekday};
 use dispatch_core::{
     Code, Error, Result,
     collection::{
@@ -21,6 +20,7 @@ use dispatch_core::{
     ensure,
     foundation::validate as v,
 };
+use jiff::civil::{Date, Weekday};
 use serde_json::Value;
 use std::time::Duration;
 use tokio::{
@@ -59,7 +59,7 @@ const SPACING: Duration = Duration::from_millis(125);
 pub(crate) struct Credentials {
     pub sid: String,
     pub token: String,
-    pub period_start: Option<NaiveDate>,
+    pub period_start: Option<Date>,
 }
 impl Credentials {
     /// Whether these are the API's, rather than a sign-in's.
@@ -84,9 +84,9 @@ impl Credentials {
                     .as_str()
                     .ok_or_else(|| Error::new("invalid_input", 400))?;
                 v::date(date)?;
-                let date: NaiveDate = date.parse().map_err(|_| Error::new("invalid_input", 400))?;
+                let date: Date = date.parse().map_err(|_| Error::new("invalid_input", 400))?;
                 // Its periods run Sunday to Saturday, as the timecards it shows do.
-                ensure(date.weekday() == Weekday::Sun, "invalid_period", 400)?;
+                ensure(date.weekday() == Weekday::Sunday, "invalid_period", 400)?;
                 Some(date)
             }
         };

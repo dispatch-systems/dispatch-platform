@@ -92,9 +92,7 @@ impl Store {
                 })
                 .map(|(_, next_run)| next_run);
             if let Some(next_run) = next {
-                let deadline = next_run
-                    .and_then(|v| chrono::DateTime::parse_from_rfc3339(&v).ok())
-                    .map_or(0, |d| d.timestamp_millis());
+                let deadline = next_run.and_then(|at| crate::db::millis(&at)).unwrap_or(0);
                 deadlines.push((id, deadline));
             }
         }
@@ -161,7 +159,7 @@ impl Store {
             {
                 db.exec(
                     "UPDATE collection_schedules SET next_run=?,last_error=NULL WHERE id=?",
-                    [&next_run(&row.rule, tz, now())?, &row.id],
+                    [&next_run(&row.rule, &tz, now())?, &row.id],
                 )?;
                 moved.push(&row.id);
                 continue;
@@ -205,15 +203,14 @@ impl Store {
             }
             let deadline = match &row.next_run {
                 Some(pending) if !moved.contains(&row.id.as_str()) => pending.clone(),
-                _ => next_run(&row.rule, tz, now())?,
+                _ => next_run(&row.rule, &tz, now())?,
             };
             db.exec(
                 "UPDATE collection_schedules SET next_run=?,last_error=NULL WHERE id=?",
                 [&deadline, &row.id],
             )?;
-            let ms = chrono::DateTime::parse_from_rfc3339(&deadline)
-                .map_err(|_| Error::new("invalid_schedule", 500))?
-                .timestamp_millis();
+            let ms =
+                crate::db::millis(&deadline).ok_or_else(|| Error::new("invalid_schedule", 500))?;
             soonest(ms);
         }
         Ok(earliest)

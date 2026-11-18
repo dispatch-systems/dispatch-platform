@@ -24,13 +24,19 @@ pub fn identifier(value: &str, prefix: &str) -> bool {
         .is_some_and(|s| crate::foundation::crypto::is_hex(s, 32))
 }
 pub fn now() -> i64 {
-    chrono::Utc::now().timestamp_millis()
+    jiff::Timestamp::now().as_millisecond()
 }
 pub fn iso() -> String {
     at(now())
 }
+/// The instant an RFC 3339 time is, as `at` writes one, in milliseconds since the epoch.
+pub fn millis(at: &str) -> Option<i64> {
+    let at = at.parse::<jiff::Timestamp>().ok()?;
+    Some(at.as_millisecond())
+}
 pub fn at(ms: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(ms)
-        .unwrap_or_default()
-        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    jiff::Timestamp::from_millisecond(ms)
+        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
+        .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string()
 }

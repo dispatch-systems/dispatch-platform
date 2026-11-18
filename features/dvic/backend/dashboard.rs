@@ -39,10 +39,10 @@ const INSPECTION: &str = "company_id||':'||inspection_key AS id,start_date AS st
 fn range(from: &str, to: &str) -> Result<()> {
     validate::date(from)?;
     validate::date(to)?;
-    let from = chrono::NaiveDate::parse_from_str(from, "%Y-%m-%d").unwrap();
-    let to = chrono::NaiveDate::parse_from_str(to, "%Y-%m-%d").unwrap();
+    let from = dispatch_core::foundation::clock::date(from).unwrap();
+    let to = dispatch_core::foundation::clock::date(to).unwrap();
     ensure(
-        (0..=6).contains(&(to - from).num_days()),
+        (0..=6).contains(&i64::from((to - from).get_days())),
         "invalid_input",
         400,
     )

@@ -1,7 +1,6 @@
 //! The stand-in for Routes' `driver_routes`, while `driving` is on: drivers' routes and each saved
 //! day's work phones, as a test says, and failing to read a day's while a test says it can't.
 use super::{DRIVERS, Known, live};
-use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result,
     db::Store,
@@ -73,8 +72,8 @@ impl DriverRoutes for Routing {
     /// The routes it knows driven by `ids` from `from` to `to`, and their days; refused across
     /// more days than Routes reads.
     fn routes(&self, _: &Store, dsp: &str, ids: &[String], from: &str, to: &str) -> Result<Driven> {
-        let day = |day: &str| NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
-        if (day(to) - day(from)).num_days() >= MOST_DAYS {
+        let day = |day: &str| dispatch_core::foundation::clock::date(day).unwrap();
+        if i64::from((day(to) - day(from)).get_days()) >= MOST_DAYS {
             return Err(Error::new("invalid_input", 400));
         }
         let routes: Vec<RouteDay> = KEPT.of(dsp, |kept| {

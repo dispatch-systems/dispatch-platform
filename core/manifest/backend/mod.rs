@@ -45,8 +45,8 @@ pub use page_sources::{Loads, PageSource, page_source};
 pub use permissions::{DefaultRole, Permission, perm};
 pub use preferences::{Preference, PreferenceValue, preference};
 pub use settings::{
-    Field, Group, Kept, Kind, Options, Page, Scope, Section, SharedPage, StoredKey, choice, days,
-    many, number, pick, section, text, time, timezone, toggle,
+    Days, Field, Group, Kept, Kind, Options, Page, Scope, Section, SharedPage, StoredKey, choice,
+    days, many, number, pick, section, text, time, timezone, toggle,
 };
 pub use storage::Tables;
 pub use switches::{Sub, Switch, custom, mandatory, optional, sub, tab};

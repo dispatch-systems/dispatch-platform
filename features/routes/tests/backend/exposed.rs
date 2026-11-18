@@ -7,10 +7,10 @@ use crate::backend::{
     scope::{day_request, routes_today},
     tests::{publish, publish_edited},
 };
-use chrono::Duration;
 use dispatch_core::testing;
 use dispatch_cortex::routes::{Capture, ItineraryCapture, Mode};
 use dispatch_routes_contract::{DriverPhone, MOST_ID_LENGTH};
+use jiff::ToSpan;
 use serde_json::json;
 
 #[tokio::test]
@@ -28,7 +28,7 @@ async fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
         .unwrap()
         .expect("Routes is on");
     let today = routes_today(&db, &dsp).unwrap();
-    let day = |back: i64| (today - Duration::days(back)).to_string();
+    let day = |back: i64| (today - back.days()).to_string();
     let ids = |ids: &[&str]| ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
     let driver = ids(&["driver-2"]);
     assert_eq!(offered.collected(&db, &dsp).unwrap(), None);
@@ -67,8 +67,8 @@ async fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
     );
     assert!(route.departed_at.is_some() && route.session_end_at.is_some());
     // Its wave as Amazon gives it: the fixture's starts 20 minutes before 08:00 UTC.
-    let wave = format!("{}T07:40:00Z", day(2)).parse::<chrono::DateTime<chrono::Utc>>();
-    assert_eq!(route.wave_start_at, Some(wave.unwrap().timestamp_millis()));
+    let wave = dispatch_core::db::millis(&format!("{}T07:40:00Z", day(2)));
+    assert_eq!(route.wave_start_at, Some(wave.unwrap()));
     assert_eq!(route.undelivered.len(), 1);
     let package = &route.undelivered[0];
     assert_eq!(package.tracking_id.as_deref(), Some("TBA000000000002"));
@@ -384,7 +384,7 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
     assert_eq!(refused.code, "invalid_input");
 
     // Once today has passed, the day it holds isn't live.
-    let yesterday = (routes_today(&db, &dsp).unwrap() - Duration::days(1)).to_string();
+    let yesterday = (routes_today(&db, &dsp).unwrap() - 1.days()).to_string();
     db.routes_live_db(&dsp)
         .unwrap()
         .exec("UPDATE route_publications SET day=?", [&yesterday])
@@ -453,7 +453,7 @@ async fn a_days_work_phones_are_each_drivers_latest_saying_when_two_share_one() 
         .unwrap()
         .expect("Routes is on");
     let today = routes_today(&db, &dsp).unwrap();
-    let day = |back: i64| (today - Duration::days(back)).to_string();
+    let day = |back: i64| (today - back.days()).to_string();
     let phones = |back| routes.day_phones(&db, &dsp, &day(back)).unwrap();
     let phone = |driver: &str, phone: &str, shared| DriverPhone {
         driver_id: driver.into(),

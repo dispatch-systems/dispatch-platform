@@ -8,9 +8,8 @@ use crate::backend::{
     staging::Staged,
     work_phones,
 };
-use chrono::{Duration, NaiveDate};
 use dispatch_core::{
-    Error, Result,
+    Result,
     db::{Store, at},
     ensure,
 };
@@ -18,6 +17,7 @@ use dispatch_cortex::{
     self as cortex,
     routes::{Capture, Collection, Mode},
 };
+use jiff::ToSpan;
 use rusqlite::params;
 use serde_json::Value;
 
@@ -45,16 +45,13 @@ pub(super) fn enqueue_routes(
     ensure(days == 1 || mode == Mode::Final, "invalid_input", 400)?;
     // A day the retention window has passed would be deleted again within the hour.
     if let Some(start) = retention_start(store, id)? {
-        let first = NaiveDate::parse_from_str(&last, "%Y-%m-%d")
-            .map_err(|_| Error::new("invalid_date", 400))?
-            - Duration::days(days - 1);
+        let first = dispatch_core::foundation::clock::date(&last)? - (days - 1).days();
         ensure(first >= start, "routes_day_outside_retention", 400)?;
     }
-    let last_date = NaiveDate::parse_from_str(&last, "%Y-%m-%d")
-        .map_err(|_| Error::new("invalid_date", 400))?;
+    let last_date = dispatch_core::foundation::clock::date(&last)?;
     let requests = (0..days)
         .map(|back| {
-            let day = (last_date - Duration::days(back)).to_string();
+            let day = (last_date - back.days()).to_string();
             let suffix = if days == 1 {
                 String::new()
             } else {
@@ -95,7 +92,7 @@ pub(super) fn routes_jobs(store: &Store, id: &str, mode: Mode) -> Result<Vec<(St
     let db = store.routes_db(id)?;
     let mut jobs = Vec::new();
     for back in 1..=(BACKFILL_DAYS as i64) {
-        let day = (today - Duration::days(back)).to_string();
+        let day = (today - back.days()).to_string();
         let published = db.one(
             "SELECT id FROM route_publications WHERE day=? AND station=? AND mode='final' AND active=1",
             [&day, &station],

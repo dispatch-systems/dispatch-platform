@@ -9,7 +9,6 @@ use crate::{
     codes,
     timecards::{self, api},
 };
-use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result,
     collection::{
@@ -20,6 +19,7 @@ use dispatch_core::{
     ensure,
     manifest::registry,
 };
+use jiff::civil::Date;
 use serde_json::{Value, json};
 
 /// Its site, where a timecard's link opens.
@@ -46,7 +46,7 @@ pub(crate) fn driver(store: &Store, dsp: &str, credentials: &Value) -> Result<Bo
     let anchor = match s(&kept, "from") {
         "" => credentials.period_start,
         from => Some(
-            from.parse::<NaiveDate>()
+            from.parse::<Date>()
                 .map_err(|_| Error::new("invalid_period", 502))?,
         ),
     };
@@ -64,7 +64,7 @@ pub(crate) struct Driver {
     site: String,
     data_centers: Vec<String>,
     /// The first day of one of the DSP's pay periods, which the others are counted from.
-    anchor: Option<NaiveDate>,
+    anchor: Option<Date>,
     checks: Checks,
     connected: Option<Connected>,
 }
@@ -89,7 +89,7 @@ impl Driver {
         credentials: Credentials,
         site: String,
         data_centers: Vec<String>,
-        anchor: Option<NaiveDate>,
+        anchor: Option<Date>,
     ) -> Self {
         Self {
             credentials,
@@ -101,14 +101,14 @@ impl Driver {
         }
     }
     /// A driver that reaches Paycom itself, its pay periods counted from `anchor`.
-    fn paycom(credentials: Credentials, anchor: Option<NaiveDate>) -> Self {
+    fn paycom(credentials: Credentials, anchor: Option<Date>) -> Self {
         let data_centers = DATA_CENTERS.iter().map(|&center| center.to_owned());
         Self::new(credentials, SITE.to_owned(), data_centers.collect(), anchor)
     }
     /// A driver for Paycom itself, as an operator's probe connects: with an SID and Token
     /// given to it, and the period it measures to count from.
     #[cfg(feature = "operator-probes")]
-    pub(crate) fn live(credentials: Credentials, anchor: NaiveDate) -> Self {
+    pub(crate) fn live(credentials: Credentials, anchor: Date) -> Self {
         Self::paycom(credentials, Some(anchor))
     }
     /// How each check went, the last time it connected.

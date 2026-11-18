@@ -2,8 +2,8 @@
 use super::*;
 use ConductTier::{Final, Verbal, Written};
 
-fn day(text: &str) -> NaiveDate {
-    NaiveDate::parse_from_str(text, "%Y-%m-%d").unwrap()
+fn day(text: &str) -> Date {
+    dispatch_core::foundation::clock::date(text).unwrap()
 }
 
 fn writeup(

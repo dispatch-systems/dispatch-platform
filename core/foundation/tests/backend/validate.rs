@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn days_and_ids_are_refused_past_their_limits() {
-    let day = |value| NaiveDate::parse_from_str(value, "%Y-%m-%d").unwrap();
+    let day = |value| clock::date(value).unwrap();
     // A week at most: seven days are read, an eighth or a range running backward refused.
     assert_eq!(
         days("2026-09-01", "2026-09-07", 7).unwrap(),
@@ -28,5 +28,38 @@ fn days_and_ids_are_refused_past_their_limits() {
     ] {
         let error = ids(&asked, 3).err().map(|error| error.code);
         assert_eq!(error.as_deref(), code, "{asked:?}");
+    }
+}
+
+#[test]
+fn a_timezone_is_one_the_database_names_written_as_it_writes_it() {
+    for (zone, known) in [
+        ("America/Chicago", true),
+        ("US/Pacific", true),
+        ("Etc/GMT+5", true),
+        ("UTC", true),
+        ("america/chicago", false),
+        ("AMERICA/CHICAGO", false),
+        ("Mars/Olympus_Mons", false),
+        ("CST6", false),
+    ] {
+        let given = serde_json::json!({ "zone": zone });
+        assert_eq!(timezone(&given, "zone").is_ok(), known, "{zone}");
+    }
+}
+
+#[test]
+fn a_date_is_of_a_year_days_can_be_counted_on_from() {
+    for (day, taken) in [
+        ("0001-01-01", true),
+        ("2026-11-18", true),
+        ("9000-12-31", true),
+        ("9001-01-01", false),
+        ("9999-12-31", false),
+        ("0000-12-31", false),
+        ("-9999-01-01", false),
+    ] {
+        assert_eq!(date(day).is_ok(), taken, "{day}");
+        assert_eq!(clock::date(day).is_ok(), taken, "{day}");
     }
 }

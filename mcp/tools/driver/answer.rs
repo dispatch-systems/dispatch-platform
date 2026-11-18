@@ -1,6 +1,4 @@
 //! Published MCP projections and their conversions from feature contracts.
-use chrono::DateTime;
-use chrono_tz::Tz;
 use dispatch_core::manifest::people::Person;
 use dispatch_daily_performance_contract as performance;
 use dispatch_driver_profiles_contract as profiles;
@@ -9,6 +7,7 @@ use dispatch_routes_contract as route;
 use dispatch_slack_contract as slack;
 use dispatch_timecard_contract as timecard;
 use dispatch_weekly_scorecard_contract as scorecard;
+use jiff::{Timestamp, tz::TimeZone};
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -466,7 +465,7 @@ pub struct Inspection {
 
 impl Route {
     /// A route as the answer gives it, its times on the DSP's clock.
-    pub(super) fn from_day(it: route::RouteDay, zone: Tz) -> Route {
+    pub(super) fn from_day(it: route::RouteDay, zone: &TimeZone) -> Route {
         let at = |time: Option<i64>| local_time(time, zone, &it.day);
         let undelivered = it.undelivered.into_iter().map(|package| Undelivered {
             attempted: at(package.attempted_at),
@@ -500,11 +499,11 @@ impl Route {
 
 /// An epoch-milliseconds time as HH:MM in the DSP's own time, with its date before it when it
 /// isn't on `day`, as after midnight.
-fn local_time(at: Option<i64>, zone: Tz, day: &str) -> Option<String> {
-    let at = DateTime::from_timestamp_millis(at?)?.with_timezone(&zone);
-    let same = at.date_naive().to_string() == day;
+fn local_time(at: Option<i64>, zone: &TimeZone, day: &str) -> Option<String> {
+    let at = zone.to_datetime(Timestamp::from_millisecond(at?).ok()?);
+    let same = at.date().to_string() == day;
     let format = if same { "%H:%M" } else { "%Y-%m-%d %H:%M" };
-    Some(at.format(format).to_string())
+    Some(at.strftime(format).to_string())
 }
 
 /// Each of a contract's values, as the answer mirrors it.

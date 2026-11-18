@@ -9,6 +9,7 @@ use dispatch_core::{
     db::Store,
     manifest::people::{Kind, Source},
 };
+use jiff::ToSpan;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Everything read for one answer.
@@ -48,9 +49,9 @@ pub(super) fn gather(store: &Store, dsp: &str) -> Result<Gathered> {
                 .values()
                 .flat_map(|data| data.values().filter_map(|s| s.last.as_deref())),
         )
-        .filter_map(|day| chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").ok())
+        .filter_map(|day| dispatch_core::foundation::clock::date(day).ok())
         .max()
-        .map(|newest| (newest - chrono::Duration::days(FORMER_AFTER_DAYS)).to_string())
+        .map(|newest| (newest - FORMER_AFTER_DAYS.days()).to_string())
         .unwrap_or_default();
     let contacts_only = sources::contacts_only(&kinds);
     let db = store.dsp(dsp)?;

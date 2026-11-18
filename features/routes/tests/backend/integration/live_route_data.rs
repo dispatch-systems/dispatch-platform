@@ -14,6 +14,7 @@ use dispatch_cortex::{
 };
 use dispatch_routes::{LiveKept, RoutesStore, clear_live, save_and_clear_live, save_live_day};
 use dispatch_routes_contract::{DayPhones, DriverPhone};
+use jiff::ToSpan;
 use serde_json::{Map, Value, json};
 use std::{
     collections::BTreeMap,
@@ -73,9 +74,9 @@ async fn keep_live(
     dispatch_routes::keep_live(state, dsp, read, revision).await
 }
 /// Today where the DSP is.
-fn today(db: &Store, dsp: &str) -> chrono::NaiveDate {
-    let zone: chrono_tz::Tz = db.find_dsp(dsp).unwrap().timezone.parse().unwrap();
-    dispatch_core::foundation::clock::today(zone)
+fn today(db: &Store, dsp: &str) -> jiff::civil::Date {
+    let zone = dispatch_core::foundation::clock::zone(&db.find_dsp(dsp).unwrap().timezone).unwrap();
+    dispatch_core::foundation::clock::today(&zone)
 }
 
 /// A made-up day of two drivers, each on a work phone of their own, which a test changes read by
@@ -459,7 +460,7 @@ async fn a_live_day_kept_in_place_reads_as_each_read_saved_whole() {
     let phones = DayPhones::Read(vec![latest("driver-1", P3), latest("driver-2", P2)]);
     assert_eq!(live_phones(&db, &dsp), phones);
     assert_eq!(saved_phones(&db, &dsp, &today.to_string()), phones);
-    let yesterday = (today - chrono::Duration::days(1)).to_string();
+    let yesterday = (today - 1.days()).to_string();
     assert_eq!(saved_phones(&db, &dsp, &yesterday), DayPhones::Uncollected);
 }
 
@@ -488,7 +489,7 @@ async fn a_read_that_isnt_whole_or_isnt_of_today_changes_nothing() {
     let mut lost = day.read(2);
     lost.summaries["itinerarySummaries"] = json!([]);
     lost.itineraries.clear();
-    let yesterday = Day::new(&(today - chrono::Duration::days(1)).to_string()).read(2);
+    let yesterday = Day::new(&(today - 1.days()).to_string()).read(2);
     let mut finished = day.read(2);
     finished.mode = Mode::Final;
     // East of the DSP's UTC, where its day has always begun, so only the scope refuses it.
@@ -587,11 +588,7 @@ async fn the_live_day_is_saved_once_under_its_reads_key_and_live_route_data_kept
     .unwrap();
 
     // A read made once its day had ended, as a window past midnight's, is the day's final.
-    let midnight = (today + chrono::Duration::days(1))
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc()
-        .timestamp_millis();
+    let midnight = dispatch_core::foundation::clock::utc((today + 1.days()).at(0, 0, 0, 0));
     keep_live(&state, &dsp, day.read(midnight - day.lists.started_at + 1))
         .await
         .unwrap();

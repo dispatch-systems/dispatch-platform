@@ -3,7 +3,6 @@ use super::{
     roster::{Roster, with_known_employees},
 };
 use crate::{codes, connection::Driver};
-use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result,
     collection::{
@@ -16,6 +15,7 @@ use dispatch_core::{
     db::{self, s},
     ensure,
 };
+use jiff::civil::Date;
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -71,7 +71,7 @@ fn page_deadline(started: Instant, content: Option<Instant>, now: Instant) -> Re
 const HTTP_LANES: usize = 6;
 
 pub(crate) enum Selection<'a> {
-    Date(Option<NaiveDate>),
+    Date(Option<Date>),
     Period(&'a EmployeeTimecardPeriod, &'a [Value]),
 }
 

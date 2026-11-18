@@ -4,10 +4,13 @@
 pub mod xlsx;
 
 use crate::discovery::{CollectionRequest as ScopeRequest, Discovery, Scope};
-use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 use dispatch_core::{
     Error, Result, ensure,
-    foundation::{validate, weeks},
+    foundation::{clock, validate, weeks},
+};
+use jiff::{
+    ToSpan,
+    civil::{Date, DateTime},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -104,8 +107,8 @@ fn station_code(station: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
 }
-pub fn report_week(day: NaiveDate) -> String {
-    let week = day.iso_week();
+pub fn report_week(day: Date) -> String {
+    let week = day.iso_week_date();
     format!("{}-W{:02}", week.year(), week.week())
 }
 
@@ -138,7 +141,7 @@ impl Inspection {
     }
     pub fn key(&self) -> String {
         let start = timestamp(&self.start_time)
-            .map(|t| t.format("%Y-%m-%d %H:%M:%S%.f").to_string())
+            .map(written)
             .unwrap_or_else(|_| self.start_time.clone());
         // Length-delimited JSON prevents ambiguous concatenation and ignores mutable names/durations.
         hash(
@@ -178,7 +181,7 @@ impl Inspection {
         self.minimum_seconds()?;
         let start = timestamp(&self.start_time)?;
         let end = timestamp(&self.end_time)?;
-        let elapsed = (end - start).num_milliseconds() as f64 / 1000.0;
+        let elapsed = start.duration_until(end).as_millis() as f64 / 1000.0;
         ensure(
             self.start_date == start.date().to_string()
                 && self.duration.is_finite()
@@ -190,10 +193,21 @@ impl Inspection {
         )
     }
 }
-fn timestamp(value: &str) -> Result<NaiveDateTime> {
+fn timestamp(value: &str) -> Result<DateTime> {
     ensure(value.len() <= 32, "dvic_row_invalid", 502)?;
-    NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S%.f")
+    DateTime::strptime("%Y-%m-%d %H:%M:%S%.f", value)
         .map_err(|_| Error::new("dvic_row_invalid", 502))
+}
+/// A row's time as its key holds it, the same however many zeros the provider ends it with: to
+/// the second, or in thousandths, millionths or billionths of one, the coarsest that holds it.
+fn written(at: DateTime) -> String {
+    let fraction = match at.subsec_nanosecond() {
+        0 => String::new(),
+        nanos if nanos % 1_000_000 == 0 => format!(".{:03}", nanos / 1_000_000),
+        nanos if nanos % 1_000 == 0 => format!(".{:06}", nanos / 1_000),
+        nanos => format!(".{nanos:09}"),
+    };
+    format!("{}{fraction}", at.strftime("%Y-%m-%d %H:%M:%S"))
 }
 pub fn hash(bytes: &[u8]) -> String {
     dispatch_core::foundation::crypto::hex(&Sha256::digest(bytes))
@@ -251,7 +265,7 @@ pub fn report_identity(
     week: &str,
     dsp: &str,
     station: &str,
-) -> Result<NaiveDate> {
+) -> Result<Date> {
     let (year, number) = weeks::parse_week(week)?;
     ensure(
         validate::token(dsp, 32) && station_code(station),
@@ -268,8 +282,8 @@ pub fn report_identity(
         "dvic_report_invalid",
         502,
     )?;
-    let date = NaiveDate::parse_from_str(date, "%Y%m%d")
-        .map_err(|_| Error::new("dvic_report_invalid", 502))?;
+    let date =
+        Date::strptime("%Y%m%d", date).map_err(|_| Error::new("dvic_report_invalid", 502))?;
     ensure(
         report_week(date) == week
             && path
@@ -352,13 +366,13 @@ pub fn fixture(request: &Request) -> Result<Capture> {
     let mut reports = Vec::new();
     for week in &request.weeks {
         let (_, saturday) = weeks::week_days(week)?;
-        let date = saturday + Duration::days(1);
+        let date = saturday + 1.day();
         let (year, number) = weeks::parse_week(week)?;
         let name = format!(
             "US_{}_{}_{year}_week-{number}_{}{REPORT_SUFFIX}",
             request.dsp_abbreviation,
             request.station,
-            date.format("%Y%m%d")
+            date.strftime("%Y%m%d")
         );
         let source_key = format!(
             "/us/{}/{}/{year}/week-{number}/{name}",
@@ -385,11 +399,7 @@ pub fn fixture(request: &Request) -> Result<Capture> {
             source_key,
             week: week.clone(),
             report_date: date.to_string(),
-            modified_at: date
-                .and_hms_opt(14, 4, 0)
-                .unwrap()
-                .and_utc()
-                .timestamp_millis(),
+            modified_at: clock::utc(date.at(14, 4, 0, 0)),
             etag: Some("\"fixture-v1\"".into()),
             sha256: hash(serde_json::to_string(&rows)?.as_bytes()),
             rows: Some(rows),

@@ -26,9 +26,9 @@ use crate::backend::{
     },
 };
 use axum::body::Bytes;
-use chrono_tz::Tz;
 use dispatch_core::{db::now, server::http::upload::Upload};
 use futures_util::{FutureExt, StreamExt, stream};
+use jiff::tz::TimeZone;
 
 /// Thirty minutes, in milliseconds.
 const HALF_HOUR_MS: i64 = 30 * 60 * 1000;
@@ -529,18 +529,17 @@ async fn retry_refuses_a_text_moved_with_its_work_phone_to_another_drivers_conve
 async fn an_answer_after_midnight_in_the_two_hours_after_a_late_stop_is_the_drivers_it_answers() {
     let (_root, state, dsp) = support::started();
     // The DSP's clocks show a few minutes past midnight now, whatever the hour where the test runs.
-    let hour = chrono::Timelike::hour(&chrono::Utc::now()) as i32;
+    let hour = i32::from(TimeZone::UTC.to_datetime(jiff::Timestamp::now()).hour());
     let ahead = if hour <= 12 { -hour } else { 24 - hour };
-    let zone: Tz = match ahead {
+    let zone = dispatch_core::foundation::clock::zone(&match ahead {
         0 => "Etc/GMT".to_owned(),
         _ if ahead > 0 => format!("Etc/GMT-{ahead}"),
         _ => format!("Etc/GMT+{}", -ahead),
-    }
-    .parse()
+    })
     .unwrap();
-    moved(&state, &dsp, zone).await;
-    let yesterday = today(&state, &dsp).await.1.pred_opt().unwrap();
-    let (late, stop) = (at(zone, yesterday, 23, 0), at(zone, yesterday, 23, 30));
+    moved(&state, &dsp, &zone).await;
+    let yesterday = today(&state, &dsp).await.1.yesterday().unwrap();
+    let (late, stop) = (at(&zone, yesterday, 23, 0), at(&zone, yesterday, 23, 30));
 
     // Yesterday, Avery had 0101 and texted at 11 PM, unanswered as the day stopped at 11:30.
     let avery = &[("A1", "2065550101")];
@@ -587,7 +586,7 @@ async fn retry_refuses_an_answer_filed_as_it_went_in_another_conversation_than_i
     let (_, day) = today(&state, &dsp).await;
     let today = day.to_string();
     // 0101 was Blake's work phone yesterday; today nobody has it yet, and it texts: its own.
-    let yesterday = saved(day.pred_opt().unwrap(), &[("B2", "2065550101")]);
+    let yesterday = saved(day.yesterday().unwrap(), &[("B2", "2065550101")]);
     phoned(&state, &dsp, Some(&today), Vec::new(), vec![yesterday]).await;
     let asked = texted(&state, &dsp, "+12065550101", "Whose van is 208?", now()).await;
     let own = filed(&state, &dsp, &asked).await.id;

@@ -3,7 +3,6 @@ use super::{
     settings,
     storage::{DOMAIN, STORAGE, WeeklyScorecardStore},
 };
-use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result,
     collection::{browser::Collected, registry::AddedStorage},
@@ -17,6 +16,8 @@ use dispatch_cortex::{
     discovery::Scope,
     weekly_scorecard::{Collection, JOB_KIND, Request},
 };
+use jiff::ToSpan;
+use jiff::civil::Date;
 use serde_json::{Value, json};
 
 pub struct WeeklyScorecard;
@@ -84,8 +85,8 @@ pub(super) fn jobs(store: &Store, id: &str) -> Result<Vec<(String, Value)>> {
     let cutoff = at(now() - i64::from(policy.refresh_hours) * 3_600_000);
     let mut jobs = Vec::new();
     for offset in 0..policy.lookback_weeks {
-        let day = saturday - chrono::Duration::weeks(i64::from(offset));
-        let iso = chrono::Datelike::iso_week(&day);
+        let day = saturday - i64::from(offset).weeks();
+        let iso = day.iso_week_date();
         let week = format!("{}-W{:02}", iso.year(), iso.week());
         if data.one("SELECT week FROM weekly_scorecard_weeks WHERE week=? AND station=? AND scope_verified=1 AND checked_at>=?",
             [&week,&station,&cutoff])?.is_none() {
@@ -96,17 +97,13 @@ pub(super) fn jobs(store: &Store, id: &str) -> Result<Vec<(String, Value)>> {
 }
 
 /// Where the DSP is.
-pub(super) fn weekly_scorecard_timezone(store: &Store, id: &str) -> Result<chrono_tz::Tz> {
-    store
-        .find_dsp(id)?
-        .timezone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))
+pub(super) fn weekly_scorecard_timezone(store: &Store, id: &str) -> Result<jiff::tz::TimeZone> {
+    dispatch_core::foundation::clock::zone(&store.find_dsp(id)?.timezone)
 }
 /// Today, where the DSP is.
-pub(super) fn weekly_scorecard_today(store: &Store, id: &str) -> Result<NaiveDate> {
+pub(super) fn weekly_scorecard_today(store: &Store, id: &str) -> Result<Date> {
     Ok(dispatch_core::foundation::clock::today(
-        weekly_scorecard_timezone(store, id)?,
+        &weekly_scorecard_timezone(store, id)?,
     ))
 }
 /// The station the DSP's profile names, which every scorecard request carries.

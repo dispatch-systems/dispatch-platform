@@ -42,11 +42,11 @@ pub fn shown(db: &Store, dsp: &str, configured: bool) -> Result<DspBackups> {
     let rules: Vec<_> = kept
         .rules
         .iter()
-        .map(|rule| rule.shown(tz, kept.enabled))
+        .map(|rule| rule.shown(&tz, kept.enabled))
         .collect();
     let (upcoming, calendar) = if kept.enabled {
         let whens: Vec<_> = kept.rules.iter().map(|rule| rule.when.clone()).collect();
-        schedule::runs(&whens, tz, 5)
+        schedule::runs(&whens, &tz, 5)
     } else {
         (vec![], vec![])
     };
@@ -62,7 +62,7 @@ pub fn shown(db: &Store, dsp: &str, configured: bool) -> Result<DspBackups> {
         configured,
         enabled: kept.enabled,
         revision: kept.revision,
-        timezone: tz.name().to_owned(),
+        timezone: tz.iana_name().unwrap_or_default().to_owned(),
         items,
         rules,
         upcoming,
@@ -75,11 +75,11 @@ pub fn shown(db: &Store, dsp: &str, configured: bool) -> Result<DspBackups> {
 }
 
 /// The coming weeks' days as the Backups tab draws them.
-pub fn days(calendar: Vec<(chrono::NaiveDate, Vec<usize>)>) -> Vec<BackupDay> {
+pub fn days(calendar: Vec<(jiff::civil::Date, Vec<usize>)>) -> Vec<BackupDay> {
     calendar
         .into_iter()
         .map(|(date, rules)| BackupDay {
-            date: date.format("%Y-%m-%d").to_string(),
+            date: date.to_string(),
             rules,
         })
         .collect()

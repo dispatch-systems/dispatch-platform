@@ -1,8 +1,12 @@
 //! At what times of its days a scheduled thing runs, where the DSP is: at set times, or every so
 //! often between two times. Collections' rules and backups' each say which days they run on.
+use crate::foundation::clock;
 use crate::{Error, Result, ensure, foundation::validate as v};
-use chrono::{Duration, NaiveDate, NaiveTime, TimeZone, Timelike};
-use chrono_tz::Tz;
+use jiff::{
+    Timestamp, ToSpan,
+    civil::{Date, Time},
+    tz::TimeZone,
+};
 use serde_json::Value;
 
 /// Every day of the week, Monday the lowest bit.
@@ -18,32 +22,24 @@ const DAY: i64 = 24 * 60;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Timing {
     /// At each of these, earliest first.
-    At(Vec<NaiveTime>),
+    At(Vec<Time>),
     /// Every `every` minutes from `from` until `to`, `to` included. A `to` before `from` runs on
     /// past midnight; the same as `from`, all day.
-    Repeat {
-        every: i64,
-        from: NaiveTime,
-        to: NaiveTime,
-    },
+    Repeat { every: i64, from: Time, to: Time },
 }
 
 /// `HH:MM` as a time of day.
-pub fn time(text: &str) -> Result<NaiveTime> {
-    let parsed = NaiveTime::parse_from_str(text, "%H:%M")
-        .map_err(|_| Error::new("invalid_schedule_time", 400))?;
-    ensure(
-        parsed.format("%H:%M").to_string() == text,
-        "invalid_schedule_time",
-        400,
-    )?;
+pub fn time(text: &str) -> Result<Time> {
+    let parsed =
+        Time::strptime("%H:%M", text).map_err(|_| Error::new("invalid_schedule_time", 400))?;
+    ensure(self::text(parsed) == text, "invalid_schedule_time", 400)?;
     Ok(parsed)
 }
-pub fn text(at: NaiveTime) -> String {
-    at.format("%H:%M").to_string()
+pub fn text(at: Time) -> String {
+    at.strftime("%H:%M").to_string()
 }
-fn minutes(at: NaiveTime) -> i64 {
-    i64::from(at.hour() * 60 + at.minute())
+fn minutes(at: Time) -> i64 {
+    i64::from(at.hour()) * 60 + i64::from(at.minute())
 }
 
 impl Timing {
@@ -100,29 +96,26 @@ impl Timing {
     /// run.
     pub fn next(
         &self,
-        tz: Tz,
+        tz: &TimeZone,
         after: i64,
         ahead: i64,
-        runs_on: impl Fn(NaiveDate) -> bool,
+        runs_on: impl Fn(Date) -> bool,
     ) -> Option<i64> {
-        let today = chrono::DateTime::from_timestamp_millis(after)?
-            .with_timezone(&tz)
-            .date_naive();
+        let today = tz
+            .to_datetime(Timestamp::from_millisecond(after).ok()?)
+            .date();
         let offsets = self.offsets();
         // A day's runs all come before the next day's first, so the first day with one after
         // `after` holds the next.
         (-1..=ahead)
-            .map(|days| today + Duration::days(days))
+            .filter_map(|days| today.checked_add(days.days()).ok())
             .filter(|day| runs_on(*day))
             .find_map(|day| {
-                let start = day.and_time(NaiveTime::MIN);
+                let start = day.to_datetime(Time::midnight());
                 offsets
                     .iter()
-                    .filter_map(|offset| {
-                        tz.from_local_datetime(&(start + Duration::minutes(*offset)))
-                            .earliest()
-                            .map(|at| at.timestamp_millis())
-                    })
+                    .filter_map(|offset| start.checked_add(offset.minutes()).ok())
+                    .filter_map(|local| clock::instant(tz, local))
                     .filter(|at| *at > after)
                     .min()
             })

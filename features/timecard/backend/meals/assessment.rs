@@ -9,15 +9,16 @@ use crate::{
     },
     backend::punches::assessment::{parse_clock, paycom_day},
 };
-use chrono::{DateTime, NaiveDate, Timelike};
+use jiff::{Timestamp, civil::Date};
 
 pub(super) fn cortex_clock(value: Option<&str>, date: &str, zone: &str) -> Option<AssessedClock> {
-    let instant = DateTime::parse_from_rfc3339(value?).ok()?;
-    let local = instant.with_timezone(&zone.parse::<chrono_tz::Tz>().ok()?);
-    let day =
-        i32::try_from((local.date_naive() - date.parse::<NaiveDate>().ok()?).num_days()).ok()?;
+    let instant = value?.parse::<Timestamp>().ok()?;
+    let local = dispatch_core::foundation::clock::zone(zone)
+        .ok()?
+        .to_datetime(instant);
+    let day = (local.date() - date.parse::<Date>().ok()?).get_days();
     Some(AssessedClock {
-        minute: day * 1440 + local.hour() as i32 * 60 + local.minute() as i32,
+        minute: day * 1440 + i32::from(local.hour()) * 60 + i32::from(local.minute()),
         day,
     })
 }
@@ -26,10 +27,8 @@ fn gap(start: Option<&str>, end: Option<&str>, status: &str) -> Option<DeliveryG
     if status != "verified" {
         return None;
     }
-    let start = DateTime::parse_from_rfc3339(start?)
-        .ok()?
-        .timestamp_millis();
-    let end = DateTime::parse_from_rfc3339(end?).ok()?.timestamp_millis();
+    let start = dispatch_core::db::millis(start?)?;
+    let end = dispatch_core::db::millis(end?)?;
     let milliseconds = end.checked_sub(start)?;
     (milliseconds >= 0).then_some(DeliveryGap {
         milliseconds,

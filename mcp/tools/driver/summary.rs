@@ -99,7 +99,10 @@ impl Told {
 
 /// A day as people read it: Oct 4.
 fn day(date: &str) -> String {
-    parse(date).map_or_else(|| date.to_owned(), |date| date.format("%b %-d").to_string())
+    parse(date).map_or_else(
+        || date.to_owned(),
+        |date| date.strftime("%b %-d").to_string(),
+    )
 }
 /// So many of something, in words: no routes, 1 route, 5 routes.
 fn count(count: usize, one: &str, many: &str) -> String {

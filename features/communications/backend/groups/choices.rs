@@ -12,7 +12,7 @@ use crate::{
     integrations::messages::ID,
 };
 use dispatch_core::{
-    Error, Result, State,
+    Result, State,
     db::Store,
     foundation::{clock, names},
     manifest::people::{self, PersonRole},
@@ -182,10 +182,8 @@ fn on_routes(
     let Some(reader) = routes::for_dsp(db, dsp)? else {
         return Ok(None);
     };
-    let zone: chrono_tz::Tz = zone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
-    let day = clock::today(zone).to_string();
+    let zone = clock::zone(zone)?;
+    let day = clock::today(&zone).to_string();
     let driven = reader.day(db, dsp, &day)?;
     let (mut driving, mut waves) = (BTreeSet::new(), BTreeMap::new());
     for route in driven.routes {

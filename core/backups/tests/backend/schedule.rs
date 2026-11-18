@@ -74,8 +74,8 @@ fn rules_save_over_the_schedule_they_were_read_from_and_run_when_due() {
     // Due, a rule moves on to its next run; failed, it runs again within the hour.
     let tz = timezone(&db, &north).unwrap();
     let next = saved.rules[0].next_run.unwrap();
-    assert!(due(&db.platform, &north, tz, next - 1).unwrap().is_empty());
-    let ran = due(&db.platform, &north, tz, next).unwrap();
+    assert!(due(&db.platform, &north, &tz, next - 1).unwrap().is_empty());
+    let ran = due(&db.platform, &north, &tz, next).unwrap();
     assert_eq!(
         ran.iter().map(|k| k.id.clone()).collect::<Vec<_>>(),
         [Some(id.clone())]
@@ -83,7 +83,7 @@ fn rules_save_over_the_schedule_they_were_read_from_and_run_when_due() {
     let moved = schedule(&db.platform, &north).unwrap().rules[0]
         .next_run
         .unwrap();
-    assert_eq!(moved, saved.rules[0].when.next(tz, next).unwrap());
+    assert_eq!(moved, saved.rules[0].when.next(&tz, next).unwrap());
     retry(&db.platform, &id, next).unwrap();
     let retried = schedule(&db.platform, &north).unwrap().rules[0]
         .next_run
@@ -91,17 +91,13 @@ fn rules_save_over_the_schedule_they_were_read_from_and_run_when_due() {
     assert_eq!(retried, (next + 60 * 60 * 1000).min(moved));
     // Off, none is due.
     switch(&db, &north, false).unwrap();
-    assert!(due(&db.platform, &north, tz, i64::MAX).unwrap().is_empty());
+    assert!(due(&db.platform, &north, &tz, i64::MAX).unwrap().is_empty());
 }
 
 #[test]
 fn what_a_rule_takes_is_kept_as_long_as_it_says() {
     let day = 24 * 60 * 60 * 1000;
-    let at = |text: &str| {
-        chrono::DateTime::parse_from_rfc3339(text)
-            .unwrap()
-            .timestamp_millis()
-    };
+    let at = |text: &str| crate::db::millis(text).unwrap();
     let taken = at("2027-01-31T02:00:00Z");
     assert_eq!(expires(taken, 30, KeepUnit::Day), taken + 30 * day);
     assert_eq!(expires(taken, 2, KeepUnit::Week), taken + 14 * day);
