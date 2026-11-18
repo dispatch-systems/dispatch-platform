@@ -531,5 +531,10 @@ fn the_scaffolder_keeps_its_temporary_files_in_the_checkouts_scratch_folder_by_i
     let kept = generate();
     std::fs::remove_dir(&old).unwrap();
     assert!(!kept.contains("Moved"), "{kept}");
+    assert_eq!(
+        std::fs::read_to_string(checkout.join("tmpdir")).unwrap(),
+        scratch.to_str().unwrap(),
+        "the folder there now is the one used"
+    );
     assert!(scratch.join("decisions.md").is_file());
 }

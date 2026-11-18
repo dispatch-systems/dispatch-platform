@@ -100,7 +100,9 @@ pub fn checkout_scratch(root: &Path) -> Result<PathBuf> {
     let name = checkout_name(root)?;
     let dir = scratch(name)?;
     let old = left_in_tmp(name);
-    if !move_into_place(&old, &dir, |from, to| fs::rename(from, to))? && is_real_dir(&old) {
+    let there = fs::symlink_metadata(&dir).is_ok();
+    if !move_into_place(&old, &dir, |from, to| fs::rename(from, to))? && !there && is_real_dir(&old)
+    {
         return Ok(fs::canonicalize(old)?);
     }
     private_dir(&dir)?;
