@@ -111,11 +111,12 @@ pub fn pushing(state: Arc<State>, pushed: &'static Pushed) -> Upkeep {
     })
 }
 
+/// A DSP watched, and the line: Dispatch Phone's own for none.
+type Watched = (String, Option<&'static str>);
 /// Watches the DSP's conversations of `pushed`'s line for what's new to push, unless they're
 /// watched already.
 pub fn watch(state: &Arc<State>, dsp: &str, pushed: &'static Pushed) {
-    static WATCHED: LazyLock<Mutex<HashSet<(String, Option<&'static str>)>>> =
-        LazyLock::new(Default::default);
+    static WATCHED: LazyLock<Mutex<HashSet<Watched>>> = LazyLock::new(Default::default);
     if webpush::vapid(&state.config).is_none()
         || !WATCHED
             .lock()
