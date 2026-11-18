@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { fixture } from '../../core/shell/tests/support/support.js';
 import { verifyArtifact, writeManifest } from '../build/artifact.js';
 import type { DashboardAssets } from '../testing/dashboard-assets.js';
-import { graphSizes, initialStylesheet } from '../testing/page-budgets.js';
+import { assetBudget, graphSizes, initialStylesheet } from '../testing/page-budgets.js';
 
 test(
   'installed artifact serves the complete platform directly from Rust and has no Node runtime payload',
@@ -73,8 +73,8 @@ test(
     const get = await fetch(url, { headers: { 'accept-encoding': 'identity' } });
     const bytes = await get.arrayBuffer();
     assert(
-      bytes.byteLength < 400_000,
-      'main dashboard JavaScript stays below 400 KB before compression',
+      bytes.byteLength < assetBudget('main script').budget,
+      assetBudget('main script').message,
     );
     const assets: DashboardAssets = JSON.parse(
       fs.readFileSync(path.join(artifact, 'tooling/build-info.json'), 'utf8'),
@@ -142,8 +142,8 @@ test(
     assert.equal(map.headers.get('cache-control'), 'public, max-age=31536000, immutable');
     assert.equal(map.headers.get('content-encoding'), 'br');
     assert(
-      Number(map.headers.get('content-length')) < 900_000,
-      'compressed vector map stays within its initial-load budget',
+      Number(map.headers.get('content-length')) < assetBudget('map').budget,
+      assetBudget('map').message,
     );
     const vanFile = manifest.files.find((file) =>
       /dashboard\/assets\/login-van-.*\.glb$/.test(file.path),
@@ -156,8 +156,8 @@ test(
     assert.equal(van.headers.get('cache-control'), 'public, max-age=31536000, immutable');
     assert.equal(van.headers.get('content-encoding'), 'br');
     assert(
-      Number(van.headers.get('content-length')) < 300_000,
-      'compressed van transfer stays under 300 KB',
+      Number(van.headers.get('content-length')) < assetBudget('van').budget,
+      assetBudget('van').message,
     );
     const rendererFile = manifest.files.find((file) =>
       /dashboard\/assets\/renderer-.*\.js$/.test(file.path),
@@ -168,8 +168,8 @@ test(
       { headers: { 'accept-encoding': 'br' } },
     );
     assert(
-      Number(renderer.headers.get('content-length')) < 200_000,
-      'deferred renderer transfer stays under 200 KB',
+      Number(renderer.headers.get('content-length')) < assetBudget('renderer').budget,
+      assetBudget('renderer').message,
     );
     const font = await fetch(f.env.DISPATCH_ORIGIN + '/assets/inter.woff2');
     assert.equal(font.headers.get('cache-control'), 'public, no-cache');

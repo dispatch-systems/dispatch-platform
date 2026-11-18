@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { dashboardGraphSizes, type DashboardAssets } from './dashboard-assets.js';
 
 type Graph = {
@@ -55,6 +57,68 @@ export const graphs: Graph[] = [
 /** The bytes the first page's common stylesheet stays under; feature CSS loads with its route. */
 export const initialStylesheet = 30_000;
 
+type Asset = {
+  name: string;
+  /** The built file in `assets/`, by its name; none for the script `index.html` loads. */
+  file?: RegExp;
+  /** Whether the budget holds it as Brotli sends it, or before compression. */
+  compressed: boolean;
+  budget: number;
+  /** What the artifact test says when it isn't. */
+  message: string;
+};
+/** Single files held to a budget of their own. */
+export const assets: Asset[] = [
+  {
+    name: 'main script',
+    compressed: false,
+    budget: 400_000,
+    message: 'main dashboard JavaScript stays below 400 KB before compression',
+  },
+  {
+    name: 'map',
+    file: /^route-map-.*\.svg$/,
+    compressed: true,
+    budget: 900_000,
+    message: 'compressed vector map stays within its initial-load budget',
+  },
+  {
+    name: 'van',
+    file: /^login-van-.*\.glb$/,
+    compressed: true,
+    budget: 300_000,
+    message: 'compressed van transfer stays under 300 KB',
+  },
+  {
+    name: 'renderer',
+    file: /^renderer-.*\.js$/,
+    compressed: true,
+    budget: 200_000,
+    message: 'deferred renderer transfer stays under 200 KB',
+  },
+];
+/** The budget of the asset named `name`. */
+export const assetBudget = (name: string) => assets.find((each) => each.name === name)!;
+
+/** The bytes the file at `file` takes as it is sent: Brotli's when it was worth writing, as the
+ * server sends, else the file's own. */
+function sent(file: string, compressed: boolean) {
+  const brotli = `${file}.br`;
+  return fs.statSync(compressed && fs.existsSync(brotli) ? brotli : file).size;
+}
+/** Each asset's size in the dashboard built at `root`, or none where the build has no such file. */
+export const assetSizes = (root: string) => {
+  const folder = path.join(root, 'assets');
+  const names = fs.readdirSync(folder);
+  const main = fs
+    .readFileSync(path.join(root, 'index.html'), 'utf8')
+    .match(/src="\.?\/assets\/([^"]+\.js)"/)?.[1];
+  return assets.map((each) => {
+    const name = each.file ? names.find((file) => each.file!.test(file)) : main;
+    return { asset: each, size: name ? sent(path.join(folder, name), each.compressed) : undefined };
+  });
+};
+
 /** Each graph's sizes in the dashboard built at `root`, whose chunks `assets` lists. */
 export const graphSizes = (root: string, assets: DashboardAssets) =>
   graphs.map((graph) => ({
@@ -62,9 +126,14 @@ export const graphSizes = (root: string, assets: DashboardAssets) =>
     size: dashboardGraphSizes(root, assets, ['index.html', ...graph.entries]),
   }));
 export type GraphSizes = ReturnType<typeof graphSizes>;
+export type AssetSizes = ReturnType<typeof assetSizes>;
+/** Everything the budgets hold a build to. */
+export type Sizes = { graphs: GraphSizes; assets: AssetSizes };
 
-/** A graph's budgets, each with its size: a size passes while it stays under its budget. */
-const limits = ({ graph, size }: GraphSizes[number]) => [
+type Limit = { what: string; label: string; size: number; budget: number; compressed?: boolean };
+/** A graph's or an asset's budgets, each with its size: a size passes while it stays under. */
+type Row = { name: string; limits: Limit[] };
+const graphLimits = ({ graph, size }: GraphSizes[number]): Limit[] => [
   { what: 'JavaScript', label: 'JavaScript', size: size.scripts.raw, budget: graph.raw },
   {
     what: 'transferred JavaScript',
@@ -75,24 +144,44 @@ const limits = ({ graph, size }: GraphSizes[number]) => [
   },
   { what: 'CSS', label: 'CSS', size: size.styles.raw, budget: graph.styles },
 ];
-/** Whether any graph is over a budget. */
-export const overBudget = (sizes: GraphSizes) =>
-  sizes.some((graph) => limits(graph).some(({ size, budget }) => size >= budget));
+/** Every budget a build is held to, by what it holds: an asset the build lacks has none. */
+const rows = (sizes: Sizes): Row[] => [
+  ...sizes.graphs.map((graph) => ({ name: graph.graph.name, limits: graphLimits(graph) })),
+  ...sizes.assets.map(({ asset, size }) => ({
+    name: asset.name,
+    limits:
+      size === undefined
+        ? []
+        : [
+            {
+              what: asset.compressed ? 'transferred size' : 'size',
+              label: asset.compressed ? 'transferred' : 'raw',
+              size,
+              budget: asset.budget,
+              compressed: asset.compressed,
+            },
+          ],
+  })),
+];
+/** Whether any budget is full or over. */
+export const overBudget = (sizes: Sizes) =>
+  rows(sizes).some((row) => row.limits.some(({ size, budget }) => size >= budget));
 /** Under 1% of its budget left is a warning: the next change can take it. */
 const thin = (left: number, budget: number) => left < budget / 100;
 const bytes = (n: number) => n.toLocaleString('en-US');
 
 /** Where `main` stood against a budget a change is over: its size, or why it wasn't measured. */
 function mainAgainst(
-  main: GraphSizes | string,
-  graph: string,
+  main: Sizes | string,
+  name: string,
   what: string,
   { size: now, budget }: { size: number; budget: number },
 ) {
   if (typeof main === 'string') return `  main: ${main}.`;
-  const before = main.find((other) => other.graph.name === graph);
-  const size = before && limits(before).find((limit) => limit.what === what)!.size;
-  if (size === undefined) return '  main: no such graph.';
+  const size = rows(main)
+    .find((row) => row.name === name)
+    ?.limits.find((limit) => limit.what === what)?.size;
+  if (size === undefined) return `  main: no ${what} of ${name}.`;
   const left = budget - size;
   const stood =
     left <= 0
@@ -103,23 +192,23 @@ function mainAgainst(
   return `  main: ${bytes(size)} bytes, ${stood}.`;
 }
 
-/** What `dispatchdev check` says of a change's graphs: a line for each, with each size and what
- * its budget leaves; a warning for each budget under 1% from full; and each one over, with by how
- * much and where `main` stood against it, where it was measured. */
-export function pageSizeReport(change: GraphSizes, main?: GraphSizes | string) {
-  const width = Math.max(...change.map(({ graph }) => graph.name.length));
+/** What `dispatchdev check` says of a change's build: a line for each graph and asset, with each
+ * size and what its budget leaves; a warning for each budget under 1% from full; and each one
+ * over, with by how much and where `main` stood against it, where it was measured. */
+export function pageSizeReport(change: Sizes, main?: Sizes | string) {
+  const all = rows(change);
+  const width = Math.max(...all.map(({ name }) => name.length));
   const lines: string[] = [];
   const warnings: string[] = [];
   let thinTransfer = false;
-  for (const graph of change) {
-    const name = graph.graph.name;
-    const measured = limits(graph).map((limit) => {
+  for (const { name, limits } of all) {
+    const measured = limits.map((limit) => {
       const left = limit.budget - limit.size;
       const room = left > 0 ? `${bytes(left)} left` : `${bytes(-left)} over`;
       return `${limit.label} ${bytes(limit.size)}/${bytes(limit.budget)} (${room})`;
     });
-    lines.push(`${`${name}:`.padEnd(width + 1)} ${measured.join(', ')}`);
-    for (const { what, size, budget, compressed } of limits(graph)) {
+    lines.push(`${`${name}:`.padEnd(width + 1)} ${measured.join(', ') || 'not in this build'}`);
+    for (const { what, size, budget, compressed } of limits) {
       const left = budget - size;
       if (!thin(left, budget)) continue;
       if (compressed) thinTransfer = true;
@@ -130,7 +219,7 @@ export function pageSizeReport(change: GraphSizes, main?: GraphSizes | string) {
         continue;
       }
       warnings.push(
-        `\u2716 ${name}'s ${what} is ${bytes(size)} bytes, ${bytes(-left)} over its budget of ${bytes(budget)}.`,
+        `✖ ${name}'s ${what} is ${bytes(size)} bytes, ${bytes(-left)} over its budget of ${bytes(budget)}.`,
       );
       if (main !== undefined) warnings.push(mainAgainst(main, name, what, { size, budget }));
     }
