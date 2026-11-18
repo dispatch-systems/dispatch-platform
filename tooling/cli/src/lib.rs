@@ -10,6 +10,7 @@ pub mod change;
 pub mod check;
 pub mod ci;
 pub mod dev;
+pub mod github;
 pub mod machine;
 pub mod merge;
 pub mod observation;

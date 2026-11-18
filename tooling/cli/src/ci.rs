@@ -3,24 +3,27 @@
 //! run fails the same job: then the fix is `main`'s, in its own PR, and the change's job runs
 //! again once it merged. A run GitHub created and never gave a job is told apart from one that
 //! goes on. `dispatchdev landed`: how `main`'s own run of a merged change ended.
-use crate::{REPOSITORY, Result, Runner, merge::short, require, review, workspace};
+use crate::{REPOSITORY, Result, Runner, github, merge::short, review, workspace};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     fs,
     io::Write,
     path::Path,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 /// The workflow whose jobs a PR needs.
 const WORKFLOW: &str = "checks.yml";
 /// How much of a failed job's log is shown: its last lines.
 const LINES: usize = 40;
-/// How long `landed` waits for `main`'s run of a merge to end, which its jobs' own limits do
-/// well before, and how often it asks GitHub meanwhile.
-const LANDS: Duration = Duration::from_secs(45 * 60);
+/// How long `landed` waits for `main`'s run of a merge to end: a run takes five to thirteen
+/// minutes, and a command in the background is cut off at thirty, so it stops on its own well
+/// before, saying to run it again. How often it asks GitHub meanwhile, and how often it says
+/// how the run is getting on.
+const LANDS: Duration = Duration::from_secs(25 * 60);
 const ASKS: Duration = Duration::from_secs(20);
+const PROGRESS: Duration = Duration::from_secs(2 * 60);
 /// How long a run may stay queued without a job before GitHub is taken to have dropped it: a
 /// run's first job starts within seconds, and within three minutes at the slowest.
 const STARTS: Duration = Duration::from_secs(10 * 60);
@@ -29,6 +32,8 @@ const STARTS: Duration = Duration::from_secs(10 * 60);
 struct Run {
     id: u64,
     head: String,
+    /// How GitHub says it is getting on: `queued`, `in_progress`, `completed`.
+    status: String,
     /// When GitHub started it, as it writes the time.
     started: String,
     /// Whether it has a job yet: GitHub gives a run it started its jobs at once.
@@ -138,10 +143,7 @@ pub fn pending(
         .map(|run| run.pending(now)))
 }
 fn gh(root: &Path, args: &[&str], runner: &dyn Runner) -> Result<String> {
-    let mut command = vec!["gh"];
-    command.extend_from_slice(args);
-    command.extend_from_slice(&["--repo", REPOSITORY]);
-    workspace::text(runner, &command, Some(root))
+    github::call(runner, root, &[args, &["--repo", REPOSITORY]].concat())
 }
 /// The newest run of the checks on `branch` for `event` that `filters` of `gh run list` keep,
 /// with its `fields`.
@@ -233,6 +235,7 @@ fn latest(
     Ok(Some(Run {
         id,
         head: run["headSha"].as_str().unwrap_or_default().to_owned(),
+        status: run["status"].as_str().unwrap_or_default().to_owned(),
         started: run["startedAt"].as_str().unwrap_or_default().to_owned(),
         jobs: !jobs.is_empty(),
         done: run["status"] == "completed",
@@ -550,50 +553,47 @@ pub fn landing(name: &str) -> Result<Option<Landed>> {
 
 /// `dispatchdev landed`: `main`'s run of the checks on the commit the branch's PR merged as,
 /// waited for to its end, and an error when it failed. Whoever merged a change answers for that
-/// run: once a later merge's run passes, nothing else reads it. `pause` waits between asks.
-pub fn landed(root: &Path, runner: &dyn Runner, pause: &dyn Fn(Duration)) -> Result<()> {
+/// run: once a later merge's passes, nothing else reads it. While it waits it says how the run
+/// is getting on every `PROGRESS` on `out`, waits on through GitHub not answering, and stops
+/// after `LANDS`, saying to run it again.
+pub fn landed(root: &Path, runner: &dyn Runner, out: &mut dyn Write) -> Result<()> {
+    // Every call to GitHub, its tries and what it reports of a failed run included, is held to
+    // the same limit, so a slow GitHub can't keep it past it.
+    github::within(runner.now() + LANDS, || land(root, runner, out))
+}
+fn land(root: &Path, runner: &dyn Runner, out: &mut dyn Write) -> Result<()> {
     let branch = workspace::text(runner, &["git", "branch", "--show-current"], Some(root))?;
-    let merged: Vec<Value> = serde_json::from_str(&gh(
-        root,
-        &[
-            "pr",
-            "list",
-            "--head",
-            &branch,
-            "--state",
-            "merged",
-            "--limit",
-            "1",
-            "--json",
-            "number,mergeCommit",
-        ],
+    let mut wait = Wait {
         runner,
-    )?)?;
-    let Some(pull) = merged.first() else {
-        return Err(format!("{branch} has no merged PR: `dispatchdev merge` merges it.").into());
+        out,
+        started: runner.now(),
+        said: Duration::ZERO,
+        last: None,
     };
-    let commit = pull["mergeCommit"]["oid"]
-        .as_str()
-        .ok_or("A merged PR without its commit")?;
-    let merge = format!(
-        "{}, the commit #{} merged as",
-        short(commit),
-        pull["number"]
-    );
-    let mut waited = Duration::ZERO;
-    let run = loop {
-        if let Some(run) = latest(root, "main", "push", Some(commit), true, runner)? {
-            break run;
+    let (commit, number) = loop {
+        match merged(root, &branch, runner) {
+            Ok(Some(found)) => break found,
+            Ok(None) => {
+                return Err(
+                    format!("{branch} has no merged PR: `dispatchdev merge` merges it.").into(),
+                );
+            }
+            Err(error) => wait.through(error, &format!("{branch}'s merge"))?,
         }
-        require(
-            waited < LANDS,
-            &format!(
-                "main's run of the checks on {merge} hasn't ended after {}: look at it on GitHub.",
-                workspace::duration(LANDS)
-            ),
-        )?;
-        pause(ASKS);
-        waited += ASKS;
+    };
+    let merge = format!("{}, the commit #{number} merged as", short(&commit));
+    writeln!(
+        wait.out,
+        "Waiting up to {} for main's run of the checks on {merge}.",
+        workspace::duration(LANDS)
+    )?;
+    let run = loop {
+        match latest(root, "main", "push", Some(&commit), false, runner) {
+            Ok(Some(run)) if run.done => break run,
+            Ok(Some(run)) => wait.pause(&merge, &format!("run {} is {}", run.id, run.status))?,
+            Ok(None) => wait.pause(&merge, "it hasn't started")?,
+            Err(error) => wait.through(error, &merge)?,
+        }
     };
     let landed = Landed {
         commit: commit.to_owned(),
@@ -623,19 +623,100 @@ pub fn landed(root: &Path, runner: &dyn Runner, pause: &dyn Fn(Duration)) -> Res
     );
     Err(format!("main's checks ended in {} on {merge}.", run.conclusion).into())
 }
+/// The commit `branch`'s merged PR merged as, and its number; none when it has none.
+fn merged(root: &Path, branch: &str, runner: &dyn Runner) -> Result<Option<(String, u64)>> {
+    let merged: Vec<Value> = serde_json::from_str(&gh(
+        root,
+        &[
+            "pr",
+            "list",
+            "--head",
+            branch,
+            "--state",
+            "merged",
+            "--limit",
+            "1",
+            "--json",
+            "number,mergeCommit",
+        ],
+        runner,
+    )?)?;
+    let Some(pull) = merged.first() else {
+        return Ok(None);
+    };
+    let commit = pull["mergeCommit"]["oid"]
+        .as_str()
+        .ok_or("A merged PR without its commit")?;
+    let number = pull["number"].as_u64().ok_or("A PR without a number")?;
+    Ok(Some((commit.to_owned(), number)))
+}
+/// `landed`'s wait: when it started, by the runner's clock, and how long into it it last said
+/// how the run is getting on.
+struct Wait<'a> {
+    runner: &'a dyn Runner,
+    out: &'a mut dyn Write,
+    started: Instant,
+    said: Duration,
+    /// How the run was last found, which the wait ends on if GitHub's time ran out first.
+    last: Option<String>,
+}
+impl Wait<'_> {
+    /// Waits to ask again, having found the run of `merge` as `now` says: once every
+    /// `PROGRESS` it says so, and after `LANDS` it stops, saying to run `landed` again.
+    fn pause(&mut self, merge: &str, now: &str) -> Result<()> {
+        self.last = Some(now.to_owned());
+        let waited = self.runner.now().saturating_duration_since(self.started);
+        if waited >= LANDS {
+            return Err(format!(
+                "main's run of the checks on {merge} hasn't ended after {} ({now}): `dispatchdev \
+                 landed` again waits on, or look at the run on GitHub.",
+                workspace::duration(LANDS)
+            )
+            .into());
+        }
+        if waited >= self.said + PROGRESS {
+            writeln!(
+                self.out,
+                "Still waiting for main's run of the checks on {merge}, {} so far: {now}.",
+                workspace::duration(waited)
+            )?;
+            self.said = waited;
+        }
+        self.runner.pause(ASKS);
+        Ok(())
+    }
+    /// Waits on through `error` when it is GitHub not answering, which passes; any other is
+    /// the wait's.
+    fn through(
+        &mut self,
+        error: Box<dyn std::error::Error + Send + Sync>,
+        merge: &str,
+    ) -> Result<()> {
+        if !error.is::<github::Unreachable>() {
+            return Err(error);
+        }
+        // A call cut short by the limit itself says nothing new of the run.
+        let waited = self.runner.now().saturating_duration_since(self.started);
+        if waited >= LANDS
+            && let Some(last) = self.last.clone()
+        {
+            return self.pause(merge, &last);
+        }
+        self.pause(merge, &format!("GitHub didn't answer: {error}"))
+    }
+}
 
 /// A job's whole log, which GitHub hands out once the job ended: `gh run view --log-failed`
 /// has none until every job of the run did. Empty when it can't be had.
 fn log(root: &Path, job: u64, runner: &dyn Runner) -> String {
-    workspace::text(
+    github::download(
         runner,
+        root,
         &[
-            "gh",
             "api",
             "--allow-escape-sequences",
             &format!("repos/{REPOSITORY}/actions/jobs/{job}/logs"),
         ],
-        Some(root),
     )
     .unwrap_or_default()
 }
@@ -727,29 +808,90 @@ mod tests {
     use super::*;
     use std::cell::{Cell, RefCell};
 
-    /// GitHub as `landed` asks it: the branch's merged PR, then main's finished run of its
-    /// commit, which isn't there until the wait paused `after` times, and that run's jobs.
+    /// GitHub as `landed` asks it, on a clock that moves only when it pauses: the branch's
+    /// merged PR, then main's run of its commit, which starts at `starts` and ends at `ends` in
+    /// `conclusion`, and that run's jobs. Between `down`'s times every call fails as GitHub
+    /// does when it's in trouble.
     struct Github {
         merged: &'static str,
         conclusion: &'static str,
         jobs: String,
-        after: u32,
-        paused: Cell<u32>,
+        starts: Duration,
+        ends: Duration,
+        down: std::ops::Range<Duration>,
+        /// Whether a call while GitHub is down takes its whole timeout before failing, as one
+        /// that hangs does, or fails at once.
+        hangs: bool,
+        started: Instant,
+        clock: Cell<Duration>,
         asked: RefCell<Vec<Vec<String>>>,
+        /// The checkout's name, its own for each fixture, so the marker `landed` leaves goes to
+        /// a scratch folder no other test writes.
+        name: String,
+    }
+    impl Github {
+        fn new(merged: &'static str, (conclusion, jobs): (&'static str, String)) -> Self {
+            Self {
+                merged,
+                conclusion,
+                jobs,
+                starts: Duration::ZERO,
+                ends: Duration::ZERO,
+                down: Duration::ZERO..Duration::ZERO,
+                hangs: false,
+                started: Instant::now(),
+                clock: Cell::new(Duration::ZERO),
+                asked: RefCell::new(vec![]),
+                name: {
+                    static MADE: std::sync::atomic::AtomicUsize =
+                        std::sync::atomic::AtomicUsize::new(0);
+                    let made = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    format!("landed-test-{}-{made}", std::process::id())
+                },
+            }
+        }
+        /// What `landed` left in the fixture's scratch folder, taken away.
+        fn left(&self) -> Option<String> {
+            let marker = workspace::scratch(&self.name).unwrap().join(LANDED);
+            let text = fs::read_to_string(&marker).ok();
+            let _ = fs::remove_dir_all(workspace::scratch(&self.name).unwrap());
+            text
+        }
+        /// What `landed` answers, and what it said while it waited.
+        fn landed(&self) -> (std::result::Result<(), String>, Vec<String>) {
+            let mut out = vec![];
+            let result =
+                landed(Path::new(&self.name), self, &mut out).map_err(|error| error.to_string());
+            let said = String::from_utf8(out).unwrap();
+            (result, said.lines().map(str::to_owned).collect())
+        }
     }
     impl Runner for Github {
-        fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+        fn command(&self, args: &[&str], _: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
             self.asked
                 .borrow_mut()
                 .push(args.iter().map(|arg| (*arg).to_owned()).collect());
+            let now = self.clock.get();
+            if args[0] == "gh" && self.down.contains(&now) {
+                if self.hangs {
+                    self.clock.set(now + Duration::from_secs(timeout));
+                }
+                let call = args[..3].join(" ");
+                return Err(
+                    format!("{call} failed: dial tcp: lookup api.github.com: i/o timeout").into(),
+                );
+            }
+            let (status, conclusion) = match now >= self.ends {
+                true => ("completed", self.conclusion),
+                false => ("in_progress", ""),
+            };
             let run = format!(
-                r#"[{{"databaseId":5,"headSha":"abc","status":"completed","conclusion":"{}"}}]"#,
-                self.conclusion
+                r#"[{{"databaseId":5,"headSha":"abc","status":"{status}","conclusion":"{conclusion}"}}]"#
             );
             let answer = match args {
                 ["git", ..] => "change",
                 ["gh", "pr", ..] => self.merged,
-                ["gh", "run", "list", ..] if self.paused.get() < self.after => "[]",
+                ["gh", "run", "list", ..] if now < self.starts => "[]",
                 ["gh", "run", "list", ..] => &run,
                 ["gh", "run", "view", ..] => &self.jobs,
                 // A job's log.
@@ -757,76 +899,146 @@ mod tests {
             };
             Ok(answer.as_bytes().to_vec())
         }
+        fn pause(&self, duration: Duration) {
+            self.clock.set(self.clock.get() + duration);
+        }
+        fn now(&self) -> Instant {
+            self.started + self.clock.get()
+        }
     }
+    fn jobs(conclusion: &'static str) -> (&'static str, String) {
+        let job = format!(r#"{{"name":"core","databaseId":9,"conclusion":"{conclusion}"}}"#);
+        (conclusion, format!(r#"{{"jobs":[{job}]}}"#))
+    }
+    const MERGED: &str = r#"[{"number":7,"mergeCommit":{"oid":"abc"}}]"#;
+    const MINUTE: Duration = Duration::from_secs(60);
     #[test]
     fn landed_waits_for_mains_run_of_the_merge_and_fails_when_that_run_failed() {
-        let merged = r#"[{"number":7,"mergeCommit":{"oid":"abc"}}]"#;
-        // A checkout of its own, so the marker it leaves goes to a scratch folder of its own.
-        let temp = tempfile::tempdir().unwrap();
-        let name = format!("landed-test-{}", std::process::id());
-        let root = temp.path().join(&name);
-        fs::create_dir(&root).unwrap();
-        let marker = workspace::scratch(&name).unwrap().join(LANDED);
-        let left = || {
-            let text = fs::read_to_string(&marker).ok();
-            let _ = fs::remove_file(&marker);
-            text
-        };
-        let jobs = |conclusion: &'static str| {
-            let job = format!(r#"{{"name":"core","databaseId":9,"conclusion":"{conclusion}"}}"#);
-            (conclusion, format!(r#"{{"jobs":[{job}]}}"#))
-        };
-        let landed = |merged, (conclusion, jobs): (&'static str, String), after| {
-            let github = Github {
-                merged,
-                conclusion,
-                jobs,
-                after,
-                paused: Cell::new(0),
-                asked: RefCell::new(vec![]),
-            };
-            let result = landed(&root, &github, &|_| {
-                github.paused.set(github.paused.get() + 1)
-            });
-            (result.map_err(|error| error.to_string()), github)
-        };
         // It asks for main's run of the commit the PR merged as, and waits until that ended.
-        let (result, github) = landed(merged, jobs("success"), 2);
+        let github = Github {
+            starts: MINUTE,
+            ends: 3 * MINUTE,
+            ..Github::new(MERGED, jobs("success"))
+        };
+        let (result, said) = github.landed();
         assert_eq!(result, Ok(()));
-        assert_eq!(github.paused.get(), 2);
+        assert_eq!(github.clock.get(), 3 * MINUTE);
         assert!(github.asked.borrow().iter().any(|args| {
             args[..3] == ["gh", "run", "list"]
                 && args.windows(2).any(|pair| pair == ["--commit", "abc"])
         }));
+        assert_eq!(
+            said[..2],
+            [
+                "Waiting up to 25m 00s for main's run of the checks on abc, the commit #7 merged as.",
+                "Still waiting for main's run of the checks on abc, the commit #7 merged as, \
+                 2m 00s so far: run 5 is in_progress."
+            ]
+        );
         // It leaves how the run ended for `owed`, by the commit the PR merged as.
         let passed = r#"{"commit":"abc","run":5,"result":"passed"}"#;
-        assert_eq!(left().as_deref(), Some(passed));
+        assert_eq!(github.left().as_deref(), Some(passed));
         // A run that failed is an error, so what waits on the command hears of it: one that
         // failed before it had a job to fail in too.
-        let (result, _) = landed(merged, jobs("failure"), 0);
+        let github = Github::new(MERGED, jobs("failure"));
+        let (result, _) = github.landed();
         assert_eq!(
             result.unwrap_err(),
             "main's checks ended in failure on abc, the commit #7 merged as."
         );
         let failed = r#"{"commit":"abc","run":5,"result":"failed"}"#;
-        assert_eq!(left().as_deref(), Some(failed));
-        let (result, _) = landed(merged, ("startup_failure", r#"{"jobs":[]}"#.to_owned()), 0);
+        assert_eq!(github.left().as_deref(), Some(failed));
+        let startup = ("startup_failure", r#"{"jobs":[]}"#.to_owned());
+        let github = Github::new(MERGED, startup);
+        let (result, _) = github.landed();
         assert_eq!(
             result.unwrap_err(),
             "main's checks ended in startup_failure on abc, the commit #7 merged as."
         );
-        assert_eq!(left().as_deref(), Some(failed));
-        // One that never ends stops the wait, by the clock the pauses move.
-        let (result, github) = landed(merged, jobs("success"), u32::MAX);
-        assert!(result.unwrap_err().contains("hasn't ended after 45m 00s"));
-        assert_eq!(github.paused.get(), 135);
-        assert_eq!(left(), None, "a run that hasn't ended leaves nothing");
-        // A branch whose PR hasn't merged has no such run to wait for.
-        let (result, github) = landed("[]", jobs("success"), 0);
-        assert!(result.unwrap_err().contains("change has no merged PR"));
-        assert_eq!(github.paused.get(), 0);
-        assert_eq!(left(), None);
-        let _ = fs::remove_dir_all(workspace::scratch(&name).unwrap());
+        assert_eq!(github.left().as_deref(), Some(failed));
+        // A branch whose PR hasn't merged has no such run to wait for, and leaves nothing.
+        let github = Github::new("[]", jobs("success"));
+        assert!(
+            github
+                .landed()
+                .0
+                .unwrap_err()
+                .contains("change has no merged PR")
+        );
+        assert_eq!(github.clock.get(), Duration::ZERO);
+        assert_eq!(github.left(), None);
+    }
+    #[test]
+    fn landed_says_how_the_run_goes_waits_through_github_not_answering_and_stops_on_its_own() {
+        // GitHub stops answering for five minutes, before it named the merge and after: the
+        // wait goes on through it, saying so, and ends with the run.
+        for down in [Duration::ZERO..5 * MINUTE, 4 * MINUTE..9 * MINUTE] {
+            let github = Github {
+                ends: 10 * MINUTE,
+                down: down.clone(),
+                ..Github::new(MERGED, jobs("success"))
+            };
+            let (result, said) = github.landed();
+            assert_eq!(result, Ok(()), "{down:?}");
+            let call = if down.start == Duration::ZERO {
+                "pr"
+            } else {
+                "run"
+            };
+            let unanswered = format!(
+                "GitHub didn't answer: `gh {call} list` failed on all 3 tries: dial tcp: lookup \
+                 api.github.com: i/o timeout."
+            );
+            assert!(
+                said.iter().any(|line| line.ends_with(&unanswered)),
+                "{said:#?}"
+            );
+        }
+        // A run that never ends stops the wait well before a background command is cut off,
+        // having said every two minutes how it went, and saying to run it again.
+        let github = Github {
+            ends: Duration::MAX,
+            ..Github::new(MERGED, jobs("success"))
+        };
+        let (result, said) = github.landed();
+        assert_eq!(
+            result.unwrap_err(),
+            "main's run of the checks on abc, the commit #7 merged as hasn't ended after 25m 00s \
+             (run 5 is in_progress): `dispatchdev landed` again waits on, or look at the run on \
+             GitHub."
+        );
+        assert!(github.clock.get() < 26 * MINUTE);
+        assert_eq!(
+            github.left(),
+            None,
+            "a run that hasn't ended leaves nothing"
+        );
+        let progress: Vec<_> = said
+            .iter()
+            .filter_map(|line| Some(line.split_once("merged as, ")?.1.split_once(" so far")?.0))
+            .map(str::to_owned)
+            .collect();
+        assert_eq!(
+            progress,
+            (1..=12)
+                .map(|n| format!("{}m 00s", 2 * n))
+                .collect::<Vec<_>>()
+        );
+        // GitHub hanging on every call from the run's start: each try is cut to what is left,
+        // so the wait still ends at its limit, not tries' worth of minutes after it.
+        let github = Github {
+            ends: Duration::MAX,
+            down: 30 * Duration::from_secs(1)..Duration::MAX,
+            hangs: true,
+            ..Github::new(MERGED, jobs("success"))
+        };
+        let (result, _) = github.landed();
+        assert!(result.unwrap_err().contains("hasn't ended after 25m 00s"));
+        assert!(
+            github.clock.get() <= LANDS + Duration::from_secs(1),
+            "{:?}",
+            github.clock.get()
+        );
     }
     /// GitHub with one run of the checks on commit `abc`, as `gh run list` and `gh run view`
     /// tell it.
