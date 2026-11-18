@@ -273,6 +273,7 @@ fn a_signalled_cli_names_its_sender_once_and_keeps_its_signal_exit_status() {
         })
         .collect();
     let scratch = dispatchdev_cli::workspace::checkout_scratch(root).unwrap();
+    let announced = dispatchdev_cli::slot::BUILD.waiting();
     let waiting = |ignored: Option<i32>, stderr: Stdio| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_dispatchdev"));
         command
@@ -293,7 +294,7 @@ fn a_signalled_cli_names_its_sender_once_and_keeps_its_signal_exit_status() {
         let mut child = command.spawn().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         for line in stdout.lines() {
-            if line.unwrap().starts_with(dispatchdev_cli::slot::WAITING) {
+            if line.unwrap().starts_with(&announced) {
                 break;
             }
         }

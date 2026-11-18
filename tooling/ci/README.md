@@ -93,7 +93,9 @@ the package.
 API tests, one at a time, a line each. Each run builds in a folder it holds under
 `.test-build/`, without incremental data, and deletes it when it ends, with the release build
 and package it made for the browser tests (`--keep` keeps them), so worktrees hold no test
-builds and several can test at once. The folders are numbered, so a run builds where the one
+builds and several can build at once. Their tests run one run at a time across every worktree:
+another waits for the test slot, saying what holds it, and a run on a machine loaded past one
+and a half times its cores says first that a test may fail for the load. The folders are numbered, so a run builds where the one
 before it did, and sccache, which keys a compile by its paths, serves it that run's compiles.
 Its commands, like `check`'s and `verify`'s, run in
 systemd scopes of one slice, `app-dispatchdev.slice`, which shares a low CPU weight and a
