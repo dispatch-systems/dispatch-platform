@@ -233,6 +233,9 @@ fn unit_of(cgroup: &str) -> Option<&str> {
         .next_back()
         .filter(|unit| unit.ends_with(".scope") || unit.ends_with(".service"))
 }
+/// How npm logs in every command the CLI starts, and what those start: its warnings and errors,
+/// without the `npm notice run` lines it writes for each script, which bury what a step said.
+pub const NPM_LOGLEVEL: (&str, &str) = ("npm_config_loglevel", "warn");
 /// Runs `command` through the shell in `cwd` with `env` added, its output going to `log`, and
 /// answers whether it passed and how long it took. It runs below Dev, in a scope of `SLICE`, and
 /// first in line for the out-of-memory killer, ahead of the agents' sessions: a command that
@@ -283,6 +286,7 @@ pub fn logged(
     let status = process
         .args(["sh", "-c", command])
         .current_dir(cwd)
+        .env(NPM_LOGLEVEL.0, NPM_LOGLEVEL.1)
         .envs(env.iter().copied())
         .stdin(Stdio::null())
         .stdout(file.try_clone()?)
@@ -354,6 +358,15 @@ mod tests {
         // A login's session belongs to the system's manager, which this user's can't bind to.
         let login = format!("0::/user.slice/user-{uid}.slice/session-3.scope\n");
         assert_eq!(unit_of(&login), None);
+    }
+    #[test]
+    fn npm_in_a_logged_step_logs_only_its_warnings_and_errors() {
+        // At its default level npm writes `npm notice run …` for each script a step runs.
+        let temp = tempfile::tempdir().unwrap();
+        let log = temp.path().join("step.log");
+        let level = r#"printf %s "$npm_config_loglevel""#;
+        assert!(logged(level, temp.path(), &log, &[]).unwrap().0);
+        assert_eq!(fs::read_to_string(&log).unwrap(), "warn");
     }
     #[test]
     fn sizes_and_times_read_plainly() {

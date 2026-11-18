@@ -126,7 +126,12 @@ pub fn start(from: &Path, name: &str, base: &str, runner: &dyn Runner) -> Result
     // The agent docs have no packages, and nothing to serve.
     let packages = path.join("package-lock.json").is_file();
     if packages {
-        runner.command(&["npm", "ci", "--no-audit", "--no-fund"], Some(&path), 900)?;
+        let quiet = format!("--loglevel={}", workspace::NPM_LOGLEVEL.1);
+        runner.command(
+            &["npm", "ci", "--no-audit", "--no-fund", &quiet],
+            Some(&path),
+            900,
+        )?;
     }
     let scratch = workspace::checkout_scratch(&path)?;
     let at = clone.git(runner, &["rev-parse", "--short", base])?;
