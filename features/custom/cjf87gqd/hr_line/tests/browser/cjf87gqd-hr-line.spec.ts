@@ -25,6 +25,12 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   const phone = await paired(dispatch, owner, hrLine, '(206) 555-0111');
   texting(dispatch, north.id, phone);
   await phone.texted('4255550199', 'About my paycheck');
+  // Dispatch Phone's quick replies, which HR Line's page and its Display section's preview lack.
+  const saved = await owner.post('/api/dsp/dispatch-phone/quick-replies', {
+    replies: ['On my way'],
+    revision: 0,
+  });
+  expect(saved.status).toBe(200);
   await login(page);
   await openDsp(page, 'Northline Logistics');
   // Its own count beside it in the sidebar.
@@ -54,6 +60,7 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   const named = page.getByRole('region', { name: 'Jordan Ellis', exact: true });
   await expect(named).toBeVisible();
+  await expect(named.getByRole('button', { name: 'Quick replies' })).toHaveCount(0);
 
   // Answered with a picture, from HR Line's phone.
   await named.locator('input[type=file]').setInputFiles({
@@ -78,11 +85,6 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   await expect(page.getByText('Jordan Ellis')).toHaveCount(0);
 
   // HR Line's Display section previews its own page, without Dispatch Phone's quick replies.
-  const saved = await owner.post('/api/dsp/dispatch-phone/quick-replies', {
-    replies: ['On my way'],
-    revision: 0,
-  });
-  expect(saved.status).toBe(200);
   await page.goto(`${origin}/#dsp/${north.id}/settings?tab=display`);
   const replies = (section: string) =>
     page.locator(`[data-settings-section="${section}"] .quick-replies-button`);
