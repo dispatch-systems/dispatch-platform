@@ -15,6 +15,33 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
+class BridgeTests(unittest.TestCase):
+    def test_the_host_reaches_a_bridge_socket_deeper_than_an_address_holds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bridge = Path(directory).resolve() / ("deep-" * 24) / "browser-bridge-x"
+            bridge.mkdir(parents=True)
+            self.assertGreater(len(str(bridge / "application.sock")), 108)
+            here = os.getcwd()
+            os.chdir(bridge)
+            try:
+                server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                server.bind("application.sock")
+            finally:
+                os.chdir(here)
+            server.listen(1)
+            short, address = module.bridge_link(bridge)
+            try:
+                self.assertLess(len(address), 104)
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.connect(address)
+                    accepted, _ = server.accept()
+                    accepted.close()
+            finally:
+                server.close()
+                shutil.rmtree(short)
+            self.assertTrue(bridge.is_dir(), "removing the link leaves the bridge")
+
+
 @unittest.skipUnless(sys.platform == "linux", "the support sandbox is bubblewrap, which runs on Linux alone")
 class SandboxTests(unittest.TestCase):
     def test_collection_child_starts_with_its_canonical_pin_mounted_read_only(self):

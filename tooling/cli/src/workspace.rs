@@ -55,7 +55,7 @@ pub fn current_scratch(name: &str) -> Result<PathBuf> {
     let dir = scratch(name)?;
     let old = left_in_tmp(name);
     Ok(match fs::symlink_metadata(&dir) {
-        Err(_) if fs::symlink_metadata(&old).is_ok_and(|meta| meta.is_dir()) => old,
+        Err(_) if is_real_dir(&old) => old,
         _ => dir,
     })
 }
@@ -93,13 +93,22 @@ pub fn checkout_name(root: &Path) -> Result<&str> {
         .ok_or_else(|| "A checkout without a folder name".into())
 }
 /// The scratch folder of the checkout at `root`, by its real path: the one it kept in `/tmp`
-/// moved into place if it has none yet, else made private if it is new.
+/// moved into place if it has none yet, else made private if it is new. A folder in `/tmp` that
+/// only a copy could move, onto another disk, stays where it is until `finish`: a command still
+/// writing to it would lose what it wrote after the copy.
 pub fn checkout_scratch(root: &Path) -> Result<PathBuf> {
     let name = checkout_name(root)?;
     let dir = scratch(name)?;
-    move_into_place(&left_in_tmp(name), &dir)?;
+    let old = left_in_tmp(name);
+    if !move_into_place(&old, &dir, |from, to| fs::rename(from, to))? && is_real_dir(&old) {
+        return Ok(fs::canonicalize(old)?);
+    }
     private_dir(&dir)?;
     Ok(fs::canonicalize(dir)?)
+}
+/// Whether `path` is a folder itself, never what a link names.
+fn is_real_dir(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir())
 }
 /// A folder only this user can open, with the folders it is in, if it is new.
 fn private_dir(dir: &Path) -> Result<()> {
@@ -109,30 +118,24 @@ fn private_dir(dir: &Path) -> Result<()> {
         .create(dir)?;
     Ok(())
 }
-/// Moves the scratch folder `old` to `dir`, once: only while `dir` isn't there and `old` is a
-/// folder itself, never what a link names. Across disks it is copied beside `dir` and renamed
-/// into place once whole, before `old` goes, so nothing is lost to a move cut short.
-fn move_into_place(old: &Path, dir: &Path) -> Result<()> {
-    if fs::symlink_metadata(dir).is_ok()
-        || !fs::symlink_metadata(old).is_ok_and(|meta| meta.is_dir())
-    {
-        return Ok(());
+/// Moves the scratch folder `old` to `dir` by `rename`, once: only while `dir` isn't there and
+/// `old` is a folder itself. It leaves a link at `old` and says so. False when there was
+/// nothing to move, or the move would cross disks, which a rename can't.
+fn move_into_place(
+    old: &Path,
+    dir: &Path,
+    rename: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> Result<bool> {
+    if fs::symlink_metadata(dir).is_ok() || !is_real_dir(old) {
+        return Ok(false);
     }
     private_dir(dir.parent().ok_or("A scratch folder without a parent")?)?;
-    match fs::rename(old, dir) {
-        Err(error) if error.kind() == std::io::ErrorKind::CrossesDevices => {
-            let mut partial = dir.as_os_str().to_owned();
-            partial.push(".partial");
-            let partial = PathBuf::from(partial);
-            if partial.exists() {
-                fs::remove_dir_all(&partial)?;
-            }
-            copy(old, &partial)?;
-            fs::rename(&partial, dir)?;
-            fs::remove_dir_all(old)?;
-        }
+    match rename(old, dir) {
+        Err(error) if error.kind() == std::io::ErrorKind::CrossesDevices => return Ok(false),
         // Another command moved it meanwhile.
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound && dir.is_dir() => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && dir.is_dir() => {
+            return Ok(false);
+        }
         moved => moved?,
     }
     crate::review::reconnect(dir, &crate::Native)?;
@@ -144,26 +147,7 @@ fn move_into_place(old: &Path, dir: &Path) -> Result<()> {
         old.display(),
         dir.display()
     );
-    Ok(())
-}
-/// Copies the folder `from` to `to`, which isn't there yet, each file with its mode and each
-/// link as a link. Anything else, such as a server's socket, means nothing once moved.
-fn copy(from: &Path, to: &Path) -> Result<()> {
-    fs::create_dir(to)?;
-    for entry in fs::read_dir(from)? {
-        let entry = entry?;
-        let (source, target) = (entry.path(), to.join(entry.file_name()));
-        let kind = entry.file_type()?;
-        if kind.is_dir() {
-            copy(&source, &target)?;
-        } else if kind.is_symlink() {
-            std::os::unix::fs::symlink(fs::read_link(&source)?, &target)?;
-        } else if kind.is_file() {
-            fs::copy(&source, &target)?;
-        }
-    }
-    fs::set_permissions(to, fs::metadata(from)?.permissions())?;
-    Ok(())
+    Ok(true)
 }
 /// A file only this user can read, replaced whole.
 pub fn write_private(path: &Path, text: &str) -> Result<()> {
@@ -401,12 +385,13 @@ mod tests {
             reading.to_str().unwrap(),
         ]);
         let dir = base.join("scratch/change");
-        move_into_place(&old, &dir).unwrap();
+        let rename = |from: &Path, to: &Path| fs::rename(from, to);
+        assert!(move_into_place(&old, &dir, rename).unwrap());
         // The old path is a link to the new folder, so a reviewer reading it still can.
         assert_eq!(fs::read_link(&old).unwrap(), dir);
         assert!(old.join("review/1/checkout").is_dir());
         // A second command finds the link and moves nothing.
-        move_into_place(&old, &dir).unwrap();
+        assert!(!move_into_place(&old, &dir, rename).unwrap());
         assert!(dir.join("review/1/checkout").is_dir());
         // `take` and `finish` remove it through git, by where it is now.
         let moved = dir.join("review/1/checkout");
@@ -434,31 +419,19 @@ mod tests {
         assert!(fs::symlink_metadata(&old).is_err());
     }
     #[test]
-    fn a_copy_across_disks_keeps_each_file_with_its_mode_and_each_link() {
-        use std::os::unix::fs::PermissionsExt;
+    fn a_folder_only_a_copy_could_move_stays_where_it_is() {
         let temp = tempfile::tempdir().unwrap();
-        let from = temp.path().join("from");
-        fs::create_dir_all(from.join("review/1")).unwrap();
-        fs::write(from.join("review/1/brief.md"), "brief").unwrap();
-        write_private(&from.join("decisions.md"), "approved").unwrap();
-        std::os::unix::fs::symlink("decisions.md", from.join("link")).unwrap();
-        fs::set_permissions(&from, fs::Permissions::from_mode(0o700)).unwrap();
-        let to = temp.path().join("to");
-        copy(&from, &to).unwrap();
-        let mode = |path: &Path| fs::symlink_metadata(path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode(&to), 0o700);
-        assert_eq!(mode(&to.join("decisions.md")), 0o600);
+        let base = fs::canonicalize(temp.path()).unwrap();
+        let old = base.join("tmp/dispatch-change");
+        fs::create_dir_all(&old).unwrap();
+        fs::write(old.join("check.log"), "still written").unwrap();
+        let dir = base.join("scratch/change");
+        let across = |_: &Path, _: &Path| Err(std::io::ErrorKind::CrossesDevices.into());
+        assert!(!move_into_place(&old, &dir, across).unwrap());
         assert_eq!(
-            fs::read_to_string(to.join("decisions.md")).unwrap(),
-            "approved"
+            fs::read_to_string(old.join("check.log")).unwrap(),
+            "still written"
         );
-        assert_eq!(
-            fs::read_to_string(to.join("review/1/brief.md")).unwrap(),
-            "brief"
-        );
-        assert_eq!(
-            fs::read_link(to.join("link")).unwrap(),
-            Path::new("decisions.md")
-        );
+        assert!(!dir.exists());
     }
 }

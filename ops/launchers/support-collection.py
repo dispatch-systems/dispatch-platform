@@ -276,8 +276,12 @@ def main():
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
     if metadata["commit"] != head:
         raise ValueError("Build the current assigned branch before collection verification")
-    # The branch's scratch folder as the CLI keeps a change's, by its real path.
+    # The branch's scratch folder as the CLI keeps a change's, by its real path: the one it kept
+    # in /tmp until the CLI moves it, which making the new one would strand.
     scratch = (Path.home() / "dispatch-platform/scratch").resolve() / worktree.name
+    old = Path(f"/tmp/dispatch-{worktree.name}")
+    if not scratch.exists() and old.is_dir() and not old.is_symlink():
+        scratch = old.resolve()
     scratch.mkdir(mode=0o700, parents=True, exist_ok=True)
     metadata = scratch.lstat()
     if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:

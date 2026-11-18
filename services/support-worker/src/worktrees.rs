@@ -193,9 +193,10 @@ impl Worktree {
     }
 
     /// The branch's scratch folder, where its previews and collection runs keep their private
-    /// state and its PR body is written: a change's, as the CLI keeps it.
+    /// state and its PR body is written: a change's, as the CLI keeps it now, in `/tmp` still
+    /// if no command has moved it.
     pub fn scratch(&self) -> Result<PathBuf> {
-        dispatchdev_cli::workspace::scratch(&self.name)
+        dispatchdev_cli::workspace::current_scratch(&self.name)
     }
 
     /// Removes what an earlier attempt left in the scratch folder: each folder whose name starts

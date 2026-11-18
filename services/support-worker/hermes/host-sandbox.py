@@ -134,10 +134,14 @@ def project_git(root, destination):
 
 
 def assigned_scratch(root):
-    # The branch's scratch folder as the CLI keeps a change's, by its real path, made private.
+    # The branch's scratch folder as the CLI keeps a change's, by its real path, made private:
+    # the one it kept in /tmp until the CLI moves it, which making the new one would strand.
     folders = (Path.home() / "dispatch-platform/scratch").resolve()
-    folders.mkdir(parents=True, exist_ok=True, mode=0o700)
     scratch = folders / root.name
+    old = Path(f"/tmp/dispatch-{root.name}")
+    if not scratch.exists() and old.is_dir() and not old.is_symlink():
+        return old.resolve()
+    folders.mkdir(parents=True, exist_ok=True, mode=0o700)
     scratch.mkdir(exist_ok=True, mode=0o700)
     return scratch
 
@@ -164,6 +168,14 @@ def build(root, node, command):
     return subprocess.call(args)
 
 
+def bridge_link(bridge):
+    # A Unix socket's address holds 108 bytes, which the scratch folder's path can pass: the host
+    # connects through a link to the bridge, in a short folder only this user can open.
+    short = Path(tempfile.mkdtemp(prefix="dsb-", dir="/tmp"))
+    (short / "b").symlink_to(bridge)
+    return short, str(short / "b/application.sock")
+
+
 def preview(root, state):
     scratch = assigned_scratch(root)
     if state is None:
@@ -173,6 +185,7 @@ def preview(root, state):
         if not state.is_relative_to(scratch):
             raise ValueError("Preview state leaves the assigned scratch directory")
     bridge = Path(tempfile.mkdtemp(prefix="browser-bridge-", dir=scratch))
+    short, address = bridge_link(bridge)
     resources = Path(__file__).resolve().parent
     child = None
 
@@ -180,7 +193,7 @@ def preview(root, state):
         def handle(self):
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as upstream:
-                    upstream.connect(str(bridge / "application.sock"))
+                    upstream.connect(address)
                     relay(self.request, upstream)
             except (OSError, TimeoutError):
                 pass
@@ -218,6 +231,7 @@ def preview(root, state):
         server.shutdown()
         server.server_close()
         shutil.rmtree(bridge, ignore_errors=True)
+        shutil.rmtree(short, ignore_errors=True)
         # Native verification state lives until its outer ticket cleanup; fixture state is ephemeral.
         if state.name.startswith("browser-state-"):
             shutil.rmtree(state, ignore_errors=True)
