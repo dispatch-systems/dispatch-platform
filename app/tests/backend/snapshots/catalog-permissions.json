@@ -31,6 +31,7 @@
     ["vans.collect", "Collect Vans"],
     ["live_route_data.manage", "Manage Live Route Data"],
     ["phones.manage", "Manage Phones"],
+    ["cjf87gqd_hr_line.use", "Use HR Line"],
     ["conduct.use", "Use Conduct"],
     ["conduct.manage", "Manage Conduct"],
     ["cjf87gqd_hr_line.phones", "Manage HR Line Phones"],

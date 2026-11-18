@@ -1,6 +1,8 @@
-//! HR Line: one DSP's own line of phones for HR, apart from Dispatch Phone's: its phones, paired,
-//! renamed and removed on a card of its own on Settings' DSP Connections. Its README says more.
+//! HR Line: one DSP's own line of phones for HR, apart from Dispatch Phone's: its page, where its
+//! texts are read and answered from its own phones, and its phones, paired, renamed and removed on
+//! a card of its own on Settings' DSP Connections. Its README says more.
 mod api;
+mod backend;
 
 use dispatch_communications::lines::Line;
 use dispatch_core::{
@@ -11,18 +13,24 @@ use dispatch_core::{
 pub const FEATURE: Feature = Feature {
     place: 160,
     switch: custom("cjf87gqd_hr_line", "HR Line", &[]),
-    // Its phones are a line of Dispatch Phone's, which relays their texts by its phones' address.
+    // Its phones are a line of Dispatch Phone's, which keeps and relays their texts by its phones'
+    // address.
     depends_on: &["communications"],
-    // Pairing, renaming and removing its phones, as those who manage the DSP's connections may
-    // too.
-    permissions: &[perm(
-        "cjf87gqd_hr_line.phones",
-        "Manage HR Line Phones",
-        170,
-    )],
+    // Reading HR Line's texts and answering them; and pairing, renaming and removing its phones,
+    // as those who manage the DSP's connections may too.
+    permissions: &[
+        perm("cjf87gqd_hr_line.use", "Use HR Line", 160),
+        perm("cjf87gqd_hr_line.phones", "Manage HR Line Phones", 170),
+    ],
+    // How its page looks to each member and alerts them, their own, on Settings' Display page.
+    settings: &[backend::settings::DISPLAY],
     routes: api::routes::routes,
+    // Watching its DSP for what to push to its members' browsers, as after a restart.
+    dsp_maintenance: &[backend::push::MAINTENANCE],
     // Its phones are the DSP's own, managed on DSP Connections.
     dsp_connection: true,
+    // Pairing, renaming and removing its phones, under Connections; the names it saves and the
+    // numbers it blocks, under Settings, as Dispatch Phone's own are.
     audit: Audit {
         areas: &[("cjf87gqd_hr_line.phones.", Connections)],
         ..Audit::NONE

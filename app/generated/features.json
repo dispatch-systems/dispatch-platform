@@ -10,6 +10,7 @@
     "keeps": [],
     "migrations": {},
     "permissions": [
+      "cjf87gqd_hr_line.use",
       "cjf87gqd_hr_line.phones"
     ],
     "slots": {
@@ -33,6 +34,28 @@
       "on": [],
       "people": [],
       "routes": [
+        "GET /api/dsp/cjf87gqd-hr-line",
+        "GET /api/dsp/cjf87gqd-hr-line/waiting",
+        "GET /api/dsp/cjf87gqd-hr-line/updates",
+        "GET /api/dsp/cjf87gqd-hr-line/conversations",
+        "GET /api/dsp/cjf87gqd-hr-line/conversations/{id}",
+        "GET /api/dsp/cjf87gqd-hr-line/conversations/{id}/window",
+        "POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/messages",
+        "POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/messages/{message}/retry",
+        "POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/done",
+        "POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/typing",
+        "POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/contact",
+        "POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/block",
+        "POST /api/dsp/cjf87gqd-hr-line/conversations/{id}/unblock",
+        "POST /api/dsp/cjf87gqd-hr-line/texts/conversations",
+        "GET /api/dsp/cjf87gqd-hr-line/texts/contacts",
+        "GET /api/dsp/cjf87gqd-hr-line/texts/files/{id}",
+        "GET /api/dsp/cjf87gqd-hr-line/texts/files/{id}/preview",
+        "POST /api/dsp/cjf87gqd-hr-line/texts/files/{id}/fetch",
+        "POST /api/dsp/cjf87gqd-hr-line/texts/uploads",
+        "GET /api/dsp/cjf87gqd-hr-line/push",
+        "POST /api/dsp/cjf87gqd-hr-line/push",
+        "POST /api/dsp/cjf87gqd-hr-line/push/remove",
         "GET /api/dsp/cjf87gqd-hr-line/phones",
         "POST /api/dsp/cjf87gqd-hr-line/phones/pairing",
         "GET /api/dsp/cjf87gqd-hr-line/phones/pairing/{id}",
@@ -41,7 +64,9 @@
       ],
       "exposes": [],
       "env": [],
-      "settings": []
+      "settings": [
+        "cjf87gqd_hr_line.display"
+      ]
     },
     "switch": "cjf87gqd_hr_line",
     "mandatory": false,
