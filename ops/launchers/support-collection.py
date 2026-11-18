@@ -280,7 +280,9 @@ def main():
     # in /tmp until the CLI moves it, which making the new one would strand.
     scratch = (Path.home() / "dispatch-platform/scratch").resolve() / worktree.name
     old = Path(f"/tmp/dispatch-{worktree.name}")
-    if not scratch.exists() and old.is_dir() and not old.is_symlink():
+    kept = old.lstat() if old.is_dir() and not old.is_symlink() else None
+    # Only a folder of this user's that no one else can open: /tmp is shared.
+    if not scratch.exists() and kept and kept.st_uid == os.getuid() and not kept.st_mode & 0o077:
         scratch = old.resolve()
     scratch.mkdir(mode=0o700, parents=True, exist_ok=True)
     metadata = scratch.lstat()

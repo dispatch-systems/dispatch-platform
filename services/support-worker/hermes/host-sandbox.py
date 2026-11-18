@@ -133,13 +133,22 @@ def project_git(root, destination):
             str(target / "objects"), "--ro-bind", str(pointer), str(root / ".git")]
 
 
+def private_dir(path):
+    # A folder itself, this user's, that no one else can open: /tmp is shared.
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return False
+    return stat.S_ISDIR(metadata.st_mode) and metadata.st_uid == os.getuid() and not metadata.st_mode & 0o077
+
+
 def assigned_scratch(root):
     # The branch's scratch folder as the CLI keeps a change's, by its real path, made private:
     # the one it kept in /tmp until the CLI moves it, which making the new one would strand.
     folders = (Path.home() / "dispatch-platform/scratch").resolve()
     scratch = folders / root.name
     old = Path(f"/tmp/dispatch-{root.name}")
-    if not scratch.exists() and old.is_dir() and not old.is_symlink():
+    if not scratch.exists() and private_dir(old):
         return old.resolve()
     folders.mkdir(parents=True, exist_ok=True, mode=0o700)
     scratch.mkdir(exist_ok=True, mode=0o700)

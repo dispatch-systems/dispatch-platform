@@ -328,6 +328,8 @@ fn cleanup_uses_a_remote_lease_and_allows_explicit_closed_abandonment() {
     // A change no command moved home since its scratch folder was kept in /tmp.
     let left = PathBuf::from(format!("/tmp/dispatch-{}", fixture.name));
     fs::create_dir(&left).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&left, fs::Permissions::from_mode(0o700)).unwrap();
     fs::write(left.join("decisions.md"), "approved").unwrap();
     finish(
         &fixture.root,

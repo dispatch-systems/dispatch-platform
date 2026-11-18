@@ -498,6 +498,8 @@ fn the_scaffolder_keeps_its_temporary_files_in_the_checkouts_scratch_folder_by_i
     // The change began while scratch folders were kept in /tmp: its decisions are there.
     let old = std::path::PathBuf::from(format!("/tmp/dispatch-{name}"));
     std::fs::create_dir(&old).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o700)).unwrap();
     std::fs::write(old.join("decisions.md"), "approved").unwrap();
     let generate = || {
         let result = Command::new(env!("CARGO_BIN_EXE_dispatchdev"))
@@ -528,6 +530,7 @@ fn the_scaffolder_keeps_its_temporary_files_in_the_checkouts_scratch_folder_by_i
     // Once: a folder in /tmp again never takes the place of the one there now.
     std::fs::remove_file(&old).unwrap();
     std::fs::create_dir(&old).unwrap();
+    std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o700)).unwrap();
     let kept = generate();
     std::fs::remove_dir(&old).unwrap();
     assert!(!kept.contains("Moved"), "{kept}");

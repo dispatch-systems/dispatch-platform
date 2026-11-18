@@ -114,7 +114,14 @@ function scratch(root: string) {
   const name = path.basename(root);
   const dir = path.join(os.homedir(), 'dispatch-platform/scratch', name);
   const old = `/tmp/dispatch-${name}`;
-  if (!fs.existsSync(dir) && fs.lstatSync(old, { throwIfNoEntry: false })?.isDirectory())
+  // Only a folder of this user's that no one else can open: /tmp is shared.
+  const kept = fs.lstatSync(old, { throwIfNoEntry: false });
+  if (
+    !fs.existsSync(dir) &&
+    kept?.isDirectory() &&
+    kept.uid === process.getuid?.() &&
+    (kept.mode & 0o077) === 0
+  )
     return fs.realpathSync(old);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   return fs.realpathSync(dir);

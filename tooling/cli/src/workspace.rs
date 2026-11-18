@@ -108,9 +108,14 @@ pub fn checkout_scratch(root: &Path) -> Result<PathBuf> {
     private_dir(&dir)?;
     Ok(fs::canonicalize(dir)?)
 }
-/// Whether `path` is a folder itself, never what a link names.
+/// Whether `path` is a folder itself, never what a link names, that this user owns and no one
+/// else can open: `/tmp` is shared, and a folder another user made there could read or redirect
+/// what a change writes.
 fn is_real_dir(path: &Path) -> bool {
-    fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir())
+    use std::os::unix::fs::MetadataExt;
+    fs::symlink_metadata(path).is_ok_and(|meta| {
+        meta.is_dir() && meta.uid() == unsafe { libc::geteuid() } && meta.mode() & 0o077 == 0
+    })
 }
 /// A folder only this user can open, with the folders it is in, if it is new.
 fn private_dir(dir: &Path) -> Result<()> {
@@ -386,6 +391,8 @@ mod tests {
             "--detach",
             reading.to_str().unwrap(),
         ]);
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&old, fs::Permissions::from_mode(0o700)).unwrap();
         let dir = base.join("scratch/change");
         let rename = |from: &Path, to: &Path| fs::rename(from, to);
         assert!(move_into_place(&old, &dir, rename).unwrap());
@@ -426,6 +433,8 @@ mod tests {
         let base = fs::canonicalize(temp.path()).unwrap();
         let old = base.join("tmp/dispatch-change");
         fs::create_dir_all(&old).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&old, fs::Permissions::from_mode(0o700)).unwrap();
         fs::write(old.join("check.log"), "still written").unwrap();
         let dir = base.join("scratch/change");
         let across = |_: &Path, _: &Path| Err(std::io::ErrorKind::CrossesDevices.into());
@@ -435,5 +444,20 @@ mod tests {
             "still written"
         );
         assert!(!dir.exists());
+    }
+    #[test]
+    fn a_folder_in_tmp_others_can_open_is_never_taken_for_a_changes() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(temp.path()).unwrap();
+        let old = base.join("tmp/dispatch-change");
+        fs::create_dir_all(&old).unwrap();
+        fs::set_permissions(&old, fs::Permissions::from_mode(0o755)).unwrap();
+        let dir = base.join("scratch/change");
+        let rename = |from: &Path, to: &Path| fs::rename(from, to);
+        assert!(!move_into_place(&old, &dir, rename).unwrap());
+        assert!(!is_real_dir(&old));
+        fs::set_permissions(&old, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(is_real_dir(&old));
     }
 }
