@@ -488,7 +488,9 @@ export function closure(dir: string, declares: (dir: string) => Iterable<string>
 }
 /** What an owner's tests install it with, and so may name: the closure of what it declares. */
 export function installedWith(owner: Owner): Set<string> {
+  // The owner's own declarations first, as the MCP's are its Cargo.toml's, then each one's.
   return closure(owner.dir, (dir) => {
+    if (dir === owner.dir) return declared(owner);
     const each = [...features(), ...collectors()].find((other) => other.dir === dir);
     return each ? declared(each) : [];
   });
