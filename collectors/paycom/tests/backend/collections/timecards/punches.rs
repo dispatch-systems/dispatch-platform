@@ -137,8 +137,8 @@ fn a_punch_sent_as_a_clock_time_is_the_first_a_clock_change_repeats_and_none_it_
         sent("2026-11-01 00:30:00", "ID"),
         sent("2026-11-01 01:30:00", "OD"),
     ];
-    let cards = cards(&rows, "A0B1", &autumn, Chicago).unwrap();
-    assert_eq!(day(&cards, "2026-11-01")["hours"], 1.0);
+    let read = cards(&rows, "A0B1", &autumn, Chicago).unwrap();
+    assert_eq!(day(&read, "2026-11-01")["hours"], 1.0);
     // They went forward at 2:00 AM on March 8, so no clock showed 2:30 AM.
     let spring = EmployeeTimecardPeriod {
         from: "2026-03-08".into(),
