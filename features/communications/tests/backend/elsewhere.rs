@@ -261,7 +261,9 @@ async fn their_work_conversation_by_an_earlier_id_has_them_working_on_todays_rou
 
     let (shared, at_dsp) = (state.clone(), dsp.clone());
     let opened = state
-        .read(move |db| crate::backend::texts::reading::opened(db, &shared, &at_dsp, &a1, None))
+        .read(move |db| {
+            crate::backend::texts::reading::opened(db, &shared, &at_dsp, None, &a1, None)
+        })
         .await
         .unwrap();
     assert_eq!(

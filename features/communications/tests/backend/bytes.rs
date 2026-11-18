@@ -304,9 +304,9 @@ async fn a_videos_first_frame_and_bytes_played_come_back_from_the_object_store_u
     // shows it, the bytes where the video plays.
     emptied(&state);
     let body = |reply: Reply| axum::body::to_bytes(reply.into_response().into_body(), usize::MAX);
-    let shown_frame = preview(&state, &dsp, &video).await.unwrap().unwrap();
+    let shown_frame = preview(&state, &dsp, None, &video).await.unwrap().unwrap();
     assert_eq!(body(shown_frame).await.unwrap(), "frame");
-    let played = shown(&state, &dsp, &video, "anyone", None, false)
+    let played = shown(&state, &dsp, None, &video, "anyone", None, false)
         .await
         .unwrap()
         .unwrap();
@@ -343,7 +343,7 @@ async fn a_cache_that_cant_be_used_never_keeps_bytes_from_being_read() {
             std::fs::remove_file(data.join(&sha256)).unwrap();
             assert_eq!(read(&state, &dsp, &sha256).await.unwrap(), b"door");
             let owner = state.read(|db| Ok(testing::a_user(db))).await.unwrap();
-            let shown = shown(&state, &dsp, &picture, &owner, None, true)
+            let shown = shown(&state, &dsp, None, &picture, &owner, None, true)
                 .await
                 .unwrap()
                 .unwrap();
@@ -370,14 +370,14 @@ async fn a_dsps_data_that_cant_be_used_never_keeps_the_object_stores_bytes_from_
     std::fs::write(&data, b"").unwrap();
     let owner = state.read(|db| Ok(testing::a_user(db))).await.unwrap();
     let body = |reply: Reply| axum::body::to_bytes(reply.into_response().into_body(), usize::MAX);
-    let whole = shown(&state, &dsp, &picture, &owner, None, false)
+    let whole = shown(&state, &dsp, None, &picture, &owner, None, false)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(body(whole).await.unwrap(), photo);
     // Its preview is made of it brought down again.
     emptied(&state);
-    let small = shown(&state, &dsp, &picture, &owner, None, true)
+    let small = shown(&state, &dsp, None, &picture, &owner, None, true)
         .await
         .unwrap()
         .unwrap();

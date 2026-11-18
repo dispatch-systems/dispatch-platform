@@ -66,6 +66,7 @@ fn each_line_pairs_names_lists_and_manages_only_its_own_phones() {
     let desk = Line {
         id: "front_desk",
         name: "Front Desk",
+        texting: true,
     };
     let pairing = |number| Pairing {
         number,

@@ -353,13 +353,14 @@ decides ([Texts](#texts)).
   Dispatch Phone's own, or another feature's, by that feature's name (`phone::storage::Line`),
   which pairs, lists, renames and removes its own from a card of its own
   (`api::routes::phones`'s `*_of`, by the same rules as below). Only Dispatch Phone's own line's
-  phones are on its card, its page, its banner and its alerts; only their texts are filed
-  ([Texts](#texts)), so another line's are never in a conversation of its, counted, listed,
-  searched or alerted on; only they send its answers, and another line's only its own. A code
-  replaces only its own line's code not used yet. Another line's phones are named for it, its
-  name, then its name and 2 and so on, and their log entries are its (`<line>.phones.paired`,
-  `.renamed`, `.removed`), which it words. The phones' address is one for every line: a phone is
-  known by its key, whatever line it serves.
+  phones are on its card, its page, its banner and its alerts. Each line's texting is its own
+  ([Texts](#texts)): its conversations, the names it saved and the numbers it blocked, each
+  answered only from its own phones, and listed, counted, searched, opened, heard of and pushed
+  only on its own page, which another feature reads and answers from routes of its own
+  (`api::lines`). A code replaces only its own line's code not used yet. Another line's phones are
+  named for it, its name, then its name and 2 and so on, and their log entries are its
+  (`<line>.phones.paired`, `.renamed`, `.removed`), which it words. The phones' address is one for
+  every line: a phone is known by its key, whatever line it serves.
 - **The card:** Dispatch Phone, on Settings' DSP Connections, for those who manage the DSP's
   phones or all its connections (`connectionPieces`, `dsp`), while Dispatch Phone is on: its own
   line's phones, each by its number,
@@ -459,9 +460,38 @@ decides ([Texts](#texts)).
 
 ## Texts
 
-What the DSP's dispatch phones of Dispatch Phone's own line relay ([Lines](#dispatch-phones)), as
-the phone side keeps them, one row each: filed in its conversation as it's kept or changes; and answering, or sending again one that failed, which
+What the DSP's dispatch phones relay, as the phone side keeps them, one row each: filed in its
+conversation as it's kept or changes; and answering, or sending again one that failed, which
 queues a text for a phone.
+
+- **By line:** each conversation is of one line ([Lines](#dispatch-phones)), the line of the
+  phone its texts went through (`communications_text_conversations.line`, none for Dispatch
+  Phone's own), so a number texting Dispatch Phone's phones and another line's has a conversation
+  on each. Another line's texts are each filed under their number, on that line, however Routes
+  knows the number: work phones, drivers, Pick driver, filing again and the live day are Dispatch
+  Phone's own. Each line saves its own names for numbers and blocks its own: Dispatch Phone's in
+  `communications_contacts` and `communications_blocked`, by the number, as ever; another line's
+  beside them, in `communications_line_contacts` and `communications_line_blocked`, by the line
+  and the number. A name another line saves, or a block, never touches Dispatch Phone's, nor
+  Dispatch Phone's another's.
+  Whom a conversation of another line is with: whoever Driver Match has the number for, else the
+  name that line saved, else the number. Every read and write of a conversation by its ID is of
+  one line: another line's, as Slack's on another line, isn't found
+  (`communications_conversation_not_found`), whether read, answered, tried again, marked done,
+  named or blocked, nor are its texts' pictures and files (`communications_file_not_found`). An
+  answer goes from a phone of its conversation's line alone. Another line's page has its own
+  numbers' conversations alone, with no Slack, Today's Routes, profile, conversations elsewhere,
+  quick replies, GIFs or groups; its waiting, its phones, its changes and who is writing in it
+  are its own ([Live](#live)), as are its pushes ([New messages](#new-messages)).
+- **Filed once a line texts:** another line's texts are filed only once it says it texts
+  (`Line::texting`), as each of its phones keeps it from the code that paired it
+  (`phones_pairings.line_texting`, `phones_devices.texting`). Until then its phones' texts are
+  kept by the phone side alone, as before Dispatch Phone filed another line's, in no
+  conversation, and its page answers as a line with nothing yet: nothing listed, waiting or
+  found, and no number texted first (`not_found`). It stays off for every line in the release
+  that keeps each line's texting apart, as a rollback from it returns to one that reads every
+  conversation as Dispatch Phone's; the next release turns it on, for phones paired from then
+  on, whose texts the minute's upkeep files.
 
 - **Filed:** in the same write and transaction as the phone side keeps a phone's report, a
   status, a picture's bytes, a phone removed or an answer queued (`filing::changing`), each text
@@ -559,7 +589,10 @@ queues a text for a phone.
   blocked or unblocked, `communications.number_blocked` and `communications.number_unblocked`,
   by who it's with and the number; and each driver picked for a work phone,
   `communications.driver_picked`, by the driver's name and the phone's number. Saving the name
-  it has, or blocking a number blocked already, changes nothing and logs nothing.
+  it has, or blocking a number blocked already, changes nothing and logs nothing. Another line's
+  names and blocks are logged as its own, `<line>.contact_saved`, `<line>.number_blocked` and
+  `<line>.number_unblocked`, which it words, never as Dispatch Phone's; none says what a text
+  said.
 
 ## Messaging a group
 
@@ -754,7 +787,11 @@ the page follows one connected, updated, switched off or disconnected, and write
 Dispatch Phone works. A conversation changes with any
 of its messages, as one edited or a file kept, so a page with it open reads it again. Who at the DSP is writing in
 which conversation is kept in memory alone, each for six seconds after their page last said so
-(`typing`), or until they send, and shown to everyone else with Dispatch Phone.
+(`typing`), or until they send, and shown to everyone else with Dispatch Phone. Each is of one
+line: a change is noted with its conversation's line (`communications_changes.line`), Slack's and
+the groups' Dispatch Phone's own, and the latest thousand of each line are kept; a page waits on
+its own line's alone, its revision and who is writing in it its own, so another line's page wakes
+only as its own conversations change, and Dispatch Phone's never for another line's.
 
 ## New messages
 
@@ -800,13 +837,22 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
   longer knows (404, 410), or of a member who may no longer be told, is let go of. Dispatch's
   service worker (`app/frontend/public/service-worker.js`) shows every push, as browsers ask,
   penalising one that shows nothing. It first asks each window of Dispatch in front there whether it
-  alerts of it itself: one that does, of its own DSP, with its conversation or group open or showing
-  notifications from the page, has it shown silently and closed at once, or left to the page's own
-  notification of it; no such answer within a second, it stays shown. Where the worker serves the
-  page, the page's notifications go through it, under the message's tag, so a push of one shown
-  already takes its place. On a phone, pushes are its only notifications: Android's browser shows
+  alerts of it itself: one that does, of its own DSP and line (each push says its `line`, none for
+  Dispatch Phone's own, as one from before lines says none), with its conversation or group open
+  or showing notifications from the page, has it shown silently and closed at once, or left to the
+  page's own notification of it; no such answer within a second, it stays shown. Where the worker
+  serves the page, the page's notifications go through it, under the message's tag, so a push of
+  one shown already takes its place. On a phone, pushes are its only notifications: Android's browser shows
   them, and an iPhone's only for Dispatch added to its Home Screen (the web app manifest,
-  `app/frontend/public/assets/manifest.webmanifest`).
+  `app/frontend/public/assets/manifest.webmanifest`). Each line's pushes are its own
+  (`push::Pushed`): Dispatch Phone's (`OWN`), of what waits on its page, to members who may use
+  Dispatch Phone with Message display's Notifications on, opening `communications`; another
+  feature's, of its own line's texts alone, to the browsers kept for that line, of members holding
+  the permission it names with the Notifications of the section it names, titled with its name
+  before who wrote it and opening its own page, watched by an upkeep of its own
+  (`lines::pushing`) while it and Dispatch Phone are on, and each push going, as its turn comes,
+  only while Dispatch Phone still is. A browser told of two lines is kept for
+  each apart, and let go of for one alone.
 
 ## The page's code
 
@@ -957,6 +1003,16 @@ Behind `communications.use`:
   on the same. Refused `phones_offline` (503) while the phone is, and `phones_file_gone` (410) once
   it has it no more. The page asks it each time a video's played, so one the server let go of is
   asked of its phone again.
+- Each of those of the conversations by text, of whom the DSP can text, of a text's pictures and
+  of pushes is of Dispatch Phone's own line here. Another feature mounts the same for its own line
+  (`api::lines`), under its own path and permission, refused (`not_found`) while Dispatch Phone is
+  off, checked again with the member's access after each wait, as each read of a page waiting on
+  updates and each answer, Retry, picture or subscription kept after its wait (`access::Access`):
+  its overview, waiting, updates, search and older pages, Messaging's alone; a conversation
+  and its window, answering with `text` and `photos`, Retry, Done and typing; a number's name,
+  block and unblock; texting a `number` first; its contacts; a text's pictures, their previews and
+  fetching a video; a picture for a text not sent yet; and its pushes' key, subscribing and letting
+  go of a browser, for its line's pushes (`Pushed`).
 - `GET …/contacts?q=<name>&team=<id>`: whom the DSP can message, every one or those found
   by a name, in every workspace or one, each with their conversation, if any, since when it
   waits (`waitingSince`) and when it was last written in (`lastAt`).
@@ -1023,10 +1079,10 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (`phones_texts`, below) the conversation it's filed in, none while it waits to be, the name its
   sender was shown by, whether its number was blocked as it came and the Done that covered it
   (migration 9, which copied each from `communications_texts`, since dropped),
-  `communications_contacts` (the names saved for numbers, by whom and when, the latest alone:
-  the audit log keeps each),
-  `communications_blocked` (the numbers blocked, by whom and when, until unblocked: the audit log
-  keeps each) and `communications_picked`
+  `communications_contacts` (the names Dispatch Phone saved for numbers, by whom and when, the
+  latest alone: the audit log keeps each),
+  `communications_blocked` (the numbers Dispatch Phone blocked, by whom and when, until
+  unblocked: the audit log keeps each) and `communications_picked`
   (the driver picked for a work phone on a day, by whom and when); and, from migration 17,
   `communications_refiling` (each day still to be filed again, and since when),
   `communications_live_days` (each day live route data was seen holding, when it was first seen
@@ -1038,7 +1094,12 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   with their revision, in its `settings` table under `communications.quick_replies`. For pushes,
   `communications_push` (each browser a member is told in, by where its pushes go, with the keys
   they're encrypted for and the address it was subscribed at: migration 18), kept until it's let
-  go of. The phone side's, as Phones made them before Dispatch Phone adopted them (its migrations
+  go of. From migration 24, each conversation by text is of a line (`line`, none for Dispatch
+  Phone's own, as every one kept before is), one a number's for each line, and each change is
+  noted with its line; another line's names, blocks and browsers are kept apart, by the line
+  (`communications_line_contacts`, `communications_line_blocked`, `communications_line_push`),
+  and Dispatch Phone's stay in their tables as they were, so the release before the lines still
+  reads and writes its own. The phone side's, as Phones made them before Dispatch Phone adopted them (its migrations
   7 and 8, which find them made on a database Phones migrated, and leave Phones' own records of
   its migrations as they were): `phones_devices` (each phone, by its key's SHA-256, and how it last
   said it stands, `health`, migration 14), `phones_pairings` (the code that pairs the

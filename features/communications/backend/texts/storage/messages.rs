@@ -1,10 +1,13 @@
 //! Each conversation by text and the texts filed in it, and whether each conversation waits, kept
-//! beside its texts each time they change. A text is the phone side's row of it (`phones_texts`),
+//! beside its texts each time they change. Each conversation is of one line, the line of the phones
+//! its texts went through: Dispatch Phone's own (none), or another feature's, whose are all
+//! numbers'. A text is the phone side's row of it (`phones_texts`),
 //! on which this keeps the conversation it's filed in (`conversation_id`, none while it waits to
 //! be, and since when placing it failed while it waits), the conversation one Dispatch sent was
 //! written in, the name its sender was shown by as it was filed, whether its number was blocked as
 //! it came, and the Done that covered it; the rest of the row, and the text's files, are the phone
 //! side's (`phone::storage`).
+use super::contacts::BLOCKED;
 use crate::backend::origins::{self, Transport};
 use crate::backend::{
     changes::changed_conversation,
@@ -23,30 +26,42 @@ use std::collections::{BTreeSet, HashMap};
 
 /// What texting reads and writes of its conversations and their texts.
 pub trait TextStore {
+    /// The conversation `id`, of whichever line.
     fn communications_text_conversation(
         &self,
         dsp: &str,
         id: &str,
     ) -> Result<Option<TextConversation>>;
-    /// The conversations `ids` names, in no order.
+    /// The conversations `ids` names, of whichever line, in no order.
     fn communications_text_conversations(
         &self,
         dsp: &str,
         ids: &[String],
     ) -> Result<Vec<TextConversation>>;
-    /// The numbers' conversations waiting, but blocked numbers', the longest waiting first.
-    fn waiting_communications_texts(&self, dsp: &str) -> Result<Vec<TextConversation>>;
-    /// The numbers' conversations answered, but blocked numbers', the latest first, before
-    /// `before` (when last written in, and the ID), the latest `most`.
+    /// The numbers' conversations of the line `line` waiting, but those of numbers it blocked, the
+    /// longest waiting first.
+    fn waiting_communications_texts(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+    ) -> Result<Vec<TextConversation>>;
+    /// The numbers' conversations of the line `line` answered, but those of numbers it blocked,
+    /// the latest first, before `before` (when last written in, and the ID), the latest `most`.
     fn answered_communications_texts(
         &self,
         dsp: &str,
+        line: Option<&str>,
         before: Option<(i64, &str)>,
         most: usize,
     ) -> Result<Vec<TextConversation>>;
-    /// Every number's conversation, those holding no text too, blocked ones too.
-    fn communications_numbers(&self, dsp: &str) -> Result<Vec<TextConversation>>;
-    /// The conversations of the numbers `numbers`, in no order.
+    /// Every number's conversation of the line `line`, those holding no text too, blocked ones
+    /// too.
+    fn communications_numbers(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+    ) -> Result<Vec<TextConversation>>;
+    /// The conversations of the numbers `numbers` of Dispatch Phone's own line, in no order.
     fn communications_numbers_of(
         &self,
         dsp: &str,
@@ -75,12 +90,14 @@ pub trait TextStore {
     ) -> Result<crate::backend::windows::Rows<Text>>;
     /// The text `id`, filed or waiting to be.
     fn communications_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
-    /// Of the texts `ids`, those waiting to be filed, in no order.
+    /// Of the texts `ids`, those waiting to be filed, in no order: of phones whose texts are filed
+    /// alone (`FILED_PHONES`).
     fn unfiled_communications_texts_of(&self, dsp: &str, ids: &[String]) -> Result<Vec<Unfiled>>;
-    /// Every text filed that was written from `from` until `to`, oldest first.
+    /// Every text filed in a conversation of Dispatch Phone's own line that was written from `from`
+    /// until `to`, oldest first: only its own are filed by route data.
     fn communications_texts_between(&self, dsp: &str, from: i64, to: i64) -> Result<Vec<Text>>;
     /// The texts waiting to be filed after `after`, when written and the ID, the oldest `most`,
-    /// oldest first: each when written and its ID.
+    /// oldest first: each when written and its ID, of phones whose texts are filed alone.
     fn unfiled_communications_texts(
         &self,
         dsp: &str,
@@ -94,28 +111,35 @@ pub trait TextStore {
     /// that couldn't before keeps since when.
     fn unplaced_communications_texts(&self, dsp: &str, ids: &[String], at: i64) -> Result<()>;
     /// The texts waiting to be filed that couldn't be placed since `since` or before, the oldest
-    /// `most`, oldest first.
+    /// `most`, oldest first, of phones whose texts are filed alone.
     fn overdue_communications_texts(
         &self,
         dsp: &str,
         since: i64,
         most: usize,
     ) -> Result<Vec<Unfiled>>;
-    /// Files the text `id`, waiting to be, as `filed`, sent by someone at the DSP shown by
-    /// `sender_name`, as their name stands now: one with a number of its own as blocked while its
-    /// number is. The conversation it's in. Where a text is filed is decided again only as its
-    /// day's route data changes (`refile_communications_texts`).
+    /// Files the text `id`, waiting to be, of a phone of the line `line`, as `filed` on that line,
+    /// sent by someone at the DSP shown by `sender_name`, as their name stands now: one with a
+    /// number of its own as blocked while the line blocks its number. The conversation it's in.
+    /// Where a text is filed is decided again only as its day's route data changes
+    /// (`refile_communications_texts`), and only Dispatch Phone's own line's.
     fn place_communications_text(
         &self,
         dsp: &str,
         id: &str,
+        line: Option<&str>,
         filed: &Filed,
         sender_name: Option<&str>,
     ) -> Result<String>;
     /// Keeps whether the conversation each of the texts `ids` is filed in waits, as they changed:
-    /// whether any is filed in one.
-    fn settle_communications_texts(&self, dsp: &str, ids: &[String]) -> Result<bool>;
-    /// Moves each text filed to where it's filed now, by its ID: the conversations changed.
+    /// the lines of those filed in one.
+    fn settle_communications_texts(
+        &self,
+        dsp: &str,
+        ids: &[String],
+    ) -> Result<BTreeSet<Option<String>>>;
+    /// Moves each text filed on Dispatch Phone's own line to where it's filed now, by its ID: the
+    /// conversations changed.
     fn refile_communications_texts(
         &self,
         dsp: &str,
@@ -166,9 +190,15 @@ pub trait TextStore {
         dsp: &str,
         drivers: Option<&[(String, String)]>,
     ) -> Result<bool>;
-    /// The conversation texts filed so would be in, made with no text if it's new.
-    fn open_communications_text(&self, dsp: &str, filed: &Filed) -> Result<TextConversation>;
-    /// The conversation texts filed so are in, once it's made.
+    /// The conversation texts filed so on the line `line` would be in, made with no text if it's
+    /// new.
+    fn open_communications_text(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        filed: &Filed,
+    ) -> Result<TextConversation>;
+    /// The conversation texts filed so on Dispatch Phone's own line are in, once it's made.
     fn communications_filed(&self, dsp: &str, filed: &Filed) -> Result<Option<String>>;
     /// Marks the conversation done without an answer, as the member `by`, while it waits, and
     /// each text in it the Done covers, which stays so wherever it's filed again: those up to
@@ -205,11 +235,20 @@ macro_rules! waiting_since {
     };
 }
 
-/// The numbers' conversations that are listed: those of numbers not blocked.
-const LISTED: &str = "kind='number' AND number NOT IN (SELECT number FROM communications_blocked)";
-/// A text of a phone of Dispatch Phone's own line: only those are filed, so another line's texts
-/// are never in a conversation of its, nor counted, listed, searched or alerted on.
-const OWN_LINE: &str = "device_id IN (SELECT id FROM phones_devices WHERE line IS NULL)";
+/// The numbers' conversations of the line `?1` that are listed: those of numbers it didn't block.
+fn listed() -> String {
+    format!("kind='number' AND line IS ?1 AND number NOT IN {BLOCKED}")
+}
+/// The phones whose texts are filed: Dispatch Phone's own line's, and another line's that texts,
+/// as its line said as it paired (`texting`, `Line::texting`). Another line's that doesn't keeps
+/// its texts as the phone side's alone, in no conversation, so the release before the lines, which
+/// reads every conversation as Dispatch Phone's, never shows one.
+const FILED_PHONES: &str = "SELECT id FROM phones_devices WHERE line IS NULL OR texting=1";
+/// A text waiting to be filed, of a phone whose texts are, as `Unfiled` reads it, with the line of
+/// its phone, from `t`.
+const UNFILED: &str = "t.id,t.number,t.at,t.sent_by,d.line FROM phones_texts t \
+                       JOIN phones_devices d ON d.id=t.device_id \
+                       WHERE (d.line IS NULL OR d.texting=1)";
 /// Where a first page starts, as `before`: after every conversation and text.
 const END: (i64, &str) = (i64::MAX, "\u{10FFFF}");
 /// Where a first page of texts oldest first starts, as `after`: before every text.
@@ -237,18 +276,24 @@ impl TextStore for Store {
             [serde_json::to_string(ids)?],
         )
     }
-    fn waiting_communications_texts(&self, dsp: &str) -> Result<Vec<TextConversation>> {
+    fn waiting_communications_texts(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+    ) -> Result<Vec<TextConversation>> {
         self.dsp(dsp)?.query_as(
             &format!(
                 "SELECT * FROM communications_text_conversations WHERE state='waiting' \
-                 AND {LISTED} ORDER BY waiting_since,id"
+                 AND {} ORDER BY waiting_since,id",
+                listed()
             ),
-            [],
+            [line],
         )
     }
     fn answered_communications_texts(
         &self,
         dsp: &str,
+        line: Option<&str>,
         before: Option<(i64, &str)>,
         most: usize,
     ) -> Result<Vec<TextConversation>> {
@@ -256,16 +301,22 @@ impl TextStore for Store {
         self.dsp(dsp)?.query_as(
             &format!(
                 "SELECT * FROM communications_text_conversations WHERE state<>'waiting' \
-                 AND last_at IS NOT NULL AND {LISTED} AND (last_at<?1 OR (last_at=?1 AND id<?2)) \
-                 ORDER BY last_at DESC,id DESC LIMIT ?3"
+                 AND last_at IS NOT NULL AND {} AND (last_at<?2 OR (last_at=?2 AND id<?3)) \
+                 ORDER BY last_at DESC,id DESC LIMIT ?4",
+                listed()
             ),
-            params![at, id, most as i64],
+            params![line, at, id, most as i64],
         )
     }
-    fn communications_numbers(&self, dsp: &str) -> Result<Vec<TextConversation>> {
+    fn communications_numbers(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+    ) -> Result<Vec<TextConversation>> {
         self.dsp(dsp)?.query_as(
-            "SELECT * FROM communications_text_conversations WHERE kind='number' ORDER BY id",
-            [],
+            "SELECT * FROM communications_text_conversations WHERE kind='number' AND line IS ? \
+             ORDER BY id",
+            [line],
         )
     }
     fn communications_numbers_of(
@@ -274,7 +325,7 @@ impl TextStore for Store {
         numbers: &[String],
     ) -> Result<Vec<TextConversation>> {
         self.dsp(dsp)?.query_as(
-            "SELECT * FROM communications_text_conversations WHERE kind='number' \
+            "SELECT * FROM communications_text_conversations WHERE kind='number' AND line IS NULL \
              AND number IN (SELECT value FROM json_each(?))",
             [serde_json::to_string(numbers)?],
         )
@@ -359,9 +410,8 @@ impl TextStore for Store {
     fn unfiled_communications_texts_of(&self, dsp: &str, ids: &[String]) -> Result<Vec<Unfiled>> {
         self.dsp(dsp)?.query_as(
             &format!(
-                "SELECT id,number,at,sent_by FROM phones_texts \
-                 WHERE id IN (SELECT value FROM json_each(?)) AND conversation_id IS NULL \
-                 AND {OWN_LINE}"
+                "SELECT {UNFILED} AND t.id IN (SELECT value FROM json_each(?)) \
+                 AND t.conversation_id IS NULL"
             ),
             [serde_json::to_string(ids)?],
         )
@@ -370,8 +420,9 @@ impl TextStore for Store {
         texts(
             self,
             dsp,
-            "SELECT * FROM phones_texts WHERE conversation_id IS NOT NULL AND at>=?1 AND at<?2 \
-             ORDER BY at,id",
+            "SELECT t.* FROM phones_texts t \
+             JOIN communications_text_conversations c ON c.id=t.conversation_id \
+             WHERE c.line IS NULL AND t.at>=?1 AND t.at<?2 ORDER BY t.at,t.id",
             [from, to],
         )
     }
@@ -384,8 +435,9 @@ impl TextStore for Store {
         let (at, id) = after.unwrap_or(START);
         self.dsp(dsp)?.query_as(
             &format!(
-                "SELECT at,id FROM phones_texts WHERE conversation_id IS NULL AND {OWN_LINE} \
-                 AND (at>?1 OR (at=?1 AND id>?2)) ORDER BY at,id LIMIT ?3"
+                "SELECT at,id FROM phones_texts WHERE conversation_id IS NULL \
+                 AND device_id IN ({FILED_PHONES}) AND (at>?1 OR (at=?1 AND id>?2)) \
+                 ORDER BY at,id LIMIT ?3"
             ),
             params![at, id, most as i64],
         )
@@ -413,8 +465,8 @@ impl TextStore for Store {
     ) -> Result<Vec<Unfiled>> {
         self.dsp(dsp)?.query_as(
             &format!(
-                "SELECT id,number,at,sent_by FROM phones_texts WHERE conversation_id IS NULL \
-                 AND {OWN_LINE} AND unfiled_since<=?1 ORDER BY at,id LIMIT ?2"
+                "SELECT {UNFILED} AND t.conversation_id IS NULL AND t.unfiled_since<=?1 \
+                 ORDER BY t.at,t.id LIMIT ?2"
             ),
             params![since, most as i64],
         )
@@ -423,47 +475,49 @@ impl TextStore for Store {
         &self,
         dsp: &str,
         id: &str,
+        line: Option<&str>,
         filed: &Filed,
         sender_name: Option<&str>,
     ) -> Result<String> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            let conversation = conversation(&db, filed)?;
+            let conversation = conversation(&db, line, filed)?;
             // A text from a number blocked as it came never makes its conversation wait.
+            let sql = format!("SELECT count(*) FROM {BLOCKED} WHERE number=?2");
             let blocked = match filed {
-                Filed::Number(number) => {
-                    db.count(
-                        "SELECT count(*) FROM communications_blocked WHERE number=?",
-                        [number],
-                    )? > 0
-                }
+                Filed::Number(number) => db.count(&sql, params![line, number])? > 0,
                 Filed::Driver { .. } | Filed::WorkPhone(_) => false,
             };
+            // Only on its own phone's line.
             let placed = origins::place(&db, Transport::Text, id, Some(&conversation), || {
                 db.exec(
-                    &format!(
-                        "UPDATE phones_texts SET conversation_id=?,sender_name=?,blocked=? \
-                         WHERE id=? AND conversation_id IS NULL AND {OWN_LINE}"
-                    ),
-                    params![conversation, sender_name, blocked, id],
+                    "UPDATE phones_texts SET conversation_id=?,sender_name=?,blocked=? \
+                     WHERE id=? AND conversation_id IS NULL \
+                     AND device_id IN (SELECT id FROM phones_devices WHERE line IS ?)",
+                    params![conversation, sender_name, blocked, id, line],
                 )
             })?;
             ensure(placed == 1, "communications_message_not_found", 404)?;
             Ok(conversation)
         })
     }
-    fn settle_communications_texts(&self, dsp: &str, ids: &[String]) -> Result<bool> {
+    fn settle_communications_texts(
+        &self,
+        dsp: &str,
+        ids: &[String],
+    ) -> Result<BTreeSet<Option<String>>> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            let filed: Vec<(String,)> = db.query_as(
-                "SELECT DISTINCT conversation_id FROM phones_texts \
-                 WHERE id IN (SELECT value FROM json_each(?)) AND conversation_id IS NOT NULL",
+            let filed: Vec<(String, Option<String>)> = db.query_as(
+                "SELECT DISTINCT c.id,c.line FROM phones_texts t \
+                 JOIN communications_text_conversations c ON c.id=t.conversation_id \
+                 WHERE t.id IN (SELECT value FROM json_each(?))",
                 [serde_json::to_string(ids)?],
             )?;
-            for (conversation,) in &filed {
+            for (conversation, _) in &filed {
                 settle(&db, conversation)?;
             }
-            Ok(!filed.is_empty())
+            Ok(filed.into_iter().map(|(_, line)| line).collect())
         })
     }
     fn refile_communications_texts(
@@ -475,7 +529,7 @@ impl TextStore for Store {
         db.transaction(|| {
             let mut touched = BTreeSet::new();
             for (text, filed) in moves {
-                let to = conversation(&db, filed)?;
+                let to = conversation(&db, None, filed)?;
                 let Some(was) = filed_in(&db, text)? else {
                     continue;
                 };
@@ -596,10 +650,15 @@ impl TextStore for Store {
             [drivers],
         )
     }
-    fn open_communications_text(&self, dsp: &str, filed: &Filed) -> Result<TextConversation> {
+    fn open_communications_text(
+        &self,
+        dsp: &str,
+        line: Option<&str>,
+        filed: &Filed,
+    ) -> Result<TextConversation> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            let id = conversation(&db, filed)?;
+            let id = conversation(&db, line, filed)?;
             db.one_as(
                 "SELECT * FROM communications_text_conversations WHERE id=?",
                 [&id],
@@ -609,7 +668,7 @@ impl TextStore for Store {
     }
     fn communications_filed(&self, dsp: &str, filed: &Filed) -> Result<Option<String>> {
         let db = self.dsp(dsp)?;
-        found(&db, filed)
+        found(&db, None, filed)
     }
     fn mark_communications_text_done(
         &self,
@@ -641,9 +700,10 @@ impl TextStore for Store {
     }
 }
 
-/// The conversation a text filed so is in, made if it's new: its ID.
-fn conversation(db: &Db, filed: &Filed) -> Result<String> {
-    if let Some(id) = found(db, filed)? {
+/// The conversation a text filed so on the line `line` is in, made if it's new: its ID. Another
+/// line's texts are only ever filed under their number.
+fn conversation(db: &Db, line: Option<&str>, filed: &Filed) -> Result<String> {
+    if let Some(id) = found(db, line, filed)? {
         return Ok(id);
     }
     let (kind, source, driver, number) = match filed {
@@ -653,23 +713,24 @@ fn conversation(db: &Db, filed: &Filed) -> Result<String> {
     };
     let id = crypto::id(TEXT_PREFIX)?;
     db.exec(
-        "INSERT INTO communications_text_conversations (id,kind,source,driver_id,number) \
-         VALUES (?,?,?,?,?)",
-        params![id, kind, source, driver, number],
+        "INSERT INTO communications_text_conversations (id,kind,source,driver_id,number,line) \
+         VALUES (?,?,?,?,?,?)",
+        params![id, kind, source, driver, number, line],
     )?;
     Ok(id)
 }
-/// The conversation a text filed so is in, once it's made: its ID.
-fn found(db: &Db, filed: &Filed) -> Result<Option<String>> {
+/// The conversation a text filed so on the line `line` is in, once it's made: its ID.
+fn found(db: &Db, line: Option<&str>, filed: &Filed) -> Result<Option<String>> {
     let sql = "SELECT id FROM communications_text_conversations \
-               WHERE kind=? AND number=? AND driver_id IS NULL";
+               WHERE kind=? AND number=? AND line IS ? AND driver_id IS NULL";
     let found: Option<(String,)> = match filed {
         Filed::Driver { source, id } => db.one_as(
-            "SELECT id FROM communications_text_conversations WHERE source=? AND driver_id=?",
-            [source, id],
+            "SELECT id FROM communications_text_conversations \
+             WHERE source=? AND driver_id=? AND line IS ?",
+            params![source, id, line],
         )?,
-        Filed::WorkPhone(number) => db.one_as(sql, params!["work", number])?,
-        Filed::Number(number) => db.one_as(sql, params!["number", number])?,
+        Filed::WorkPhone(number) => db.one_as(sql, params!["work", number, line])?,
+        Filed::Number(number) => db.one_as(sql, params!["number", number, line])?,
     };
     Ok(found.map(|(id,)| id))
 }

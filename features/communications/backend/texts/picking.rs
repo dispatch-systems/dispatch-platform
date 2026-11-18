@@ -28,7 +28,7 @@ pub fn pick(
     by: &str,
     at: i64,
 ) -> Result<Conversation> {
-    let conversation = reading::found(db, dsp, id)?;
+    let conversation = reading::found(db, dsp, None, id)?;
     let phone = match (conversation.kind, conversation.driver, conversation.number) {
         (ConversationKind::Work, None, Some(number)) => ten_digits(&number),
         _ => None,
@@ -48,8 +48,8 @@ pub fn pick(
     let theirs = together(db, dsp, || {
         db.pick_communications_driver(dsp, &phone, &live.day, &picked, by, at)?;
         filing::refiled(db, dsp)?;
-        let theirs = db.open_communications_text(dsp, &picked)?;
-        let theirs = reading::one(db, state, dsp, &theirs.id)?;
+        let theirs = db.open_communications_text(dsp, None, &picked)?;
+        let theirs = reading::one(db, state, dsp, None, &theirs.id)?;
         db.audit_with(
             Some(by),
             Some(dsp),

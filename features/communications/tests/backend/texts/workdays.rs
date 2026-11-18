@@ -56,7 +56,7 @@ async fn each_workday_shows_its_route_and_van_however_far_apart_and_however_many
     let (shared, at_dsp) = (state.clone(), dsp.clone());
     let read_id = id.clone();
     let opened = state
-        .read(move |db| reading::opened(db, &shared, &at_dsp, &read_id, None))
+        .read(move |db| reading::opened(db, &shared, &at_dsp, None, &read_id, None))
         .await
         .unwrap();
     let anchor = opened.messages.first().unwrap().ts.clone();
@@ -92,9 +92,7 @@ async fn each_workday_shows_its_route_and_van_however_far_apart_and_however_many
             }
             crate::backend::changes::changed_conversation(&connection, &conversation)
         })?;
-        crate::backend::windows::read(db, &shared, &at_dsp,
-            &crate::backend::model::Reference::Text(conversation),
-            crate::backend::windows::Request::Anchor { place: anchor, leading: 0 })
+        crate::backend::windows::read(db, &shared, &at_dsp, None, &crate::backend::model::Reference::Text(conversation), crate::backend::windows::Request::Anchor { place: anchor, leading: 0 })
     }).await.unwrap();
     assert_eq!((page.messages.len(), page.latest.len()), (150, 50));
     assert!(page.range.has_after);

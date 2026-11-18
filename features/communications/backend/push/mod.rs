@@ -14,6 +14,12 @@
 //! session of theirs at that address would be let in (`Store::may`): a member whose account, role
 //! or DSP no longer lets them use Communications, or who turned Notifications off, has their
 //! browsers let go of.
+//!
+//! Each line's pushes are its own (`Pushed`): Dispatch Phone's own (`OWN`), of what waits on its
+//! page, Slack's among it; or another feature's, of its own texts alone, told to the browsers kept
+//! for that line, of members holding its permission with its Notifications on, titled with its
+//! name and opening its page. A browser told of one line is kept, and let go of, apart from the
+//! same browser told of another.
 pub(crate) mod fixture;
 pub(crate) mod sending;
 pub(crate) mod storage;
@@ -25,7 +31,7 @@ use dispatch_core::{
     Result, State,
     db::Store,
     foundation::{config::Site, observability},
-    manifest::{Maintenance, Upkeep},
+    manifest::{Maintenance, Section, Upkeep},
     settings,
 };
 use serde_json::json;
@@ -36,15 +42,37 @@ use std::{
 };
 use storage::{Address, PushStore, Subscription};
 
-/// Every minute, each DSP with a browser kept is watched, as after a restart.
+/// Every minute, each DSP with a browser kept for Dispatch Phone's own line is watched, as after a
+/// restart.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
-    run: pass,
+    run: |state, _| pushing(state, &OWN),
 };
-/// What a member must hold to be told.
-const USE: &str = "communications.use";
 /// How many messages no longer waiting are remembered, the latest; those waiting all are.
 const MOST: usize = 500;
+
+/// What one line's pushes are: who is told of them, what they say and where they open.
+pub struct Pushed {
+    /// The line, by its feature's name: none for Dispatch Phone's own.
+    pub line: Option<&'static str>,
+    /// What a member must hold to be told.
+    pub permission: &'static str,
+    /// The page a push opens, after the DSP's address.
+    pub page: &'static str,
+    /// What a push's title says before who wrote it: none for Dispatch Phone's own.
+    pub label: Option<&'static str>,
+    /// Where each member's Message display is kept, whose Notifications says whether they're told.
+    pub display: &'static Section,
+}
+/// Dispatch Phone's own line's: of what waits on its page, Slack's among it, titled with who wrote
+/// it alone.
+pub const OWN: Pushed = Pushed {
+    line: None,
+    permission: "communications.use",
+    page: "communications",
+    label: None,
+    display: &DISPLAY,
+};
 
 fn failed(dsp: &str, error: &dispatch_core::Error) {
     observability::event(
@@ -54,16 +82,22 @@ fn failed(dsp: &str, error: &dispatch_core::Error) {
     );
 }
 
-fn pass(state: Arc<State>, _: bool) -> Upkeep {
+/// Watches each DSP with a browser kept for `pushed`'s line, as after a restart: while Dispatch
+/// Phone is on there, and another line's feature too.
+pub fn pushing(state: Arc<State>, pushed: &'static Pushed) -> Upkeep {
     Box::pin(async move {
         if webpush::vapid(&state.config).is_none() {
             return;
         }
         let pushing = state
-            .read(|db| {
+            .read(move |db| {
                 let mut pushing = Vec::new();
                 for dsp in crate::backend::switched_on(db, db.kept_dsps()?)? {
-                    if db.communications_pushing(&dsp)? {
+                    let on = match pushed.line {
+                        None => true,
+                        Some(line) => db.feature_enabled(&dsp, line)?,
+                    };
+                    if on && db.communications_pushing(&dsp, pushed.line)? {
                         pushing.push(dsp);
                     }
                 }
@@ -71,36 +105,40 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
             })
             .await;
         match pushing {
-            Ok(pushing) => pushing.iter().for_each(|dsp| watch(&state, dsp)),
+            Ok(pushing) => pushing.iter().for_each(|dsp| watch(&state, dsp, pushed)),
             Err(error) => failed("", &error),
         }
     })
 }
 
-/// Watches the DSP's conversations for what's new to push, unless they're watched already.
-pub fn watch(state: &Arc<State>, dsp: &str) {
-    static WATCHED: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+/// A DSP watched, and the line: Dispatch Phone's own for none.
+type Watched = (String, Option<&'static str>);
+/// Watches the DSP's conversations of `pushed`'s line for what's new to push, unless they're
+/// watched already.
+pub fn watch(state: &Arc<State>, dsp: &str, pushed: &'static Pushed) {
+    static WATCHED: LazyLock<Mutex<HashSet<Watched>>> = LazyLock::new(Default::default);
     if webpush::vapid(&state.config).is_none()
         || !WATCHED
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
-            .insert(dsp.to_owned())
+            .insert((dsp.to_owned(), pushed.line))
     {
         return;
     }
     let (state, dsp) = (state.clone(), dsp.to_owned());
-    tokio::spawn(async move { watching(&state, &dsp).await });
+    tokio::spawn(async move { watching(&state, &dsp, pushed).await });
 }
 
-/// Reads what waits in the DSP as it first does and once each change since, pushing what's new
-/// before it reads again: changes while a batch goes are read together after it.
-async fn watching(state: &Arc<State>, dsp: &str) {
+/// Reads what waits in the DSP on `pushed`'s line as it first does and once each change of that
+/// line since, pushing what's new before it reads again: changes while a batch goes are read
+/// together after it.
+async fn watching(state: &Arc<State>, dsp: &str, pushed: &'static Pushed) {
     // Subscribed before the first read, so a change while it reads still wakes it.
-    let mut wakes = state.topics.subscribe(live::TOPIC, dsp);
+    let mut wakes = live::listen(state, dsp, pushed.line);
     let (mut seen, mut revision) = (None, None);
     loop {
-        let told = match look(state, dsp, &mut seen, &mut revision).await {
-            Ok(new) if !new.is_empty() => tell(state, dsp, new).await,
+        let told = match look(state, dsp, pushed, &mut seen, &mut revision).await {
+            Ok(new) if !new.is_empty() => tell(state, dsp, pushed, new).await,
             Ok(_) => Ok(()),
             Err(error) => Err(error),
         };
@@ -113,22 +151,26 @@ async fn watching(state: &Arc<State>, dsp: &str) {
     }
 }
 
-/// What's new in what waits in the DSP since `seen`, read again only if it changed since
-/// `revision`.
+/// What's new in what waits in the DSP on `pushed`'s line since `seen`, read again only if it
+/// changed since `revision`.
 async fn look(
     state: &Arc<State>,
     dsp: &str,
+    pushed: &'static Pushed,
     seen: &mut Option<Vec<String>>,
     revision: &mut Option<i64>,
 ) -> Result<Vec<WaitingMessage>> {
     let (shared, at, last) = (state.clone(), dsp.to_owned(), *revision);
     let read = state
         .read(move |db| {
-            let now = db.communications_revision(&at)?;
+            let now = db.communications_revision(&at, pushed.line)?;
             if last == Some(now) {
                 return Ok(None);
             }
-            Ok(Some((now, inbox::waiting(db, &shared, &at)?.latest)))
+            Ok(Some((
+                now,
+                inbox::waiting(db, &shared, &at, pushed.line)?.latest,
+            )))
         })
         .await?;
     let Some((now, latest)) = read else {
@@ -167,21 +209,26 @@ fn fresh(
     (new, next)
 }
 
-/// Pushes each of `new` to the browsers of each member of the DSP who may be told of it now,
-/// letting go of those of a member who may not.
-async fn tell(state: &Arc<State>, dsp: &str, new: Vec<WaitingMessage>) -> Result<()> {
+/// Pushes each of `new` to the browsers kept for `pushed`'s line of each member of the DSP who may
+/// be told of it now, letting go of those of a member who may not.
+async fn tell(
+    state: &Arc<State>,
+    dsp: &str,
+    pushed: &'static Pushed,
+    new: Vec<WaitingMessage>,
+) -> Result<()> {
     let at = dsp.to_owned();
     let (told, untold, code) = state
         .read(move |db| {
             let code = db.find_dsp(&at)?.code;
             let mut decided = HashMap::new();
             let (mut told, mut untold) = (Vec::new(), Vec::new());
-            for subscription in db.communications_pushes(&at)? {
+            for subscription in db.communications_pushes(&at, pushed.line)? {
                 let whom = (subscription.user.clone(), subscription.address);
                 let tells = match decided.get(&whom) {
                     Some(tells) => *tells,
                     None => {
-                        let tells = tells(db, &at, code.as_deref(), &subscription)?;
+                        let tells = tells(db, &at, pushed, code.as_deref(), &subscription)?;
                         decided.insert(whom, tells);
                         tells
                     }
@@ -198,7 +245,7 @@ async fn tell(state: &Arc<State>, dsp: &str, new: Vec<WaitingMessage>) -> Result
     if !untold.is_empty() {
         let at = dsp.to_owned();
         state
-            .run_bookkeeping(move |db| db.drop_communications_pushes(&at, &untold))
+            .run_bookkeeping(move |db| db.drop_communications_pushes(&at, pushed.line, &untold))
             .await?;
     }
     // Where each push opens: the DSP's page at the address its browser was subscribed at.
@@ -212,14 +259,17 @@ async fn tell(state: &Arc<State>, dsp: &str, new: Vec<WaitingMessage>) -> Result
         .flat_map(|message| {
             let pushes: HashMap<Address, Vec<u8>> = [Address::Admin, Address::Dsp]
                 .into_iter()
-                .map(|address| (address, sending::message(dsp, message, &opens(address))))
+                .map(|address| {
+                    let says = sending::message(dsp, pushed, message, &opens(address));
+                    (address, says)
+                })
                 .collect();
             told.iter().map(move |subscription| {
                 (subscription.clone(), pushes[&subscription.address].clone())
             })
         })
         .collect();
-    sending::send(state, dsp, pushes).await
+    sending::send(state, dsp, pushed, pushes).await
 }
 
 /// What becomes of a push to `subscription` as its turn to go comes, read again then.
@@ -231,39 +281,56 @@ pub enum Turn {
     /// It doesn't: the browser is no longer kept so, let go of or kept anew since.
     Gone,
 }
-/// What becomes of a push to `subscription` in the DSP `dsp` now.
-pub async fn turn(state: &Arc<State>, dsp: &str, subscription: &Subscription) -> Result<Turn> {
+/// What becomes of a push of `pushed`'s line to `subscription` in the DSP `dsp` now.
+pub async fn turn(
+    state: &Arc<State>,
+    dsp: &str,
+    pushed: &'static Pushed,
+    subscription: &Subscription,
+) -> Result<Turn> {
     let (at, subscription) = (dsp.to_owned(), subscription.clone());
     state
         .read(move |db| {
             if db
-                .communications_push(&at, &subscription.endpoint)?
+                .communications_push(&at, pushed.line, &subscription.endpoint)?
                 .as_ref()
                 != Some(&subscription)
             {
                 return Ok(Turn::Gone);
             }
             let code = db.find_dsp(&at)?.code;
-            Ok(match tells(db, &at, code.as_deref(), &subscription)? {
-                true => Turn::Goes,
-                false => Turn::Untold,
-            })
+            Ok(
+                match tells(db, &at, pushed, code.as_deref(), &subscription)? {
+                    true => Turn::Goes,
+                    false => Turn::Untold,
+                },
+            )
         })
         .await
 }
 
-/// Whether the member whose browser `subscription` names is told of the DSP's new messages: with
-/// Notifications on, as one who may use Communications there now, signed in where they subscribed
-/// it.
-fn tells(db: &Store, dsp: &str, code: Option<&str>, subscription: &Subscription) -> Result<bool> {
+/// Whether the member whose browser `subscription` names is told of the DSP's new messages of
+/// `pushed`'s line: with its Notifications on, as one who may use that line there now, signed in
+/// where they subscribed it; another line's only while Dispatch Phone is on there too, which its
+/// own permission doesn't say, as its routes refuse while it's off.
+fn tells(
+    db: &Store,
+    dsp: &str,
+    pushed: &Pushed,
+    code: Option<&str>,
+    subscription: &Subscription,
+) -> Result<bool> {
     let site = match (subscription.address, code) {
         (Address::Admin, _) => Site::Admin,
         (Address::Dsp, Some(code)) => Site::Dsp(code.to_owned()),
         (Address::Dsp, None) => return Ok(false),
     };
+    if pushed.line.is_some() && !db.feature_enabled(dsp, crate::FEATURE.switch.id)? {
+        return Ok(false);
+    }
     let user = &subscription.user;
-    Ok(db.may(user, &site, dsp, USE)?
-        && settings::read_member::<MessageDisplay>(db, dsp, user, &DISPLAY)?.notifications)
+    Ok(db.may(user, &site, dsp, pushed.permission)?
+        && settings::read_member::<MessageDisplay>(db, dsp, user, pushed.display)?.notifications)
 }
 
 #[cfg(test)]

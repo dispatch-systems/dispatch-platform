@@ -12,22 +12,24 @@
 //! pictures (`files`); the DSP's quick replies (`replies`); telling the member of new messages
 //! with Dispatch closed (`push`); and the DSP's phones (`phones`). Reading the IDs and pages they
 //! name is here, below. Its writes of conversations change only Communications' own data (`changes`), so
-//! they leave the DSP's other cached reads, as who is who, as they were.
-mod conversations;
+//! they leave the DSP's other cached reads, as who is who, as they were. Those of conversations by
+//! text, and of telling the member, are each of one line (`*_of`), as the phones' are: Dispatch
+//! Phone's own here, another feature's from its own routes (`api::lines`).
+pub(crate) mod conversations;
 mod files;
 mod gifs;
 mod groups;
-mod inbox;
+pub(crate) mod inbox;
 pub(crate) mod phones;
-mod push;
+pub(crate) mod push;
 mod replies;
-mod texts;
+pub(crate) mod texts;
 
 use crate::{
     api::types::MessageGif,
     backend::{
-        compose, gifs as chosen, initials, model::Reference, phone::model as texting,
-        storage::DOMAIN,
+        access::served, compose, gifs as chosen, initials, model::Reference,
+        phone::model as texting, storage::DOMAIN,
     },
 };
 use axum::http::Method;

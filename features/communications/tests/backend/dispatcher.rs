@@ -18,7 +18,7 @@ const TEAM: &str = "T0FIXTURE2";
 async fn limits(state: &Arc<State>, dsp: &str, reference: Reference) -> (usize, usize, u64) {
     let (shared, dsp) = (state.clone(), dsp.to_owned());
     let limits = state
-        .read(move |db| Ok(opened(db, &shared, &dsp, &reference, None)?.limits))
+        .read(move |db| Ok(opened(db, &shared, &dsp, None, &reference, None)?.limits))
         .await
         .unwrap();
     (limits.text, limits.photos, limits.largest)
@@ -61,7 +61,7 @@ async fn an_answer_that_went_stays_kept_though_its_writers_access_ended_as_it_we
         slots.push(slot);
     }
     let reference = Reference::Text(conversation.clone());
-    let sending = send(&state, &c, support::USE, &reference, "Swap it", (&[], None));
+    let sending = send(&state, &c, support::OWN, &reference, "Swap it", (&[], None));
     let switching = switch(&state, &dsp, "communications", false);
     tokio::pin!(sending, switching);
     std::future::poll_fn(|cx| {
@@ -90,13 +90,13 @@ async fn done_covers_only_the_texts_the_page_showed_and_a_newer_one_still_waits(
     // The page shows the conversation as it is, then a text it hasn't shown yet comes.
     let read = || {
         let (shared, at, reference) = (state.clone(), dsp.clone(), reference.clone());
-        state.read(move |db| opened(db, &shared, &at, &reference, None))
+        state.read(move |db| opened(db, &shared, &at, None, &reference, None))
     };
     let shown = read().await.unwrap().messages.pop().unwrap().ts;
     let later = texted(&state, &dsp, "+12535550177", "Tire light", now()).await;
     let done = |seen: String| {
         let (shared, at, reference) = (state.clone(), dsp.clone(), reference.clone());
-        state.run(move |db| done(db, &shared, &at, &reference, "me", Some(&seen)))
+        state.run(move |db| done(db, &shared, &at, None, &reference, "me", Some(&seen)))
     };
 
     // Done as the page saw it leaves the newer text waiting; once shown, Done covers it.
@@ -123,7 +123,7 @@ async fn done_refuses_a_slack_place_past_what_milliseconds_hold() {
     let refused = state
         .run(move |db| {
             let seen = Some("9223372036854775807.000000");
-            done(db, &shared, &dsp, &reference, "me", seen)
+            done(db, &shared, &dsp, None, &reference, "me", seen)
         })
         .await
         .unwrap_err();

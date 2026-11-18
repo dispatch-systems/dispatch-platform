@@ -71,7 +71,7 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let state_of = || {
         let (shared, at, id) = (state.clone(), dsp.clone(), conversation.clone());
-        state.read(move |db| Ok(one(db, &shared, &at, &id)?.state))
+        state.read(move |db| Ok(one(db, &shared, &at, None, &id)?.state))
     };
 
     let (at, text) = (dsp.clone(), asked.clone());
@@ -89,7 +89,7 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     let answer = send(
         &state,
         &c,
-        support::USE,
+        support::OWN,
         &conversation,
         "Perfect, thank you!",
         (&[], None),
@@ -112,7 +112,7 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     reported(&state, &dsp, &answer.id, Status::Failed).await;
     let (shared, at, id) = (state.clone(), dsp.clone(), answer.id.clone());
     let failed = state
-        .read(move |db| reading::message(db, &shared, &at, &id))
+        .read(move |db| reading::message(db, &shared, &at, None, &id))
         .await
         .unwrap();
     assert_eq!(
@@ -138,7 +138,7 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     .unwrap();
     let mut retried = phone::live::listen(&state, &dsp, &replacement);
     // Sent again, it's on its way: an answer.
-    let again = retry(&state, &c, support::USE, &conversation, &failed.id)
+    let again = retry(&state, &c, support::OWN, &conversation, &failed.id)
         .await
         .unwrap();
     assert!(retried.changed().now_or_never().is_some());
@@ -153,7 +153,7 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     assert_eq!(state_of().await.unwrap(), ConversationState::Responded);
     // Another conversation's text isn't this one's to send again.
     let elsewhere = texted(&state, &dsp, "+14255550199", "Hi", now()).await;
-    let refused = retry(&state, &c, support::USE, &conversation, &elsewhere).await;
+    let refused = retry(&state, &c, support::OWN, &conversation, &elsewhere).await;
     assert_eq!(
         refused.unwrap_err().code,
         "communications_message_not_found"
@@ -169,14 +169,14 @@ async fn an_answer_its_offline_phone_never_came_for_fails_as_it_expires_and_it_w
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let state_of = || {
         let (shared, at, id) = (state.clone(), dsp.clone(), conversation.clone());
-        state.read(move |db| Ok(one(db, &shared, &at, &id)?.state))
+        state.read(move |db| Ok(one(db, &shared, &at, None, &id)?.state))
     };
 
     // Queued on the phone, which never checks in again, it's an answer until it expires.
     let answer = send(
         &state,
         &c,
-        support::USE,
+        support::OWN,
         &conversation,
         "Door 3",
         (&[], None),
@@ -221,7 +221,7 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
     let failed = send(
         &state,
         &c,
-        support::USE,
+        support::OWN,
         &conversation,
         "Van 214",
         (&[], None),
@@ -229,7 +229,7 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
     .await
     .unwrap();
     reported(&state, &dsp, &failed.id, Status::Failed).await;
-    let retried = || retry(&state, &c, support::USE, &conversation, &failed.id);
+    let retried = || retry(&state, &c, support::OWN, &conversation, &failed.id);
 
     // Once Retry is asked for, a read shows Avery with 0202 and Blake with 0101, before filing
     // hears of it: it would reach Blake.
@@ -290,7 +290,7 @@ async fn an_answer_goes_to_the_work_phone_its_driver_has_as_it_is_queued() {
     send(
         &state,
         &c,
-        support::USE,
+        support::OWN,
         &conversation,
         "Van 214",
         (&[], None),
@@ -317,7 +317,7 @@ async fn an_answer_never_goes_once_its_writers_access_ended_as_it_goes() {
     let refused = send(
         &state,
         &c,
-        support::USE,
+        support::OWN,
         &conversation,
         "Swap it",
         (&[], None),
@@ -344,7 +344,7 @@ async fn a_picture_keeps_nothing_once_its_adders_access_ended_while_its_bytes_ca
     let (_root, state, dsp) = support::started();
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let photo = picture(b"door", async {}).await;
-    let kept = upload(&state, &c, support::USE, "door.png", "image/png", photo)
+    let kept = upload(&state, &c, support::OWN, "door.png", "image/png", photo)
         .await
         .unwrap();
     // Communications goes off for the DSP while the next one's bytes come, and with it their
@@ -352,7 +352,7 @@ async fn a_picture_keeps_nothing_once_its_adders_access_ended_while_its_bytes_ca
     let (shared, at_dsp) = (state.clone(), dsp.clone());
     let off = async move { switch(&shared, &at_dsp, "communications", false).await };
     let photo = picture(b"dock", off).await;
-    let refused = upload(&state, &c, support::USE, "dock.png", "image/png", photo).await;
+    let refused = upload(&state, &c, support::OWN, "dock.png", "image/png", photo).await;
     assert_eq!(refused.unwrap_err().code, "permission_denied");
     let at_dsp = dsp.clone();
     let bytes = state
@@ -378,7 +378,7 @@ async fn an_answer_carries_as_much_as_a_text_does_not_what_slacks_does() {
     let mut pictures = Vec::new();
     for _ in 0..11 {
         let photo = picture(b"png", async {}).await;
-        let added = upload(&state, &c, support::USE, "door.png", "image/png", photo).await;
+        let added = upload(&state, &c, support::OWN, "door.png", "image/png", photo).await;
         pictures.push(added.unwrap().id);
     }
     let answer = |written: String, photos: &[String]| {
@@ -387,7 +387,7 @@ async fn an_answer_carries_as_much_as_a_text_does_not_what_slacks_does() {
             send(
                 state,
                 c,
-                support::USE,
+                support::OWN,
                 conversation,
                 &written,
                 (&photos, None),
@@ -423,7 +423,7 @@ async fn a_drivers_answer_goes_to_the_work_phone_they_had_at_the_stop_for_two_ho
     let phone = || {
         let (shared, at, id) = (state.clone(), dsp.clone(), conversation.clone());
         state.read(move |db| {
-            let opened = reading::opened(db, &shared, &at, &id, None)?;
+            let opened = reading::opened(db, &shared, &at, None, &id, None)?;
             Ok(opened.today.and_then(|today| today.phone))
         })
     };
@@ -433,7 +433,7 @@ async fn a_drivers_answer_goes_to_the_work_phone_they_had_at_the_stop_for_two_ho
     send(
         &state,
         &c,
-        support::USE,
+        support::OWN,
         &conversation,
         "Spare key at the desk",
         (&[], None),
@@ -449,7 +449,7 @@ async fn a_drivers_answer_goes_to_the_work_phone_they_had_at_the_stop_for_two_ho
     // Answered, it doesn't wait; still, as the two hours end, a page with it open hears the phone go.
     let at = dsp.clone();
     let before = state
-        .read(move |db| db.communications_revision(&at))
+        .read(move |db| db.communications_revision(&at, None))
         .await
         .unwrap();
     watch_live_day(&state, &dsp, stop + AFTER_STOP_MS)
@@ -457,7 +457,7 @@ async fn a_drivers_answer_goes_to_the_work_phone_they_had_at_the_stop_for_two_ho
         .unwrap();
     let at = dsp.clone();
     let (changed, _) = state
-        .read(move |db| db.communications_changed_since(&at, before))
+        .read(move |db| db.communications_changed_since(&at, None, before))
         .await
         .unwrap();
     assert!(changed.unwrap().contains(&conversation));
@@ -468,7 +468,7 @@ async fn a_drivers_answer_goes_to_the_work_phone_they_had_at_the_stop_for_two_ho
     let refused = send(
         &state,
         &c,
-        support::USE,
+        support::OWN,
         &conversation,
         "Still there?",
         (&[], None),
@@ -494,7 +494,7 @@ async fn retry_refuses_a_text_moved_with_its_work_phone_to_another_drivers_conve
     let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
     let avery = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let failed = send(&state, &c, support::USE, &avery, "Van 214", (&[], None))
+    let failed = send(&state, &c, support::OWN, &avery, "Van 214", (&[], None))
         .await
         .unwrap();
     reported(&state, &dsp, &failed.id, Status::Failed).await;
@@ -513,11 +513,11 @@ async fn retry_refuses_a_text_moved_with_its_work_phone_to_another_drivers_conve
     assert_ne!(blake, avery);
     let (shared, at, id) = (state.clone(), dsp.clone(), failed.id.clone());
     let shown = state
-        .read(move |db| reading::message(db, &shared, &at, &id))
+        .read(move |db| reading::message(db, &shared, &at, None, &id))
         .await
         .unwrap();
     assert!(shown.moved);
-    let refused = retry(&state, &c, support::USE, &blake, &failed.id).await;
+    let refused = retry(&state, &c, support::OWN, &blake, &failed.id).await;
     assert_eq!(refused.unwrap_err().code, "communications_text_moved");
     assert!(
         support::sent(&state, &dsp).await.is_empty(),
@@ -564,7 +564,7 @@ async fn an_answer_after_midnight_in_the_two_hours_after_a_late_stop_is_the_driv
     let answer = send(
         &state,
         &c,
-        support::USE,
+        support::OWN,
         &conversation,
         "Spare key at the desk",
         (&[], None),
@@ -574,7 +574,7 @@ async fn an_answer_after_midnight_in_the_two_hours_after_a_late_stop_is_the_driv
     assert_eq!(filed(&state, &dsp, &answer.id).await.id, conversation);
     let (shared, at_dsp, id) = (state.clone(), dsp.clone(), conversation.clone());
     let standing = state
-        .read(move |db| Ok(one(db, &shared, &at_dsp, &id)?.state))
+        .read(move |db| Ok(one(db, &shared, &at_dsp, None, &id)?.state))
         .await
         .unwrap();
     assert_eq!(standing, ConversationState::Responded);
@@ -605,7 +605,7 @@ async fn retry_refuses_an_answer_filed_as_it_went_in_another_conversation_than_i
     let failed = send(
         &state,
         &c,
-        support::USE,
+        support::OWN,
         &own,
         "Ask at the desk",
         (&[], None),
@@ -619,10 +619,10 @@ async fn retry_refuses_an_answer_filed_as_it_went_in_another_conversation_than_i
     // Shown moved in Avery's conversation, where Retry is refused.
     let (shared, at_dsp, id) = (state.clone(), dsp.clone(), failed.id.clone());
     let shown = state
-        .read(move |db| reading::message(db, &shared, &at_dsp, &id))
+        .read(move |db| reading::message(db, &shared, &at_dsp, None, &id))
         .await
         .unwrap();
     assert!(shown.moved);
-    let refused = retry(&state, &c, support::USE, &avery, &failed.id).await;
+    let refused = retry(&state, &c, support::OWN, &avery, &failed.id).await;
     assert_eq!(refused.unwrap_err().code, "communications_text_moved");
 }

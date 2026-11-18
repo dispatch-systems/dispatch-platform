@@ -54,7 +54,7 @@ pub fn read(db: &Store, state: &State, dsp: &str) -> Result<TodaysRoutes> {
         }
     }
     let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
+    let numbers = Numbers::read(db, dsp, None)?;
     let (mut theirs, mut phones) = (HashMap::new(), Vec::new());
     for conversation in
         reading::conversations(db, &people, &numbers, dsp, kept.into_values().collect())?

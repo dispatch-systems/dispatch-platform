@@ -62,6 +62,30 @@ fn phone(db: &Store, dsp: &str) -> Result<String> {
 /// The DSP's phone receives `body` from `number`, written at `at`, and reports it, as its app
 /// does: the text's ID.
 pub async fn texted(state: &Arc<State>, dsp: &str, number: &str, body: &str, at: i64) -> String {
+    report(state, dsp, None, number, body, at).await
+}
+/// The phone `phone`, of whichever line, receives `body` from `number`, written at `at`, and
+/// reports it, as its app does: the text's ID.
+pub async fn texted_on(
+    state: &Arc<State>,
+    dsp: &str,
+    phone: &str,
+    number: &str,
+    body: &str,
+    at: i64,
+) -> String {
+    report(state, dsp, Some(phone.to_owned()), number, body, at).await
+}
+/// The phone `to`, else the DSP's own, receives `body` from `number`, written at `at`, and reports
+/// it: the text's ID.
+async fn report(
+    state: &Arc<State>,
+    dsp: &str,
+    to: Option<String>,
+    number: &str,
+    body: &str,
+    at: i64,
+) -> String {
     let text = Reported {
         client_id: crypto::id("sms").unwrap(),
         direction: Direction::In,
@@ -72,7 +96,11 @@ pub async fn texted(state: &Arc<State>, dsp: &str, number: &str, body: &str, at:
     };
     let at_dsp = dsp.to_owned();
     filing::changing(state, dsp, move |db| {
-        let kept = db.phones_report(&at_dsp, &phone(db, &at_dsp)?, vec![text])?;
+        let to = match to {
+            Some(to) => to,
+            None => phone(db, &at_dsp)?,
+        };
+        let kept = db.phones_report(&at_dsp, &to, vec![text])?;
         let id = kept[0].id.clone();
         Ok((id.clone(), vec![id]))
     })

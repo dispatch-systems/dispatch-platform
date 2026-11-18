@@ -31,8 +31,10 @@ pub const FEATURE: Feature = Feature {
 };
 
 /// Its line of the DSP's phones: theirs alone, named HR Line, then HR Line 2 and so on, as they
-/// pair.
+/// pair. Its texts aren't filed yet: the next release turns `texting` on, once a rollback no longer
+/// returns to a release that reads every conversation as Dispatch Phone's.
 pub const LINE: Line<'static> = Line {
     id: FEATURE.switch.id,
     name: "HR Line",
+    texting: false,
 };

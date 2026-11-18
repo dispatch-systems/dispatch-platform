@@ -3,6 +3,7 @@
 //! Text mutations below use `changing` so filing and post-commit notifications stay coupled.
 use super::super::{
     live_day,
+    model::Filed,
     storage::{DayStore, TextStore},
     zone,
 };
@@ -50,8 +51,8 @@ pub async fn unfiled(state: &Arc<State>, dsp: &str) -> Result<()> {
 
 /// Places the DSP's texts that couldn't be placed for `UNFILED_MS` by `at` under their number,
 /// as a day Routes can't read does (`unread`), the oldest page of them, noting each one's day to
-/// be filed again, which moves it where it belongs once Routes can say: written only once one has
-/// waited so long.
+/// be filed again, which moves it where it belongs once Routes can say; another line's, under its
+/// number on that line, with nothing to file again: written only once one has waited so long.
 pub async fn overdue(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
     let (asked, since) = (dsp.to_owned(), at - UNFILED_MS);
     if state
@@ -69,9 +70,13 @@ pub async fn overdue(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
         let mut senders = HashMap::new();
         for text in &texts {
             let sender = sender_name(db, &mut senders, text.sent_by.as_deref())?;
-            let filed = unread(db, &at_dsp, &text.number);
-            db.place_communications_text(&at_dsp, &text.id, &filed, sender.as_deref())?;
-            if let Some(zone) = &zone {
+            let line = text.line.as_deref();
+            let filed = match line {
+                None => unread(db, &at_dsp, &text.number),
+                Some(_) => Filed::Number(text.number.clone()),
+            };
+            db.place_communications_text(&at_dsp, &text.id, line, &filed, sender.as_deref())?;
+            if let (Some(zone), None) = (&zone, line) {
                 let day = clock::day(zone, text.at).to_string();
                 db.note_communications_refiling(&at_dsp, &day, at)?;
             }

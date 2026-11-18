@@ -4,7 +4,8 @@
 //! once, in `SECTIONS`: its stable ID, whether the DSP has it, how many of its conversations wait,
 //! what the page lists of it as it opens, and how its conversations are found. `inbox`'s overview
 //! and updates, and the search, read them; a new section is one more there, with its place in what
-//! the page reads.
+//! the page reads. Each is of a line: Dispatch Phone's own has every one; another line's page,
+//! Messaging alone, of its own numbers.
 use super::{
     conversations,
     groups::{self, storage::groups::GroupStore},
@@ -25,8 +26,8 @@ pub struct Section {
     pub kind: ConversationKind,
     /// Whether the DSP has it now.
     pub offered: fn(&Store, &str) -> Result<bool>,
-    /// How many of its conversations wait on an answer, as the counts go.
-    pub waiting: fn(&Store, &str) -> Result<usize>,
+    /// How many of its conversations of the line wait on an answer, as the counts go.
+    pub waiting: fn(&Store, &str, Option<&str>) -> Result<usize>,
     /// What the page lists of it as it opens.
     pub listed: fn(&Reading<'_>) -> Result<Listed>,
     /// Its conversations found as asked.
@@ -40,7 +41,7 @@ pub const TODAYS_ROUTES: Section = Section {
     id: "routes",
     kind: ConversationKind::Work,
     offered: todays_routes::offered,
-    waiting: |db, dsp| Ok(live_day::waiting(db, dsp)?.len()),
+    waiting: |db, dsp, _| Ok(live_day::waiting(db, dsp)?.len()),
     listed: |r| {
         let waiting = live_day::waiting(r.db, r.dsp)?;
         let (answered, more) = reading::answered_work(r.db, r.people, r.numbers, r.dsp, None)?;
@@ -53,24 +54,24 @@ pub const TODAYS_ROUTES: Section = Section {
     },
     found: |db, state, dsp, query| match (query.team, &query.asked) {
         (None, Asked::Typed(typed)) => {
-            reading::search(db, state, dsp, ConversationKind::Work, typed)
+            reading::search(db, state, dsp, None, ConversationKind::Work, typed)
         }
         (None, Asked::Before(before)) => {
-            reading::older(db, state, dsp, ConversationKind::Work, *before)
+            reading::older(db, state, dsp, None, ConversationKind::Work, *before)
         }
         _ => Err(Error::new("invalid_input", 400)),
     },
 };
-/// Messaging, always, empty until a phone is paired and texted: the numbers' conversations, but
-/// blocked numbers'.
+/// Messaging, always, empty until a phone is paired and texted: the line's numbers' conversations,
+/// but those of numbers it blocked.
 pub const MESSAGING: Section = Section {
     id: "messaging",
     kind: ConversationKind::Number,
     offered: |_, _| Ok(true),
-    waiting: |db, dsp| Ok(db.waiting_communications_texts(dsp)?.len()),
+    waiting: |db, dsp, line| Ok(db.waiting_communications_texts(dsp, line)?.len()),
     listed: |r| {
-        let waiting = r.db.waiting_communications_texts(r.dsp)?;
-        let (answered, more) = reading::answered(r.db, r.people, r.numbers, r.dsp, None)?;
+        let waiting = r.db.waiting_communications_texts(r.dsp, r.line)?;
+        let (answered, more) = reading::answered(r.db, r.people, r.numbers, r.dsp, r.line, None)?;
         Ok(Listed {
             waiting: reading::conversations(r.db, r.people, r.numbers, r.dsp, waiting)?,
             answered,
@@ -80,11 +81,10 @@ pub const MESSAGING: Section = Section {
     },
     found: |db, state, dsp, query| {
         ensure(query.team.is_none(), "invalid_input", 400)?;
+        let (line, kind) = (query.line, ConversationKind::Number);
         match query.asked {
-            Asked::Typed(typed) => reading::search(db, state, dsp, ConversationKind::Number, typed),
-            Asked::Before(before) => {
-                reading::older(db, state, dsp, ConversationKind::Number, before)
-            }
+            Asked::Typed(typed) => reading::search(db, state, dsp, line, kind, typed),
+            Asked::Before(before) => reading::older(db, state, dsp, line, kind, before),
         }
     },
 };
@@ -95,7 +95,7 @@ pub const SLACK: Section = Section {
     id: "slack",
     kind: ConversationKind::Slack,
     offered: |_, _| Ok(true),
-    waiting: |db, dsp| Ok(db.waiting_communications(dsp)?.len()),
+    waiting: |db, dsp, _| Ok(db.waiting_communications(dsp)?.len()),
     listed: |r| {
         let waiting = r.db.waiting_communications(r.dsp)?;
         let waiting_groups = r.db.waiting_communications_groups(r.dsp)?;
@@ -121,11 +121,21 @@ pub const SLACK: Section = Section {
 /// it always has; the page shows them in an order of its own.
 pub const SECTIONS: &[&Section] = &[&SLACK, &MESSAGING, &TODAYS_ROUTES];
 
-/// What a section's list is read with: the DSP, who everyone is, what it keeps of numbers, and
-/// the workspace a Slack list is of, if one.
+/// The sections of the line `line`: every one of Dispatch Phone's own (none); Messaging alone of
+/// another line's, whose texts are all numbers'.
+pub fn of(line: Option<&str>) -> &'static [&'static Section] {
+    match line {
+        None => SECTIONS,
+        Some(_) => &[&MESSAGING],
+    }
+}
+
+/// What a section's list is read with: the DSP, the line, who everyone is, what the line keeps of
+/// numbers, and the workspace a Slack list is of, if one.
 pub struct Reading<'a> {
     pub db: &'a Store,
     pub dsp: &'a str,
+    pub line: Option<&'a str>,
     pub people: &'a People,
     pub numbers: &'a Numbers,
     pub team: Option<&'a str>,
@@ -142,9 +152,10 @@ pub struct Listed {
     pub more: bool,
 }
 
-/// What a search of a section asks: in the workspace `team`, for Slack's, what was typed, or the
-/// answered ones before the last listed.
+/// What a search of a section asks: of the line `line`, in the workspace `team`, for Slack's, what
+/// was typed, or the answered ones before the last listed.
 pub struct Query<'a> {
+    pub line: Option<&'a str>,
     pub team: Option<&'a str>,
     pub asked: Asked<'a>,
 }
@@ -155,10 +166,10 @@ pub enum Asked<'a> {
     Before((i64, &'a str)),
 }
 
-/// Each section the DSP has now, with what the page lists of it.
+/// Each section of the line the DSP has now, with what the page lists of it.
 pub fn listed(r: &Reading<'_>) -> Result<Vec<(&'static Section, Listed)>> {
     let mut listed = Vec::new();
-    for &section in SECTIONS {
+    for &section in of(r.line) {
         if (section.offered)(r.db, r.dsp)? {
             listed.push((section, (section.listed)(r)?));
         }
@@ -166,18 +177,23 @@ pub fn listed(r: &Reading<'_>) -> Result<Vec<(&'static Section, Listed)>> {
     Ok(listed)
 }
 
-/// How many conversations wait in the sections the DSP has now.
-pub fn waiting(db: &Store, dsp: &str) -> Result<usize> {
+/// How many conversations wait in the sections of the line `line` the DSP has now.
+pub fn waiting(db: &Store, dsp: &str, line: Option<&str>) -> Result<usize> {
     let mut waiting = 0;
-    for &section in SECTIONS {
+    for &section in of(line) {
         if (section.offered)(db, dsp)? {
-            waiting += (section.waiting)(db, dsp)?;
+            waiting += (section.waiting)(db, dsp, line)?;
         }
     }
     Ok(waiting)
 }
+/// Whether the DSP has `section` on the line `line` now.
+pub fn offered(db: &Store, dsp: &str, line: Option<&str>, section: &Section) -> Result<bool> {
+    let has = of(line).iter().any(|each| each.id == section.id);
+    Ok(has && (section.offered)(db, dsp)?)
+}
 
-/// The conversations of the section listing `kind` found as `query` asks.
+/// The conversations of the section of the line `query.line` listing `kind` found as `query` asks.
 pub fn found(
     db: &Store,
     state: &State,
@@ -185,7 +201,7 @@ pub fn found(
     kind: ConversationKind,
     query: &Query<'_>,
 ) -> Result<Conversations> {
-    let section = SECTIONS
+    let section = of(query.line)
         .iter()
         .find(|section| section.kind == kind)
         .ok_or_else(|| Error::new("invalid_input", 400))?;

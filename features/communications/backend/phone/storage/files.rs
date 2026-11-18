@@ -56,6 +56,9 @@ pub struct StoredFile {
     pub preview_sha256: Option<String>,
     pub text_id: Option<String>,
     pub added_by: Option<String>,
+    /// The line of the phone its text went through, by its feature's name: none for Dispatch
+    /// Phone's own, and for one added for a text not sent yet.
+    pub line: Option<String>,
 }
 
 /// What the phone side keeps of the texts' pictures and files.
@@ -284,12 +287,18 @@ impl FileStore for Store {
     fn phones_file(&self, dsp: &str, id: &str) -> Result<Option<StoredFile>> {
         let db = self.dsp(dsp)?;
         Ok(db
-            .one("SELECT * FROM phones_files WHERE id=?", [id])?
+            .one(
+                "SELECT f.*,d.line FROM phones_files f \
+                 LEFT JOIN phones_texts t ON t.id=f.text_id \
+                 LEFT JOIN phones_devices d ON d.id=t.device_id WHERE f.id=?",
+                [id],
+            )?
             .map(|row| StoredFile {
                 file: file_of(&row),
                 preview_sha256: row["preview_sha256"].as_str().map(str::to_owned),
                 text_id: row["text_id"].as_str().map(str::to_owned),
                 added_by: row["added_by"].as_str().map(str::to_owned),
+                line: row["line"].as_str().map(str::to_owned),
             }))
     }
     fn phones_files_of(&self, dsp: &str, texts: &[String]) -> Result<HashMap<String, Vec<File>>> {

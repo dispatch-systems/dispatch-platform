@@ -167,7 +167,7 @@ async fn their_slack_and_own_numbers_conversations_come_with_the_van_they_drive_
             let van = |today: Option<Today>| today.and_then(|today| today.van);
             Ok((
                 van(conversations::opened(db, &shared, &dsp, &slack, None)?.today),
-                van(reading::opened(db, &shared, &dsp, &number, None)?.today),
+                van(reading::opened(db, &shared, &dsp, None, &number, None)?.today),
             ))
         })
     };
@@ -205,7 +205,7 @@ async fn only_a_route_live_route_data_holds_today_has_them_working_and_their_num
         state.read(move |db| {
             Ok((
                 conversations::opened(db, &shared, &dsp, &slack, None)?.working,
-                reading::opened(db, &shared, &dsp, &number, None)?.working,
+                reading::opened(db, &shared, &dsp, None, &number, None)?.working,
             ))
         })
     };

@@ -1,16 +1,42 @@
 //! Who is pushed what: each message new in what waits, to each browser of each member who may be
-//! told of it, once, opening where it was subscribed; the browsers let go of once they can't be
-//! told, even as a push waits to be tried again; pushes going a few at once, however many batches
-//! go; and what a push says of a message, as the list does.
+//! told of it, once, opening where it was subscribed; each line's alone to the browsers told of
+//! it; a browser kept by someone else no longer told of any line for whoever had it; the browsers
+//! let go of once they can't be told, even as a push waits to be tried again;
+//! pushes going a few at once, however many batches go; and what a push says of a message, as the
+//! list does.
 use super::*;
 use crate::api::types::{FileStatus, MessageFile};
 use crate::backend::{
+    phone::storage::Line,
     reply,
     support::{self, USE},
 };
+use dispatch_core::db::now;
+use futures_util::FutureExt;
 use serde_json::json;
 
 const TEAM: &str = "T0FIXTURE2";
+/// A line of the DSP's phones beside Dispatch Phone's own, as its feature pairs them.
+const LINE: Line = Line {
+    id: "front_desk",
+    name: "Front Desk",
+    texting: true,
+};
+/// That line's pushes, as its feature tells of them.
+const DESK: Pushed = Pushed {
+    line: Some(LINE.id),
+    permission: "communications.use",
+    page: "front-desk",
+    label: Some(LINE.name),
+    display: &DISPLAY,
+};
+
+/// That line's pushes, told to those holding a permission of its own, which Dispatch Phone being off
+/// doesn't take away.
+const MANAGED: Pushed = Pushed {
+    permission: "connections.manage",
+    ..DESK
+};
 
 /// Has `user` turn Notifications on or off, their Message display at `revision`.
 async fn notifications(state: &Arc<State>, dsp: &str, user: &str, on: bool, revision: i64) {
@@ -39,16 +65,27 @@ async fn keep(state: &Arc<State>, dsp: &str, user: &str, endpoint: &str) {
     keep_at(state, dsp, user, endpoint, Address::Admin).await;
 }
 async fn keep_at(state: &Arc<State>, dsp: &str, user: &str, endpoint: &str, address: Address) {
-    let (dsp, subscription) = (dsp.to_owned(), browser(user, endpoint, address));
+    keep_for(state, dsp, None, browser(user, endpoint, address)).await;
+}
+/// Keeps `subscription` for the line `line`.
+async fn keep_for(
+    state: &Arc<State>,
+    dsp: &str,
+    line: Option<&'static str>,
+    subscription: Subscription,
+) {
+    let dsp = dsp.to_owned();
     state
-        .run(move |db| db.keep_communications_push(&dsp, &subscription))
+        .run(move |db| db.keep_communications_push(&dsp, line, &subscription))
         .await
         .unwrap();
 }
 /// The browsers kept, by their endpoints.
 async fn kept(state: &Arc<State>, dsp: &str) -> Vec<String> {
     let dsp = dsp.to_owned();
-    let kept = state.read(move |db| db.communications_pushes(&dsp)).await;
+    let kept = state
+        .read(move |db| db.communications_pushes(&dsp, None))
+        .await;
     kept.unwrap()
         .into_iter()
         .map(|each| each.endpoint)
@@ -71,7 +108,7 @@ async fn each_message_new_in_what_waits_goes_to_each_browser_of_each_member_told
     // What waited as the watching began tells no one.
     support::writes(&state, &dsp, TEAM, "U0FIXCASEY", "Morning").await;
     assert!(
-        look(&state, &dsp, &mut seen, &mut revision)
+        look(&state, &dsp, &OWN, &mut seen, &mut revision)
             .await
             .unwrap()
             .is_empty()
@@ -79,8 +116,10 @@ async fn each_message_new_in_what_waits_goes_to_each_browser_of_each_member_told
 
     // Another message in the conversation waiting is new: it goes to each of their browsers.
     support::writes(&state, &dsp, TEAM, "U0FIXCASEY", "Where do I park?").await;
-    let new = look(&state, &dsp, &mut seen, &mut revision).await.unwrap();
-    tell(&state, &dsp, new).await.unwrap();
+    let new = look(&state, &dsp, &OWN, &mut seen, &mut revision)
+        .await
+        .unwrap();
+    tell(&state, &dsp, &OWN, new).await.unwrap();
     let conversation = support::conversation_with(&state, &dsp, TEAM, "U0FIXCASEY")
         .await
         .unwrap();
@@ -104,7 +143,7 @@ async fn each_message_new_in_what_waits_goes_to_each_browser_of_each_member_told
 
     // Read again, nothing is new; nor is the DSP's answer.
     assert!(
-        look(&state, &dsp, &mut seen, &mut revision)
+        look(&state, &dsp, &OWN, &mut seen, &mut revision)
             .await
             .unwrap()
             .is_empty()
@@ -120,7 +159,7 @@ async fn each_message_new_in_what_waits_goes_to_each_browser_of_each_member_told
     .await
     .unwrap();
     assert!(
-        look(&state, &dsp, &mut seen, &mut revision)
+        look(&state, &dsp, &OWN, &mut seen, &mut revision)
             .await
             .unwrap()
             .is_empty()
@@ -152,15 +191,17 @@ async fn browsers_are_let_go_of_once_they_cant_be_told() {
     .await;
     let (mut seen, mut revision) = (None, None);
     assert!(
-        look(&state, &dsp, &mut seen, &mut revision)
+        look(&state, &dsp, &OWN, &mut seen, &mut revision)
             .await
             .unwrap()
             .is_empty()
     );
 
     support::writes(&state, &dsp, TEAM, "U0FIXCASEY", "Where do I park?").await;
-    let new = look(&state, &dsp, &mut seen, &mut revision).await.unwrap();
-    tell(&state, &dsp, new).await.unwrap();
+    let new = look(&state, &dsp, &OWN, &mut seen, &mut revision)
+        .await
+        .unwrap();
+    tell(&state, &dsp, &OWN, new).await.unwrap();
     // The busy one's, tried again, went; the others went nowhere, and are let go of.
     assert_eq!(fixture::pushed(busy).len(), 1);
     for nowhere in [gone, elsewhere, stranger] {
@@ -171,9 +212,11 @@ async fn browsers_are_let_go_of_once_they_cant_be_told() {
     // Notifications turned off, their browsers are let go of as the next message would go.
     notifications(&state, &dsp, &owner, false, 1).await;
     support::writes(&state, &dsp, TEAM, "U0FIXCASEY", "Hello?").await;
-    let new = look(&state, &dsp, &mut seen, &mut revision).await.unwrap();
+    let new = look(&state, &dsp, &OWN, &mut seen, &mut revision)
+        .await
+        .unwrap();
     assert_eq!(new.len(), 1);
-    tell(&state, &dsp, new.clone()).await.unwrap();
+    tell(&state, &dsp, &OWN, new.clone()).await.unwrap();
     assert_eq!(fixture::pushed(busy).len(), 1);
     assert!(kept(&state, &dsp).await.is_empty());
 
@@ -181,9 +224,171 @@ async fn browsers_are_let_go_of_once_they_cant_be_told() {
     notifications(&state, &dsp, &owner, true, 2).await;
     keep(&state, &dsp, &owner, busy).await;
     support::switch(&state, &dsp, crate::FEATURE.switch.id, false).await;
-    tell(&state, &dsp, new).await.unwrap();
+    tell(&state, &dsp, &OWN, new).await.unwrap();
     assert_eq!(fixture::pushed(busy).len(), 1);
     assert!(kept(&state, &dsp).await.is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn each_lines_texts_are_heard_and_pushed_on_its_own_alone() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let owner = c.actor().to_owned();
+    notifications(&state, &dsp, &owner, true, 0).await;
+    let at = dsp.clone();
+    let phone = state
+        .run(move |db| Ok(support::pair_to(db, &at, LINE, "+12065550111")))
+        .await
+        .unwrap();
+    // One browser, told of each line apart.
+    let browser = "https://fcm.googleapis.com/fcm/send/both-lines";
+    keep(&state, &dsp, &owner, browser).await;
+    let (at, theirs) = (dsp.clone(), self::browser(&owner, browser, Address::Admin));
+    state
+        .run(move |db| db.keep_communications_push(&at, DESK.line, &theirs))
+        .await
+        .unwrap();
+    let (mut ours_seen, mut ours_read) = (None, None);
+    let (mut desk_seen, mut desk_read) = (None, None);
+    let ours = look(&state, &dsp, &OWN, &mut ours_seen, &mut ours_read).await;
+    assert!(ours.unwrap().is_empty());
+    let theirs = look(&state, &dsp, &DESK, &mut desk_seen, &mut desk_read).await;
+    assert!(theirs.unwrap().is_empty());
+    let mut our_page = live::listen(&state, &dsp, None);
+    let mut their_page = live::listen(&state, &dsp, DESK.line);
+    let at = dsp.clone();
+    let revision = state
+        .read(move |db| db.communications_revision(&at, None))
+        .await
+        .unwrap();
+
+    // The Front Desk's phone is texted: its pages alone hear, and its pushes alone tell of it,
+    // under its name, opening its page.
+    support::texted_on(
+        &state,
+        &dsp,
+        &phone,
+        "+14255550199",
+        "About my paycheck",
+        now(),
+    )
+    .await;
+    assert!(their_page.changed().now_or_never().is_some());
+    assert!(our_page.changed().now_or_never().is_none());
+    let at = dsp.clone();
+    let after = state
+        .read(move |db| db.communications_revision(&at, None))
+        .await
+        .unwrap();
+    assert_eq!(after, revision);
+    let ours = look(&state, &dsp, &OWN, &mut ours_seen, &mut ours_read).await;
+    assert!(ours.unwrap().is_empty());
+    let new = look(&state, &dsp, &DESK, &mut desk_seen, &mut desk_read)
+        .await
+        .unwrap();
+    assert_eq!(new.len(), 1);
+    let conversation = new[0].conversation_id.clone();
+    tell(&state, &dsp, &DESK, new).await.unwrap();
+    let pushed = fixture::pushed(browser);
+    assert_eq!(pushed.len(), 1);
+    assert_eq!(pushed[0]["title"], "Front Desk · (425) 555-0199");
+    assert_eq!(pushed[0]["line"], "front_desk");
+    let opens = format!(
+        "{}/#dsp/{dsp}/front-desk?open={conversation}",
+        state.config.origin
+    );
+    assert_eq!(pushed[0]["url"], opens);
+
+    // Dispatch Phone's own is texted by the same number: its own alone tell of it, as ever.
+    support::texted(&state, &dsp, "+14255550199", "Is this dispatch?", now()).await;
+    assert!(their_page.changed().now_or_never().is_none());
+    let theirs = look(&state, &dsp, &DESK, &mut desk_seen, &mut desk_read).await;
+    assert!(theirs.unwrap().is_empty());
+    let new = look(&state, &dsp, &OWN, &mut ours_seen, &mut ours_read)
+        .await
+        .unwrap();
+    assert_eq!(new.len(), 1);
+    tell(&state, &dsp, &OWN, new).await.unwrap();
+    let pushed = fixture::pushed(browser);
+    assert_eq!(pushed.len(), 2);
+    assert_eq!(pushed[1]["title"], "(425) 555-0199");
+    assert_eq!(pushed[1]["line"], serde_json::Value::Null);
+}
+
+#[tokio::test]
+async fn a_browser_kept_by_someone_else_is_no_longer_told_of_any_line_for_whoever_had_it() {
+    let (_root, state, dsp) = support::started();
+    let endpoint = "https://fcm.googleapis.com/fcm/send/shared-desk";
+    let (avery, blake) = ("usr_avery", "usr_blake");
+    // Whose the browser is kept as, on each line.
+    let kept = || {
+        let (state, dsp) = (state.clone(), dsp.clone());
+        async move {
+            let kept = state.read(move |db| {
+                let mut kept = Vec::new();
+                for line in [None, DESK.line] {
+                    for each in db.communications_pushes(&dsp, line)? {
+                        kept.push((line, each.user, each.address));
+                    }
+                }
+                Ok(kept)
+            });
+            kept.await.unwrap()
+        }
+    };
+    let theirs = |user: &str, line| (line, user.to_owned(), Address::Admin);
+
+    // One member's, told of both lines, and kept again for one: still theirs on both.
+    keep(&state, &dsp, avery, endpoint).await;
+    keep_for(
+        &state,
+        &dsp,
+        DESK.line,
+        browser(avery, endpoint, Address::Admin),
+    )
+    .await;
+    keep(&state, &dsp, avery, endpoint).await;
+    assert_eq!(
+        kept().await,
+        [theirs(avery, None), theirs(avery, DESK.line)]
+    );
+
+    // Kept by another member for Dispatch Phone's own: the first's is let go of on every line.
+    keep(&state, &dsp, blake, endpoint).await;
+    assert_eq!(kept().await, [theirs(blake, None)]);
+
+    // Kept by them at the DSP's own address, for the other line: so is the one at the admin's.
+    keep_for(
+        &state,
+        &dsp,
+        DESK.line,
+        browser(blake, endpoint, Address::Dsp),
+    )
+    .await;
+    assert_eq!(kept().await, [(DESK.line, blake.to_owned(), Address::Dsp)]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn another_lines_push_waiting_its_turn_goes_nowhere_once_dispatch_phone_is_off() {
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let owner = c.actor().to_owned();
+    notifications(&state, &dsp, &owner, true, 0).await;
+    let subscription = browser(
+        &owner,
+        "https://fcm.googleapis.com/fcm/send/managed-desk",
+        Address::Admin,
+    );
+    keep_for(&state, &dsp, MANAGED.line, subscription.clone()).await;
+    let turn = || turn(&state, &dsp, &MANAGED, &subscription);
+    assert!(matches!(turn().await.unwrap(), Turn::Goes));
+
+    // Read again as its turn comes, it no longer goes: its line's page is refused while Dispatch
+    // Phone is off, however its member may still use the line.
+    support::switch(&state, &dsp, crate::FEATURE.switch.id, false).await;
+    assert!(matches!(turn().await.unwrap(), Turn::Untold));
 }
 
 #[tokio::test(start_paused = true)]
@@ -212,8 +417,8 @@ async fn pushes_go_a_few_at_once_however_many_batches_go() {
             .collect()
     };
     let (first, second) = tokio::join!(
-        sending::send(&state, &dsp, batch(0)),
-        sending::send(&state, &dsp, batch(100)),
+        sending::send(&state, &dsp, &OWN, batch(0)),
+        sending::send(&state, &dsp, &OWN, batch(100)),
     );
     first.unwrap();
     second.unwrap();
@@ -235,7 +440,7 @@ async fn a_push_tried_again_goes_only_if_its_member_is_still_told() {
     let pushes = vec![(browser(&owner, busy, Address::Admin), b"{}".to_vec())];
     let sending = {
         let (state, dsp) = (state.clone(), dsp.clone());
-        tokio::spawn(async move { sending::send(&state, &dsp, pushes).await })
+        tokio::spawn(async move { sending::send(&state, &dsp, &OWN, pushes).await })
     };
     // Refused the first time; while it waits to be tried again, they turn Notifications off.
     while !fixture::refused(busy) {

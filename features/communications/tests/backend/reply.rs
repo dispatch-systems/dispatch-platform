@@ -105,7 +105,7 @@ async fn photo(bytes: Vec<u8>) -> Upload {
 async fn listed(state: &Arc<State>, dsp: &str) -> usize {
     let (shared, dsp) = (state.clone(), dsp.to_owned());
     let listed = state
-        .read(move |db| inbox::overview(db, &shared, &dsp, "nobody", None))
+        .read(move |db| inbox::overview(db, &shared, &dsp, None, "nobody", None))
         .await
         .unwrap();
     listed.conversations.len()
@@ -146,7 +146,7 @@ async fn a_gif_goes_as_an_image_from_klipy_kept_with_its_answer() {
     let read = state
         .read({
             let id = id.clone();
-            move |db| dispatcher::opened(db, &shared, &at, &Reference::Slack(id), None)
+            move |db| dispatcher::opened(db, &shared, &at, None, &Reference::Slack(id), None)
         })
         .await
         .unwrap();

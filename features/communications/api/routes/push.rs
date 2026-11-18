@@ -1,10 +1,14 @@
 //! Telling the member of new messages in a browser with Dispatch closed (`backend::push`): the key
-//! its subscription is made with, and keeping or letting go of the subscription, theirs alone.
+//! its subscription is made with, and keeping or letting go of the subscription, theirs alone, for
+//! one line's messages (`*_of`): Dispatch Phone's own here, another feature's from its own routes
+//! (`api::lines`).
+use super::served;
 use crate::{
     api::types::PushKey,
     backend::{
+        access::Access,
         push::{
-            self,
+            self, OWN, Pushed,
             storage::{Address, PushStore, Subscription},
             webpush,
         },
@@ -18,7 +22,7 @@ use dispatch_core::{
     foundation::{config::Site, validate as v},
     server::http::{
         input::{Input, Reply},
-        route::{Dsp, Grant, Member},
+        route::{Dsp, Member},
     },
 };
 use serde_json::Value;
@@ -36,7 +40,7 @@ const SERVICES: &[&str] = &[
 ];
 
 /// The key a browser subscribes with: none while this server pushes nothing.
-pub(super) fn key(db: &Store, _: &Member, input: &Input) -> Result<Reply> {
+pub fn key(db: &Store, _: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
     Reply::of(&PushKey {
         key: webpush::vapid(&db.config).map(|vapid| vapid.public.clone()),
@@ -46,7 +50,23 @@ pub(super) fn key(db: &Store, _: &Member, input: &Input) -> Result<Reply> {
 /// Keeps the browser the subscription names, `endpoint` and `keys` (`p256dh`, `auth`), as the
 /// member's, then watches the DSP for what to push.
 pub(super) async fn subscribe(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
-    let asked = input.clone();
+    subscribe_of(state, input, access, &OWN).await
+}
+/// Keeps the browser the subscription names as the member's for `pushed`'s line, then watches the
+/// DSP for what to push of it.
+pub async fn subscribe_of(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    pushed: &'static Pushed,
+) -> Result<Reply> {
+    let (asked, access) = (
+        input.clone(),
+        Access {
+            grant: access,
+            line: pushed.line,
+        },
+    );
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     ensure(
         webpush::vapid(&state.config).is_some(),
@@ -79,18 +99,23 @@ pub(super) async fn subscribe(state: Arc<State>, input: Input, access: Dsp) -> R
     state
         .run_scoped(&dsp, DOMAIN, move |db| {
             let c = access.revalidate(db, &c)?;
-            db.keep_communications_push(&c.dsp.id, &subscription)
+            db.keep_communications_push(&c.dsp.id, pushed.line, &subscription)
         })
         .await?;
-    push::watch(&state, &dsp);
+    push::watch(&state, &dsp, pushed);
     Ok(Reply::ok())
 }
 
 /// Lets go of the member's browser at `endpoint`.
 pub(super) fn unsubscribe(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    unsubscribe_of(db, c, input, &OWN)
+}
+/// Lets go of the member's browser at `endpoint` for `pushed`'s line.
+pub fn unsubscribe_of(db: &Store, c: &Member, input: &Input, pushed: &Pushed) -> Result<Reply> {
+    served(c, pushed.line)?;
     v::fields(&input.body, &["endpoint"])?;
     let endpoint = v::text(&input.body, "endpoint", 1, ENDPOINT_MOST)?;
-    db.remove_communications_push(c.dsp_id(), c.actor(), endpoint)?;
+    db.remove_communications_push(c.dsp_id(), pushed.line, c.actor(), endpoint)?;
     Ok(Reply::ok())
 }
 

@@ -3,7 +3,8 @@
 //! conversation with its texts, each under whoever wrote it, or for `windows` a bounded window
 //! of them around a place. A work conversation waits only on the live day (`live_day`); a
 //! driver's comes with their route today, each workday's route, and their conversations of
-//! other kinds.
+//! other kinds. Each read is of one line, Dispatch Phone's own (none) or another feature's: a
+//! conversation of another line is never read, as though it weren't there.
 use super::{
     live_day::{self, LiveDay, Stopped},
     model::{Text, TextConversation, TextStatus},
@@ -15,6 +16,7 @@ use crate::api::types::{
     Conversation, ConversationMessages, Conversations, Message, MessageFile, Sender,
 };
 use crate::backend::{
+    access::Access,
     bytes, compose, elsewhere,
     model::{ConversationKind, ConversationState, Direction, FileStatus, PAGE},
     people::People,
@@ -27,7 +29,7 @@ use dispatch_core::{
     Error, Result, State,
     accounts::Context,
     db::{Store, now},
-    server::http::{input::Reply, route::Dsp},
+    server::http::input::Reply,
 };
 use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
@@ -160,11 +162,14 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
         .collect()
 }
 
-/// The conversations by text waiting, the longest waiting first: the numbers', but a blocked
-/// number's, and the work conversations waiting on the live day.
-pub fn waiting(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
-    let mut waiting = db.waiting_communications_texts(dsp)?;
-    waiting.extend(live_day::waiting(db, dsp)?);
+/// The conversations by text of the line `line` waiting, the longest waiting first: the numbers',
+/// but a blocked number's, and on Dispatch Phone's own, the work conversations waiting on the live
+/// day.
+pub fn waiting(db: &Store, dsp: &str, line: Option<&str>) -> Result<Vec<TextConversation>> {
+    let mut waiting = db.waiting_communications_texts(dsp, line)?;
+    if line.is_none() {
+        waiting.extend(live_day::waiting(db, dsp)?);
+    }
     waiting.sort_by(|a, b| {
         a.waiting_since
             .cmp(&b.waiting_since)
@@ -173,16 +178,17 @@ pub fn waiting(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
     Ok(waiting)
 }
 
-/// The numbers' conversations answered before `before`, a page of them, and whether there are
-/// more.
+/// The numbers' conversations of the line `line` answered before `before`, a page of them, and
+/// whether there are more.
 pub fn answered(
     db: &Store,
     people: &People,
     numbers: &Numbers,
     dsp: &str,
+    line: Option<&str>,
     before: Option<(i64, &str)>,
 ) -> Result<(Vec<Conversation>, bool)> {
-    let mut kept = db.answered_communications_texts(dsp, before, PAGE + 1)?;
+    let mut kept = db.answered_communications_texts(dsp, line, before, PAGE + 1)?;
     let more = kept.len() > PAGE;
     kept.truncate(PAGE);
     Ok((conversations(db, people, numbers, dsp, kept)?, more))
@@ -210,22 +216,22 @@ pub fn answered_work(
     Ok((conversations(db, people, numbers, dsp, answered)?, more))
 }
 
-/// The answered conversations of `kind`, numbers' or work, before `before`, the time last
-/// written in and the ID.
+/// The answered conversations of `kind` of the line `line`, numbers' or work, before `before`, the
+/// time last written in and the ID.
 pub fn older(
     db: &Store,
     state: &State,
     dsp: &str,
+    line: Option<&str>,
     kind: ConversationKind,
     before: (i64, &str),
 ) -> Result<Conversations> {
     let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
-    let page = match kind {
-        ConversationKind::Work => answered_work,
-        _ => answered,
+    let numbers = Numbers::read(db, dsp, line)?;
+    let (conversations, more) = match kind {
+        ConversationKind::Work => answered_work(db, &people, &numbers, dsp, Some(before))?,
+        _ => answered(db, &people, &numbers, dsp, line, Some(before))?,
     };
-    let (conversations, more) = page(db, &people, &numbers, dsp, Some(before))?;
     Ok(Conversations {
         conversations,
         groups: Vec::new(),
@@ -235,25 +241,26 @@ pub fn older(
 
 /// A conversation found by what was typed: how like it, and the letters of its name that matched.
 type Found = (f64, Vec<(u32, u32)>, TextConversation);
-/// The conversations of `kind`, numbers' or work, whose name is like `typed`, or whose number
-/// holds the digits typed, a work conversation's by any work phone its texts were with, the
-/// closest first, then the latest, fifty at most; a blocked number's aren't.
+/// The conversations of `kind` of the line `line`, numbers' or work, whose name is like `typed`, or
+/// whose number holds the digits typed, a work conversation's by any work phone its texts were
+/// with, the closest first, then the latest, fifty at most; a blocked number's aren't.
 pub fn search(
     db: &Store,
     state: &State,
     dsp: &str,
+    line: Option<&str>,
     kind: ConversationKind,
     typed: &str,
 ) -> Result<Conversations> {
     let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
+    let numbers = Numbers::read(db, dsp, line)?;
     let mut found: Vec<Found> = Vec::new();
     let (kept, mut texted_with) = match kind {
         ConversationKind::Work => (
             db.communications_work(dsp)?,
             db.communications_work_numbers(dsp)?,
         ),
-        _ => (db.communications_numbers(dsp)?, HashMap::new()),
+        _ => (db.communications_numbers(dsp, line)?, HashMap::new()),
     };
     for conversation in kept {
         let number = conversation.number.clone().unwrap_or_default();
@@ -304,36 +311,41 @@ pub fn like(typed: &str, name: &str, numbers: &[String]) -> Option<(f64, Vec<(u3
     search::matched(typed, name)
 }
 
-/// The conversation `id` and its latest texts, or those before `before`; a driver's with their
-/// route today, or for the two hours after the stop the day's and the work phone they had then,
-/// and each workday's; one with someone's own number with the route they drive today; whether
-/// whom it's with is working; and their conversations of each kind.
+/// The conversation `id` of the line `line` and its latest texts, or those before `before`; a
+/// driver's with their route today, or for the two hours after the stop the day's and the work
+/// phone they had then, and each workday's; one with someone's own number with the route they drive
+/// today; whether whom it's with is working; and their conversations of each kind.
 pub fn opened(
     db: &Store,
     state: &State,
     dsp: &str,
+    line: Option<&str>,
     id: &str,
     before: Option<(i64, &str)>,
 ) -> Result<ConversationMessages> {
+    let kept = found(db, dsp, line, id)?;
     let mut read = db.communications_texts(dsp, id, before, PAGE + 1)?;
     let more = read.len() > PAGE;
     if more {
         read.remove(0);
     }
     let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
-    assembled(db, &people, &numbers, dsp, id, read, more)
+    let numbers = Numbers::read(db, dsp, line)?;
+    assembled(db, &people, &numbers, dsp, kept, read, more)
 }
-/// The window of the conversation `id` around `anchor`, a text's place and how many come before
-/// it, else its latest, with its latest texts apart from it and, a driver's, their workdays.
+/// The window of the conversation `id` of the line `line` around `anchor`, a text's place and how
+/// many come before it, else its latest, with its latest texts apart from it and, a driver's, their
+/// workdays.
 pub(crate) fn window(
     db: &Store,
     people: &People,
     numbers: &Numbers,
     dsp: &str,
+    line: Option<&str>,
     id: &str,
     anchor: Option<(&str, usize)>,
 ) -> Result<Window> {
+    let kept = found(db, dsp, line, id)?;
     let parsed = anchor
         .map(|(place, leading)| before(place).map(|(at, id)| (at, id, leading)))
         .transpose()?;
@@ -341,12 +353,20 @@ pub(crate) fn window(
         .as_ref()
         .map(|(at, id, leading)| (*at, id.as_str(), *leading));
     let rows = db.communications_text_window(dsp, id, anchor)?;
-    let page = assembled(db, people, numbers, dsp, id, rows.messages, rows.has_before)?;
     let latest = db.communications_texts(dsp, id, None, PAGE)?;
-    let latest_workdays = match found(db, dsp, id)?.driver {
-        Some((source, driver)) => workdays::of(db, dsp, &source, &driver, &latest)?,
+    let latest_workdays = match &kept.driver {
+        Some((source, driver)) => workdays::of(db, dsp, source, driver, &latest)?,
         None => Vec::new(),
     };
+    let page = assembled(
+        db,
+        people,
+        numbers,
+        dsp,
+        kept,
+        rows.messages,
+        rows.has_before,
+    )?;
     Ok(Window {
         page,
         latest: messages(people, numbers, latest),
@@ -356,20 +376,20 @@ pub(crate) fn window(
     })
 }
 
-/// The conversation `id` with `read`, the texts selected of it, a page's or a window's, and what
+/// The conversation `kept` with `read`, the texts selected of it, a page's or a window's, and what
 /// `opened` says of whom it's with: its workdays are those of the texts selected, not of its
-/// latest.
+/// latest. Another line's says nothing of their route or their conversations elsewhere, which are
+/// Dispatch Phone's.
 fn assembled(
     db: &Store,
     people: &People,
     numbers: &Numbers,
     dsp: &str,
-    id: &str,
+    kept: TextConversation,
     read: Vec<Text>,
     more: bool,
 ) -> Result<ConversationMessages> {
-    let kept = found(db, dsp, id)?;
-    let person = whose(people, &kept);
+    let person = whose(people, &kept).filter(|_| kept.line.is_none());
     let (today, working, workdays) = match &kept.driver {
         Some((source, driver)) => {
             let ids = std::slice::from_ref(driver);
@@ -435,20 +455,27 @@ pub(crate) fn whose<'a>(people: &'a People, kept: &TextConversation) -> Option<&
     }
 }
 
-/// The conversation `id` as the page reads it.
-pub fn one(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Conversation> {
-    let kept = found(db, dsp, id)?;
+/// The conversation `id` of the line `line` as the page reads it.
+pub fn one(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    line: Option<&str>,
+    id: &str,
+) -> Result<Conversation> {
+    let kept = found(db, dsp, line, id)?;
     let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
+    let numbers = Numbers::read(db, dsp, line)?;
     Ok(conversations(db, &people, &numbers, dsp, vec![kept])?.remove(0))
 }
 
-/// The conversation the text `id`, written in the conversation `written_in`, is filed in now, as
-/// the page reads it: `written_in` while it waits to be filed.
+/// The conversation the text `id`, written in the conversation `written_in` of the line `line`, is
+/// filed in now, as the page reads it: `written_in` while it waits to be filed.
 pub fn filed(
     db: &Store,
     state: &State,
     dsp: &str,
+    line: Option<&str>,
     id: &str,
     written_in: &str,
 ) -> Result<Conversation> {
@@ -459,38 +486,47 @@ pub fn filed(
         db,
         state,
         dsp,
+        line,
         kept.conversation.as_deref().unwrap_or(written_in),
     )
 }
 
-/// The text `id` as the page reads it.
-pub fn message(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Message> {
+/// The text `id`, sent from a phone of the line `line`, as the page reads it.
+pub fn message(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    line: Option<&str>,
+    id: &str,
+) -> Result<Message> {
     let kept = db
         .communications_text(dsp, id)?
         .ok_or_else(|| Error::new("communications_message_not_found", 404))?;
     let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
+    let numbers = Numbers::read(db, dsp, line)?;
     Ok(messages(&people, &numbers, vec![kept]).remove(0))
 }
 
 /// A text's picture or file, `id`, as the phone side keeps it, or its `preview`: a picture's own,
-/// or the picture of the first frame of a video, for the member `c`, whose access is checked again
-/// once it's read: it may have ended while it was.
+/// or the picture of the first frame of a video, of a text of `access`'s line, for the member `c`,
+/// whose access is checked again once it's read: it may have ended while it was.
 pub async fn file(
     state: &Arc<State>,
     c: &Context,
-    access: Dsp,
+    access: Access,
     id: &str,
     version: Option<&str>,
     preview: bool,
 ) -> Result<Reply> {
+    let line = access.line;
     let poster = match preview {
-        true => files::preview(state, &c.dsp.id, id).await?,
+        true => files::preview(state, &c.dsp.id, line, id).await?,
         false => None,
     };
+    let viewer = &c.auth.user.id;
     let file = match poster {
         Some(poster) => poster,
-        None => files::shown(state, &c.dsp.id, id, &c.auth.user.id, version, preview)
+        None => files::shown(state, &c.dsp.id, line, id, viewer, version, preview)
             .await?
             .ok_or_else(|| Error::new("communications_file_not_found", 404))?,
     };
@@ -499,26 +535,32 @@ pub async fn file(
     Ok(file)
 }
 
-/// Asks the phone of a text's video `id`, which it keeps, for its bytes, for the member `c`, whose
-/// access is checked again in the write that asks, and waits a while for them: whether they're
-/// kept.
-pub async fn fetch(state: &Arc<State>, c: &Context, access: Dsp, id: &str) -> Result<Reply> {
+/// Asks the phone of a text's video `id` of `access`'s line, which it keeps, for its bytes, for the
+/// member `c`, whose access is checked again in the write that asks, and waits a while for them:
+/// whether they're kept.
+pub async fn fetch(state: &Arc<State>, c: &Context, access: Access, id: &str) -> Result<Reply> {
     let asked = c.clone();
-    let kept = files::fetch(state, &c.dsp.id, id, move |db| {
+    let kept = files::fetch(state, &c.dsp.id, access.line, id, move |db| {
         access.revalidate(db, &asked).map(|_| ())
     })
     .await?;
     Reply::of(&json!({ "kept": kept }))
 }
-/// The DSP's conversation by text `id`.
-pub(crate) fn found(db: &Store, dsp: &str, id: &str) -> Result<TextConversation> {
+/// The DSP's conversation by text `id` of the line `line`: another line's isn't found.
+pub(crate) fn found(
+    db: &Store,
+    dsp: &str,
+    line: Option<&str>,
+    id: &str,
+) -> Result<TextConversation> {
     db.communications_text_conversation(dsp, id)?
+        .filter(|conversation| conversation.line.as_deref() == line)
         .ok_or_else(|| Error::new("communications_conversation_not_found", 404))
 }
-/// The number of the DSP's conversation by text `id`, which someone at the DSP texts, names or
-/// blocks: refused for any but a number's.
-pub fn numbered(db: &Store, dsp: &str, id: &str) -> Result<String> {
-    let conversation = found(db, dsp, id)?;
+/// The number of the DSP's conversation by text `id` of the line `line`, which someone at the DSP
+/// texts, names or blocks: refused for any but a number's.
+pub fn numbered(db: &Store, dsp: &str, line: Option<&str>, id: &str) -> Result<String> {
+    let conversation = found(db, dsp, line, id)?;
     match (conversation.kind, conversation.number) {
         (ConversationKind::Number, Some(number)) => Ok(number),
         _ => Err(Error::new("invalid_input", 400)),

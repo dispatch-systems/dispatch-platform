@@ -13,7 +13,7 @@ use std::sync::Arc;
 async fn opened(state: &Arc<State>, dsp: &str, number: &str) -> Conversation {
     let (shared, dsp, number) = (state.clone(), dsp.to_owned(), number.to_owned());
     state
-        .run(move |db| open(db, &shared, &dsp, &number))
+        .run(move |db| open(db, &shared, &dsp, None, &number))
         .await
         .unwrap()
 }
@@ -31,7 +31,7 @@ async fn a_number_opened_to_text_first_is_where_its_texts_go_a_drivers_while_its
         let reference = Reference::Text(conversation.id.clone());
         let (state, c) = (state.clone(), c.clone());
         async move {
-            dispatcher::send(&state, &c, support::USE, &reference, text, (&[], None))
+            dispatcher::send(&state, &c, support::OWN, &reference, text, (&[], None))
                 .await
                 .unwrap()
         }
@@ -71,7 +71,7 @@ async fn every_number_a_driver_has_is_theirs_and_an_added_one_says_so() {
 
     let (shared, d) = (state.clone(), dsp.clone());
     let listed = state
-        .read(move |db| contacts(db, &shared, &d, None))
+        .read(move |db| contacts(db, &shared, &d, None, None))
         .await
         .unwrap();
     let theirs: Vec<(&str, Option<&str>)> = listed

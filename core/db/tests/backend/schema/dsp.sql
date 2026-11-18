@@ -3,7 +3,7 @@ CREATE TABLE authenticator_apps ( user_id TEXT PRIMARY KEY REFERENCES users(id) 
 CREATE TABLE beta_testers ( user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, added_at TEXT NOT NULL );
 CREATE TABLE "collection_schedules" ( id TEXT PRIMARY KEY, name TEXT NOT NULL, collection TEXT NOT NULL, cadence TEXT NOT NULL CHECK(cadence IN ('interval','daily')), interval_minutes INTEGER, local_time TEXT NOT NULL, anchor INTEGER NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), next_run TEXT, revision INTEGER NOT NULL DEFAULT 1, last_error TEXT, created_at TEXT NOT NULL , days INTEGER NOT NULL DEFAULT 127 CHECK (days BETWEEN 1 AND 127), times TEXT CHECK (times IS NULL OR json_valid(times)), until_time TEXT, position INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE communications_blocked ( number TEXT PRIMARY KEY, blocked_by TEXT NOT NULL, blocked_at INTEGER NOT NULL );
-CREATE TABLE communications_changes ( revision INTEGER PRIMARY KEY, conversation_id TEXT NOT NULL );
+CREATE TABLE communications_changes ( revision INTEGER PRIMARY KEY, conversation_id TEXT NOT NULL , line TEXT);
 CREATE TABLE communications_contacts ( number TEXT PRIMARY KEY, name TEXT NOT NULL, saved_by TEXT NOT NULL, saved_at INTEGER NOT NULL );
 CREATE TABLE communications_conversations ( id TEXT PRIMARY KEY, team_id TEXT NOT NULL, user_id TEXT NOT NULL, channel_id TEXT NOT NULL, name TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'responded' CHECK (state IN ('waiting', 'responded', 'done')), waiting_since INTEGER, last_at INTEGER, done_at INTEGER, done_by TEXT, caught_up_at INTEGER, catching_up_to INTEGER, catching_up_before TEXT, group_id TEXT, done_ts TEXT, UNIQUE (team_id, user_id) );
 CREATE TABLE communications_deliveries ( message_id TEXT NOT NULL REFERENCES communications_group_messages (id), team_id TEXT NOT NULL, user_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'sent', 'failed')), delivered_id TEXT REFERENCES communications_messages (id), due_at INTEGER NOT NULL, claimed_until INTEGER, posting_since INTEGER, attempts INTEGER NOT NULL DEFAULT 0, reason TEXT, PRIMARY KEY (message_id, team_id, user_id) );
@@ -12,6 +12,9 @@ CREATE TABLE communications_group_messages ( id TEXT PRIMARY KEY, group_id TEXT 
 CREATE TABLE communications_group_people ( group_id TEXT NOT NULL REFERENCES communications_groups (id), team_id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, place INTEGER NOT NULL, PRIMARY KEY (group_id, team_id, user_id) );
 CREATE TABLE communications_group_uploads ( message_id TEXT NOT NULL REFERENCES communications_group_messages (id), team_id TEXT NOT NULL, file_id TEXT NOT NULL REFERENCES communications_files (id), slack_file_id TEXT NOT NULL, PRIMARY KEY (message_id, team_id, file_id) );
 CREATE TABLE communications_groups ( id TEXT PRIMARY KEY, name TEXT NOT NULL, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'responded' CHECK (state IN ('waiting', 'responded')), waiting_since INTEGER, last_at INTEGER NOT NULL );
+CREATE TABLE communications_line_blocked ( line TEXT NOT NULL, number TEXT NOT NULL, blocked_by TEXT NOT NULL, blocked_at INTEGER NOT NULL, PRIMARY KEY (line, number) );
+CREATE TABLE communications_line_contacts ( line TEXT NOT NULL, number TEXT NOT NULL, name TEXT NOT NULL, saved_by TEXT NOT NULL, saved_at INTEGER NOT NULL, PRIMARY KEY (line, number) );
+CREATE TABLE communications_line_push ( endpoint TEXT NOT NULL, line TEXT NOT NULL, user_id TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, site TEXT NOT NULL CHECK (site IN ('admin', 'dsp')), created_at INTEGER NOT NULL, PRIMARY KEY (endpoint, line) );
 CREATE TABLE communications_live_days (day TEXT PRIMARY KEY, ended_at INTEGER, over INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE communications_messages ( id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES communications_conversations (id), ts TEXT NOT NULL, thread_ts TEXT, direction TEXT NOT NULL CHECK (direction IN ('in', 'out')), sent_by TEXT, sender_name TEXT, text TEXT NOT NULL, at INTEGER NOT NULL, edited_at INTEGER, group_id TEXT, gif TEXT, UNIQUE (conversation_id, ts) );
 CREATE TABLE communications_origin_builds ( transport TEXT NOT NULL, conversation_id TEXT NOT NULL, generation TEXT NOT NULL, source_epoch INTEGER NOT NULL, zone TEXT NOT NULL, algorithm TEXT NOT NULL, previous TEXT, PRIMARY KEY (transport,conversation_id) ) WITHOUT ROWID;
@@ -22,7 +25,7 @@ CREATE TABLE communications_push ( endpoint TEXT PRIMARY KEY, user_id TEXT NOT N
 CREATE TABLE communications_refiling (day TEXT PRIMARY KEY, noted_at INTEGER NOT NULL);
 CREATE TABLE communications_replies ( id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, text TEXT NOT NULL, sent_by TEXT NOT NULL, sender_name TEXT NOT NULL, photos TEXT NOT NULL, posting_since INTEGER NOT NULL, claimed_until INTEGER NOT NULL , gif TEXT);
 CREATE TABLE communications_slack_origins ( conversation_id TEXT NOT NULL,generation TEXT NOT NULL,ts TEXT NOT NULL,message_id TEXT NOT NULL, day_start INTEGER NOT NULL CHECK (day_start IN (0,1)), sender_present INTEGER NOT NULL CHECK (sender_present IN (0,1)), PRIMARY KEY (conversation_id,generation,ts) ) WITHOUT ROWID;
-CREATE TABLE communications_text_conversations ( id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('work', 'number')), source TEXT, driver_id TEXT, number TEXT, state TEXT NOT NULL DEFAULT 'responded' CHECK (state IN ('waiting', 'responded', 'done')), waiting_since INTEGER, last_at INTEGER, done_at INTEGER, done_by TEXT );
+CREATE TABLE communications_text_conversations ( id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('work', 'number')), source TEXT, driver_id TEXT, number TEXT, state TEXT NOT NULL DEFAULT 'responded' CHECK (state IN ('waiting', 'responded', 'done')), waiting_since INTEGER, last_at INTEGER, done_at INTEGER, done_by TEXT , line TEXT);
 CREATE TABLE communications_text_origins ( conversation_id TEXT NOT NULL,generation TEXT NOT NULL,at INTEGER NOT NULL,id TEXT NOT NULL, day_start INTEGER NOT NULL CHECK (day_start IN (0,1)), sender_present INTEGER NOT NULL CHECK (sender_present IN (0,1)), PRIMARY KEY (conversation_id,generation,at,id) ) WITHOUT ROWID;
 CREATE TABLE conduct_backup_folders ( person TEXT NOT NULL, category_id TEXT NOT NULL, folder_id TEXT NOT NULL, PRIMARY KEY (person, category_id) );
 CREATE TABLE conduct_backups ( writeup_id TEXT PRIMARY KEY REFERENCES conduct_writeups(id), saved_id TEXT, saved_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0, tried_at INTEGER, due_at INTEGER NOT NULL DEFAULT 0, reason TEXT );
@@ -47,9 +50,9 @@ CREATE TABLE person_roles ( code TEXT PRIMARY KEY REFERENCES people(code), role 
 CREATE TABLE person_titles ( code TEXT PRIMARY KEY REFERENCES people(code), title TEXT NOT NULL, decided_at TEXT NOT NULL, actor_id TEXT );
 CREATE TABLE phones_attempts ( text_id TEXT NOT NULL REFERENCES phones_texts (id), attempt INTEGER NOT NULL, device_id TEXT NOT NULL REFERENCES phones_devices (id), PRIMARY KEY (text_id, attempt) );
 CREATE TABLE phones_change ( id INTEGER PRIMARY KEY CHECK (id = 1), last INTEGER NOT NULL );
-CREATE TABLE phones_devices ( id TEXT PRIMARY KEY, name TEXT NOT NULL, number TEXT NOT NULL, model TEXT NOT NULL, app_version TEXT NOT NULL, key_sha256 TEXT NOT NULL UNIQUE, paired_at INTEGER NOT NULL, paired_by TEXT NOT NULL, last_seen_at INTEGER, removed_at INTEGER, stand_in INTEGER NOT NULL DEFAULT 0 CHECK (stand_in IN (0, 1)) , app_version_code INTEGER, health TEXT, line TEXT);
+CREATE TABLE phones_devices ( id TEXT PRIMARY KEY, name TEXT NOT NULL, number TEXT NOT NULL, model TEXT NOT NULL, app_version TEXT NOT NULL, key_sha256 TEXT NOT NULL UNIQUE, paired_at INTEGER NOT NULL, paired_by TEXT NOT NULL, last_seen_at INTEGER, removed_at INTEGER, stand_in INTEGER NOT NULL DEFAULT 0 CHECK (stand_in IN (0, 1)) , app_version_code INTEGER, health TEXT, line TEXT, texting INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE phones_files ( id TEXT PRIMARY KEY, text_id TEXT REFERENCES phones_texts (id), added_by TEXT, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT, added_at INTEGER NOT NULL , on_phone INTEGER NOT NULL DEFAULT 0, preview_sha256 TEXT, wanted_at INTEGER, handed_at INTEGER, fetched_at INTEGER, gone_at INTEGER);
-CREATE TABLE phones_pairings ( code_sha256 TEXT PRIMARY KEY, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, device_id TEXT REFERENCES phones_devices (id) , id TEXT, replaced_at INTEGER, line TEXT, line_name TEXT);
+CREATE TABLE phones_pairings ( code_sha256 TEXT PRIMARY KEY, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, device_id TEXT REFERENCES phones_devices (id) , id TEXT, replaced_at INTEGER, line TEXT, line_name TEXT, line_texting INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE phones_texts ( id TEXT PRIMARY KEY, device_id TEXT NOT NULL REFERENCES phones_devices (id), client_id TEXT, direction TEXT NOT NULL CHECK (direction IN ('in', 'out')), origin TEXT NOT NULL CHECK (origin IN ('phone', 'dispatch')), number TEXT NOT NULL, body TEXT NOT NULL, at INTEGER NOT NULL, sent_by TEXT, status TEXT CHECK (status IN ('waiting', 'sent', 'delivered', 'failed')), status_at INTEGER, error TEXT, attempt INTEGER, change INTEGER NOT NULL, conversation_id TEXT REFERENCES communications_text_conversations (id), sender_name TEXT, blocked INTEGER NOT NULL DEFAULT 0, done_at INTEGER, done_by TEXT, unfiled_since INTEGER, queued_in TEXT, gif TEXT, UNIQUE (device_id, client_id) );
 CREATE TABLE recovery_codes ( hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE );
 CREATE TABLE resets ( hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), user_version INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER );
@@ -79,6 +82,7 @@ CREATE TABLE uniform_variants ( id TEXT PRIMARY KEY, uniform_id TEXT NOT NULL RE
 CREATE TABLE uniforms ( id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, revision INTEGER NOT NULL, position INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)) );
 CREATE TABLE users ( id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE, first_name TEXT NOT NULL, last_name TEXT NOT NULL, password TEXT NOT NULL, platform_owner INTEGER NOT NULL DEFAULT 0 CHECK(platform_owner=0), status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')), version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL );
 CREATE INDEX account_passkeys_user ON account_passkeys(user_id);
+CREATE INDEX communications_changes_lines ON communications_changes (line, revision);
 CREATE INDEX communications_conversations_channels ON communications_conversations (team_id, channel_id);
 CREATE INDEX communications_conversations_groups ON communications_conversations (group_id, state);
 CREATE INDEX communications_conversations_latest ON communications_conversations (last_at, id);
@@ -89,6 +93,7 @@ CREATE INDEX communications_files_message ON communications_files (message_id);
 CREATE INDEX communications_group_messages_latest ON communications_group_messages (group_id, at);
 CREATE INDEX communications_group_people_members ON communications_group_people (team_id, user_id);
 CREATE INDEX communications_groups_latest ON communications_groups (last_at, id);
+CREATE INDEX communications_line_push_users ON communications_line_push (user_id);
 CREATE INDEX communications_messages_groups ON communications_messages (group_id, at);
 CREATE INDEX communications_messages_incoming ON communications_messages(conversation_id,ts) WHERE direction='in';
 CREATE INDEX communications_messages_latest ON communications_messages (conversation_id, at);
@@ -100,7 +105,7 @@ CREATE INDEX communications_slack_origins_days ON communications_slack_origins(c
 CREATE INDEX communications_slack_origins_senders ON communications_slack_origins(conversation_id,generation,ts) WHERE sender_present=1;
 CREATE UNIQUE INDEX communications_text_conversations_drivers ON communications_text_conversations (source, driver_id) WHERE driver_id IS NOT NULL;
 CREATE INDEX communications_text_conversations_latest ON communications_text_conversations (kind, last_at, id);
-CREATE UNIQUE INDEX communications_text_conversations_numbers ON communications_text_conversations (kind, number) WHERE driver_id IS NULL;
+CREATE UNIQUE INDEX communications_text_conversations_lines ON communications_text_conversations (kind, number, ifnull(line, '')) WHERE driver_id IS NULL;
 CREATE INDEX communications_text_origins_days ON communications_text_origins(conversation_id,generation,at,id) WHERE day_start=1;
 CREATE INDEX communications_text_origins_senders ON communications_text_origins(conversation_id,generation,at,id) WHERE sender_present=1;
 CREATE UNIQUE INDEX conduct_categories_name ON conduct_categories (name COLLATE NOCASE) WHERE retired = 0;

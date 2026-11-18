@@ -245,7 +245,7 @@ async fn deliver(
         && let Some(ts) = posted(&bot, channel, EVENT, &noted.id, noted.posting_since).await?
     {
         let message = keep(state, dsp, &noted, &ts).await?;
-        live::stopped(state, dsp, &conversation.id, &c.auth.user.id);
+        live::stopped(state, dsp, None, &conversation.id, &c.auth.user.id);
         return Ok(message);
     }
     let mut shown = Vec::new();
@@ -281,7 +281,7 @@ async fn deliver(
     let posted = post(&bot, &args, !shown.is_empty()).await?;
     let ts = posted["ts"].as_str().unwrap_or_default();
     let message = keep(state, &c.dsp.id, &noted, ts).await?;
-    live::stopped(state, &c.dsp.id, &conversation.id, &c.auth.user.id);
+    live::stopped(state, &c.dsp.id, None, &conversation.id, &c.auth.user.id);
     Ok(message)
 }
 /// Keeps the message `noted` as Slack took it, `ts`, waiting its turn at the database rather

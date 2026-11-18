@@ -270,7 +270,7 @@ pub async fn read(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<Bytestr
 pub async fn download_due(state: &Arc<State>, dsp: &str) {
     let revision = || {
         let at = dsp.to_owned();
-        state.read(move |db| db.communications_revision(&at))
+        state.read(move |db| db.communications_revision(&at, None))
     };
     let before = revision().await;
     kit::due::<Downloads>(state, dsp).await;

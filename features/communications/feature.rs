@@ -76,6 +76,8 @@ pub const FEATURE: Feature = Feature {
             "communications_text_conversations",
             "communications_contacts",
             "communications_blocked",
+            "communications_line_contacts",
+            "communications_line_blocked",
             "communications_picked",
             "communications_refiling",
             "communications_live_days",
@@ -86,6 +88,7 @@ pub const FEATURE: Feature = Feature {
             "phones_files",
             "phones_change",
             "communications_push",
+            "communications_line_push",
             "communications_origin_state",
             "communications_origin_control",
             "communications_origin_builds",
@@ -244,6 +247,13 @@ pub const FEATURE: Feature = Feature {
                 id: 23,
                 name: "phones_lines",
                 apply: Code(backend::phone::storage::add_lines),
+            },
+            // Each line's texting its own: its conversations, the names it saved and the numbers
+            // it blocked, the changes its pages wait on, and the browsers told of its messages.
+            Migration {
+                id: 24,
+                name: "communications_lines",
+                apply: Code(backend::texts::storage::add_lines),
             },
         ],
     }],

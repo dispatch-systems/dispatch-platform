@@ -8,7 +8,7 @@
 use super::{
     LIMITS, live,
     model::{Added, FETCH_WAIT_MS, File},
-    storage::{FileStore, ReportedFile, TextStore, Wanting},
+    storage::{FileStore, ReportedFile, StoredFile, TextStore, Wanting},
 };
 use crate::backend::{
     attachments,
@@ -83,13 +83,15 @@ pub fn keep_added(db: &Store, dsp: &str, added: Added, arrived: &Arrived) -> Res
         db.phones_add_file(dsp, &added.by, &file, &arrived.sha256, db::now())
     })
 }
-/// The DSP's picture or file `id` as kept, or the picture's `preview` when it has one, to answer
-/// a page with, kept by the browser when the address asked for its `version`: none for one not
-/// the DSP's, one whose bytes haven't come yet, and one added for a text not sent yet but by
-/// `viewer`, whose alone it is until it's sent.
+/// The DSP's picture or file `id` as kept, of a text of the line `line`, or the picture's `preview`
+/// when it has one, to answer a page with, kept by the browser when the address asked for its
+/// `version`: none for one not the DSP's, one of another line's text, one whose bytes haven't come
+/// yet, and one added for a text not sent yet but by `viewer`, whose alone it is until it's sent.
+/// Once sent, its text's line decides for everyone, its adder too.
 pub async fn shown(
     state: &Arc<State>,
     dsp: &str,
+    line: Option<&str>,
     id: &str,
     viewer: &str,
     version: Option<&str>,
@@ -103,7 +105,8 @@ pub async fn shown(
     if preview && !stored.file.mime.starts_with("image/") {
         return Ok(None);
     }
-    let theirs = stored.text_id.is_some() || stored.added_by.as_deref() == Some(viewer);
+    let draft = stored.text_id.is_none() && stored.added_by.as_deref() == Some(viewer);
+    let theirs = of_line(&stored, line) || draft;
     match &stored.file.sha256 {
         Some(sha256) if theirs => {
             let (name, mime) = (&stored.file.name, &stored.file.mime);
@@ -120,15 +123,20 @@ pub async fn shown(
         _ => Ok(None),
     }
 }
-/// The picture of the first frame of the DSP's video `id`, of a text, to answer a page with: none
-/// for one not the DSP's, or with none kept.
-pub async fn preview(state: &Arc<State>, dsp: &str, id: &str) -> Result<Option<Reply>> {
+/// The picture of the first frame of the DSP's video `id`, of a text of the line `line`, to answer
+/// a page with: none for one not the DSP's, another line's, or with none kept.
+pub async fn preview(
+    state: &Arc<State>,
+    dsp: &str,
+    line: Option<&str>,
+    id: &str,
+) -> Result<Option<Reply>> {
     let (at, wanted) = (dsp.to_owned(), id.to_owned());
     let Some(stored) = state.read(move |db| db.phones_file(&at, &wanted)).await? else {
         return Ok(None);
     };
     match stored.preview_sha256 {
-        Some(sha256) if stored.text_id.is_some() => Ok(Some(
+        Some(sha256) if of_line(&stored, line) => Ok(Some(
             answer(
                 state,
                 dsp,
@@ -141,33 +149,37 @@ pub async fn preview(state: &Arc<State>, dsp: &str, id: &str) -> Result<Option<R
         _ => Ok(None),
     }
 }
-/// Asks for the bytes of the DSP's video `id`, of a text, that its phone keeps, as `authorize`
-/// allows in the write that asks, waking its phone; then waits, up to `FETCH_WAIT_MS`, for them to
-/// come, as the pages hear its text change, `authorize` asked again with each read after a wait:
-/// whether they're kept. Refused
-/// `communications_file_not_found` for no such video, `phones_offline` (503) while its phone is,
-/// `phones_file_gone` (410) once it has it no more, and `platform_busy` (503) while the server
-/// holds too many waits.
+/// Asks for the bytes of the DSP's video `id`, of a text of the line `line`, that its phone keeps,
+/// as `authorize` allows in the write that asks, waking its phone; then waits, up to
+/// `FETCH_WAIT_MS`, for them to come, as the line's pages hear its text change, `authorize` asked
+/// again with each read after a wait: whether they're kept. Refused
+/// `communications_file_not_found` for no such video, or another line's, `phones_offline` (503)
+/// while its phone is, `phones_file_gone` (410) once it has it no more, and `platform_busy` (503)
+/// while the server holds too many waits.
 pub async fn fetch(
     state: &Arc<State>,
     dsp: &str,
+    line: Option<&str>,
     id: &str,
     authorize: impl Fn(&Store) -> Result<()> + Clone + Send + 'static,
 ) -> Result<bool> {
     let _slot = state.topics.wait_slot()?;
     // Subscribed before asking, so bytes that come between the ask and the wait still wake it.
-    let mut listener = state.topics.subscribe(crate::backend::live::TOPIC, dsp);
+    let mut listener = crate::backend::live::listen(state, dsp, line);
     let (at, wanted, allowed) = (dsp.to_owned(), id.to_owned(), authorize.clone());
+    let of = line.map(str::to_owned);
     // Bookkeeping: no cached read depends on when a video was asked for.
     let (wanting, device) = state
         .run_bookkeeping(move |db| {
             allowed(db)?;
             // Resolve the owning device in the same serialized write that records demand.
             // Read before mutating so an error cannot leave demand recorded without its wake.
-            let device = match db.phones_file(&at, &wanted)?.and_then(|file| file.text_id) {
-                Some(text) => db.phones_text(&at, &text)?.map(|text| text.phone),
-                None => None,
-            };
+            let text = db
+                .phones_file(&at, &wanted)?
+                .filter(|stored| of_line(stored, of.as_deref()))
+                .and_then(|stored| stored.text_id)
+                .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
+            let device = db.phones_text(&at, &text)?.map(|text| text.phone);
             Ok((db.phones_want_file(&at, &wanted, db::now())?, device))
         })
         .await?;
@@ -213,6 +225,11 @@ pub async fn answer(
         .ok_or_else(|| Error::new("phones_file_not_found", 404))?;
     let body = axum::body::Body::from_stream(kept.chunks);
     Ok(Reply::download(mime, name, kept.length, body))
+}
+
+/// Whether `stored` is a file of a text of the line `line`, Dispatch Phone's own for none.
+fn of_line(stored: &StoredFile, line: Option<&str>) -> bool {
+    stored.text_id.is_some() && stored.line.as_deref() == line
 }
 
 #[cfg(test)]

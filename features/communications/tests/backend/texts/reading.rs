@@ -39,7 +39,7 @@ async fn a_texts_picture_is_refused_once_the_members_access_ended_while_the_phon
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(b"png"))]);
     let photo = Upload::streamed(3, u64::MAX, chunks).await.unwrap();
-    let added = reply::upload(&state, &c, support::USE, "door.png", "image/png", photo)
+    let added = reply::upload(&state, &c, support::OWN, "door.png", "image/png", photo)
         .await
         .unwrap();
     // Its bytes, where the phone side keeps them, become a pipe with no writer: the phone side's
@@ -59,7 +59,7 @@ async fn a_texts_picture_is_refused_once_the_members_access_ended_while_the_phon
     // Asked for with their access standing, the picture is got ready until the phone side waits in
     // its open, which no poll gets past; this test polls until then, waking itself, as nothing
     // else would. Let through, it isn't polled again until access has ended.
-    let asked = file(&state, &c, support::USE, &added.id, None, false);
+    let asked = file(&state, &c, support::OWN, &added.id, None, false);
     tokio::pin!(asked);
     std::future::poll_fn(|cx| {
         if release(&bytes) {
@@ -100,7 +100,7 @@ async fn a_drivers_work_conversation_is_found_by_the_digits_of_each_work_phone_t
     let found = |typed: &'static str| {
         let (shared, dsp) = (state.clone(), dsp.clone());
         state.read(move |db| {
-            let found = search(db, &shared, &dsp, ConversationKind::Work, typed)?;
+            let found = search(db, &shared, &dsp, None, ConversationKind::Work, typed)?;
             Ok(found
                 .conversations
                 .into_iter()
