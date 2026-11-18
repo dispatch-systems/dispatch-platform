@@ -92,6 +92,7 @@ async fn a_bot_with_a_deadline_starts_no_call_past_it() {
     assert_eq!(fixture::posted(TEAM, "D0DEADLINE").len(), 1);
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test(start_paused = true)]
 async fn a_call_slack_slowed_is_tried_again_only_while_the_dsp_is_active() {
     let (_root, state, bot) = bot();

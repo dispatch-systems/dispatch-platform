@@ -75,6 +75,8 @@ A PR's newer push cancels its older run; each commit of `main` keeps its own. A 
 isn't the change's own gets its failed jobs run again: `gh run rerun <id> --failed`.
 `caches.yml` refills `main`'s caches on every push to it and each Monday, and `security.yml`
 audits the dependencies nightly and runs CodeQL on each push to `main`; neither gates a merge.
+A nightly audit that fails opens one issue labelled `main-advisory`, or comments on the one open,
+and the next nightly that passes closes it (`advisory-issue.py`): look there before fixing one.
 
 `dispatchdev` (`tooling/cli/`) holds what runs on a developer's machine, and `dispatchdev help`
 lists it. `start` makes a change's worktree beside the clone, `pr` checks its PR's title and

@@ -3,8 +3,10 @@
 
 The browser shards split the suite by these times, so each shard takes about as long as the
 others. Each entry is the median over main's newest passing runs, read from the browser
-jobs' logs. A test missing from the file counts as the median of the rest, so the file only
-needs refreshing when the split drifts: `python3 tooling/ci/browser-durations.py [runs]`.
+jobs' logs. A renamed test keeps the time of the one title its file lost, and any other test
+missing from the file counts as the median of the rest, so no change has to edit it. main's
+browser run warns once a tenth of the suite has no time: refresh it then, with
+`python3 tooling/ci/browser-durations.py [runs]`, which also drops the titles gone since.
 """
 import json
 from pathlib import Path

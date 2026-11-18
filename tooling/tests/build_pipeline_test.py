@@ -1,4 +1,5 @@
-"""The dependency audit's allowances and the collector shards."""
+"""The dependency audit's allowances, the issue a failing nightly audit opens, and the collector
+shards."""
 import importlib.util
 from pathlib import Path
 import re
@@ -21,6 +22,7 @@ def module(name, path):
 collectors = module("browseros_check", "tooling/ci/browseros-check.py")
 audit = module("cargo_audit", "tooling/ci/cargo-audit.py")
 npm_audit = module("npm_audit", "tooling/ci/npm-audit.py")
+advisory_issue = module("advisory_issue", "tooling/ci/advisory-issue.py")
 
 
 def audit_report(*warnings, vulnerabilities=()):
@@ -125,6 +127,29 @@ class PipelineTests(unittest.TestCase):
             ["RUSTSEC-2026-0367 on zip 8.6.0 is allowed but no longer found: remove it from "
              "ALLOWED_ADVISORIES"],
         )
+
+    def test_a_failing_nightly_audit_keeps_one_issue_open_until_a_nightly_passes(self):
+        run = "https://github.com/o/r/actions/runs/1"
+        denied = ["cargo audit denies:", "- RUSTSEC-2026-0367: zip 8.6.0"]
+        body = f"{run}\n\ncargo audit denies:\n- RUSTSEC-2026-0367: zip 8.6.0"
+        # The first failure opens the issue, naming the run and what the audit denied.
+        self.assertEqual(advisory_issue.commands("failure", [], denied, run), [
+            ["create", "--title", advisory_issue.TITLE, "--label", "main-advisory", "--body", body],
+        ])
+        # Another while one is open comments on it, the oldest if someone opened a second.
+        self.assertEqual(advisory_issue.commands("failure", [12, 7], denied, run),
+                         [["comment", "7", "--body", body]])
+        # An audit that gave no report still says so.
+        self.assertEqual(advisory_issue.commands("failure", [7], [], run),
+                         [["comment", "7", "--body", f"{run}\n\nThe audit gave no report: see the run."]])
+        # A pass closes every one open, and with none open does nothing.
+        self.assertEqual(advisory_issue.commands("success", [12, 7], [], run), [
+            ["close", "7", "--comment", f"Passes again: {run}"],
+            ["close", "12", "--comment", f"Passes again: {run}"],
+        ])
+        self.assertEqual(advisory_issue.commands("success", [], [], run), [])
+        # A cancelled audit proves nothing either way.
+        self.assertEqual(advisory_issue.commands("cancelled", [7], denied, run), [])
 
     def test_collector_shards_isolate_capacity(self):
         # The app's multi-DSP suites run on the capacity runner, and nothing else does.

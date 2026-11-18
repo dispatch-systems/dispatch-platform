@@ -300,6 +300,7 @@ fn pin(server: &Server) -> Date {
     today
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test(start_paused = true)]
 async fn a_dsps_live_route_data_through_its_days() {
     let mut server = Server::start().await;

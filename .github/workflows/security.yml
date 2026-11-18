@@ -17,6 +17,8 @@ concurrency:
 jobs:
   audit:
     if: github.event_name != 'push'
+    outputs:
+      denied: ${{ steps.denied.outputs.lines }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -26,7 +28,8 @@ jobs:
       - uses: ./.github/actions/setup-packages
         with:
           install: 'false'
-      - run: python3 tooling/ci/npm-audit.py
+      - run: python3 tooling/ci/npm-audit.py 2>&1 | tee -a "$RUNNER_TEMP/audit.log"
+        shell: bash
       - uses: ./.github/actions/setup-rust
       - name: Cache audit tool
         id: audit-cache
@@ -37,7 +40,41 @@ jobs:
       - name: Install audit tool
         if: steps.audit-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --version 0.22.2 --locked
-      - run: python3 tooling/ci/cargo-audit.py
+      - run: python3 tooling/ci/cargo-audit.py 2>&1 | tee -a "$RUNNER_TEMP/audit.log"
+        shell: bash
+      # What the audit denied, for the issue job to name.
+      - id: denied
+        if: failure()
+        run: |
+          {
+            echo 'lines<<DENIED'
+            grep -E '^((npm|cargo) audit (denies:|gave no report)|- )' "$RUNNER_TEMP/audit.log" || true
+            echo DENIED
+          } >> "$GITHUB_OUTPUT"
+  # A nightly audit that fails opens one issue labelled main-advisory, or comments on the one
+  # open, and the next nightly that passes closes it (advisory-issue.py), so the thread that
+  # finds the failure first fixes it and the others find its issue. Only this job writes issues.
+  advisory-issue:
+    needs: audit
+    if: >-
+      ${{ always() && github.event_name == 'schedule' &&
+      contains(fromJSON('["success", "failure"]'), needs.audit.result) }}
+    permissions:
+      contents: read
+      issues: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: python3 tooling/ci/advisory-issue.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          AUDIT: ${{ needs.audit.result }}
+          DENIED: ${{ needs.audit.outputs.denied }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
   codeql:
     permissions:
       contents: read

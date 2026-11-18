@@ -44,6 +44,7 @@ async fn a_deleted_dsps_google_account_is_given_back_only_when_no_other_dsp_conn
     assert_eq!(revoked, [false, false, true]);
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test(start_paused = true)]
 async fn a_sign_in_under_way_keeps_the_google_account_a_deleted_dsp_connected() {
     let (_root, state, signing) = platform();
@@ -120,6 +121,7 @@ async fn a_sign_in_under_way_keeps_the_google_account_a_deleted_dsp_connected() 
     assert_eq!(connected.unwrap().account.email, "documents@example.com");
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test(start_paused = true)]
 async fn a_dsp_isnt_enabled_while_its_delete_waits_to_give_its_google_account_back() {
     let (_root, state, _) = platform();
