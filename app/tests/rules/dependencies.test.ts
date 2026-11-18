@@ -16,7 +16,8 @@ import { lex, rust, useTree } from './support/rust.js';
 
 // Dependencies point one way, app → mcp → features → collectors → core, and are declared: a
 // feature's manifest names the features and collectors it uses, its Cargo.toml lists the
-// same, and its Rust reaches nothing else.
+// same, and its Rust reaches nothing else. Its tests may also list what those use in turn,
+// which they install with them.
 // What a feature's TypeScript may import is encapsulation.test.ts's rule, from the same list.
 
 /**
@@ -42,6 +43,29 @@ const unitOfFile = (file: string) => {
   return contract(file) ?? (owner ? unitOf(owner) : file.split('/').slice(0, 2).join('/'));
 };
 
+/**
+ * What an owner's tests install it with, from what each owner declares: what it declares, and
+ * what each of those declares, all the way down, as the registry wants each dependency
+ * registered.
+ */
+function installedWith(dir: string, declares: (dir: string) => Iterable<string>) {
+  const reached = new Set<string>();
+  const visit = (each: string) => {
+    for (const next of declares(each))
+      if (!reached.has(next)) {
+        reached.add(next);
+        visit(next);
+      }
+  };
+  visit(dir);
+  return reached;
+}
+/** What a feature or collector declares, by its folder. */
+const declaresOf = (dir: string) => {
+  const owner = [...features(), ...collectors()].find((each) => each.dir === dir);
+  return owner ? declared(owner) : [];
+};
+
 /** The owners of the workspace crates a Cargo.toml lists. */
 const workspaceDependencies = (crate: Crate, dev: boolean) =>
   localDependencies(crate, rust().crates, dev).map((dir) => unitOfFile(`${dir}/Cargo.toml`));
@@ -60,11 +84,28 @@ test("each feature's and collector's Cargo.toml lists exactly what its manifest 
         disagree.push(`${manifest} lists ${dir}, which its manifest does not declare`);
     for (const dir of expected)
       if (!listed.has(dir)) disagree.push(`${manifest} lacks ${dir}, which its manifest declares`);
-    // Its tests may use what it may: core's test helpers, its collectors and features.
+    // Its tests may use what it may, core's test helpers, its collectors and features, and what
+    // those use in turn, which its tests install with them.
+    const installed = installedWith(owner.dir, declaresOf);
     for (const dir of workspaceDependencies(crate, true))
-      if (!mayList(dir)) disagree.push(`${manifest}'s dev-dependencies list ${dir}`);
+      if (!mayList(dir) && !installed.has(dir))
+        disagree.push(
+          `${manifest}'s dev-dependencies list ${dir}, which neither its manifest nor what that declares depends on`,
+        );
   }
   holds('dependencies', 'cargo', disagree);
+});
+
+test("a feature's tests install what its features use, all the way down, and nothing else", () => {
+  // A declares B, which declares C and a collector X, and C declares B again; D is no one's.
+  const declares = new Map([
+    ['features/a', ['features/b']],
+    ['features/b', ['features/c', 'collectors/x']],
+    ['features/c', ['features/b']],
+    ['features/d', ['collectors/y']],
+  ]);
+  const installed = installedWith('features/a', (dir) => declares.get(dir) ?? []);
+  assert.deepEqual([...installed].sort(), ['collectors/x', 'features/b', 'features/c']);
 });
 
 test("a contract's Cargo.toml lists core alone, and its feature's lists the contract", () => {
@@ -149,13 +190,14 @@ test("each owner's Rust names only core, itself and what it declares", () => {
     // A contract stays when its feature is left out, so it names core and itself alone.
     const own = contract(file);
     const may = own ? new Set(['core', own]) : allowed(owner);
+    // Its tests may name what they install it with, as its dev-dependencies list it.
+    const mayTest = own ? may : new Set([...may, ...installedWith(owner.dir, declaresOf)]);
     for (const reference of rust().references(file)) {
       const target = unitOfFile(reference.to);
+      const test = inTest(file, reference.offset);
       // Named by the part or owner that does it, its tests apart: different steps end them.
-      const from = inTest(file, reference.offset)
-        ? `${own ?? owner.dir}'s tests name`
-        : `${own ?? owner.dir} names`;
-      if (!may.has(target)) reaches.add(`${from} ${target}`);
+      const from = test ? `${own ?? owner.dir}'s tests name` : `${own ?? owner.dir} names`;
+      if (!(test ? mayTest : may).has(target)) reaches.add(`${from} ${target}`);
     }
   }
   holds('dependencies', 'rust', reaches);

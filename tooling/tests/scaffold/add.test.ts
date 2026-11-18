@@ -220,6 +220,57 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
   await assert.rejects(add('settings', '--to', 'nowhere'), /--to names a feature/);
 });
 
+test("add settings and add contract install what the feature's features use, all the way down", async () => {
+  // Uniforms, in the copy, depends on Communications, which depends on Slack.
+  const dir = path.join(copy, 'features/uniforms');
+  const original = new Map(
+    ['feature.rs', 'Cargo.toml'].map((name) => [
+      name,
+      fs.readFileSync(path.join(dir, name), 'utf8'),
+    ]),
+  );
+  fs.writeFileSync(
+    path.join(dir, 'feature.rs'),
+    original
+      .get('feature.rs')!
+      .replace(
+        '..feature("uniforms")',
+        'depends_on: &["communications"],\n    ..feature("uniforms")',
+      ),
+  );
+  fs.writeFileSync(
+    path.join(dir, 'Cargo.toml'),
+    original
+      .get('Cargo.toml')!
+      .replace(
+        '[dependencies]\n',
+        '[dependencies]\ndispatch-communications = { path = "../communications" }\n',
+      ),
+  );
+  try {
+    for (const [argv, test] of [
+      [['settings'], 'settings'],
+      [['contract', 'sizes'], 'exposed'],
+    ] as const) {
+      const plan = (await planAdd(copy, [...argv, '--to', 'uniforms'])).plan;
+      const installs = /testing::install\(\s*&\[[^\]]*\],\s*&\[([^\]]*)\]/.exec(
+        file(plan, `features/uniforms/tests/backend/${test}.rs`),
+      )?.[1];
+      assert.match(installs ?? '', /&dispatch_communications::FEATURE/);
+      assert.match(installs ?? '', /&dispatch_slack::FEATURE/);
+      // Slack is its tests' alone; Communications its build's already.
+      const cargo = changed(plan, 'features/uniforms/Cargo.toml');
+      assert.match(
+        cargo.slice(cargo.indexOf('[dev-dependencies]')),
+        /^dispatch-slack = \{ path = "\.\.\/slack" \}$/m,
+      );
+      assert.equal(cargo.match(/^dispatch-communications = /gm)?.length, 1);
+    }
+  } finally {
+    for (const [name, text] of original) fs.writeFileSync(path.join(dir, name), text);
+  }
+});
+
 test('--contract writes a contract crate on core alone, what fulfils it, its exposure and their test', async () => {
   const plan = await feature('parking', '--contract', 'parking_spots');
   assert.deepEqual(
