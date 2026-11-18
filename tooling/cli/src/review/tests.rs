@@ -1262,6 +1262,6 @@ fn an_apps_screens_previewed_are_still_the_agents_to_show() {
     commit(root, "the app's home screen");
     // Nothing a browser shows, so `preview` takes no screenshot: the emulator's screen is
     // what the agent shows, which the CLI never sees.
-    preview::run(root, &[], &Native).unwrap();
+    preview::run(root, &[], None, &[], &Native).unwrap();
     assert!(!preview::shown(root, &Native).unwrap());
 }

@@ -180,21 +180,24 @@ const COMMANDS: &[Spec] = &[
     spec(
         "preview",
         &[
-            "preview [--pages <page[/tab],...>]",
+            "preview [--pages <page[/tab][?query],...>]",
+            "        [--dsp <dsp>] [--click <name>...]",
             "preview approve [--unchanged <why>]",
             "preview stop",
         ],
         "Show the change as it is: serve it, restarting the dev server when it serves other \
          code, and save a screenshot of each page it touches, on the tab or Settings section it \
-         touches, or --pages, <page>/<tab> for a tab and platform:<page> for the platform owner's \
-         own, wide and on a phone, each with a link that opens on it. The server runs apart from \
+         touches, or --pages, <page>/<tab> for a tab, <page>?<query> for what its address asks, \
+         such as conduct?driver=<id>, and platform:<page> for the platform owner's own, wide and \
+         on a phone, in the fixture's DSP or the one --dsp names, once each --click is clicked \
+         on it, each with a link that opens on it. The server runs apart from \
          the command, at the same address each time it starts again, until stop or finish stops \
          it. Once the user approved how it looks, approve keeps its UI files: pr opens no PR for \
          a change to what a page shows until those are the files it pushes. --unchanged keeps \
          them unshown, for a change that shows nothing new, such as a refactor, and pr says why \
          in the PR's Verification.",
     )
-    .options(&["--pages", "--unchanged"])
+    .options(&["--pages", "--unchanged", "--dsp", "--click"])
     .arguments(1),
     spec(
         "finish",
@@ -268,8 +271,9 @@ const COMMANDS: &[Spec] = &[
     spec(
         "shot",
         &[
-            "shot [--page <page>]",
+            "shot [--page <page>[?query]]",
             "     [--tab <tab>]",
+            "     [--click <name>...]",
             "     [--dsp <dsp> | --platform]",
             "     [--as <email>]",
             "     [--size <w>x<h>]",
@@ -279,11 +283,13 @@ const COMMANDS: &[Spec] = &[
          checkout's scratch folder, whose path it prints: as the owner, in the fixture's DSP or \
          the one --dsp names, or on the platform owner's own pages with --platform, or --as a \
          demo account at the address of the DSP --dsp names, signed in as api signs in, on its \
-         --tab, a page of Settings or a tab of the page. The window is --size, 1920x1080 unless \
-         told, in --theme, light unless told.",
+         --tab, a page of Settings or a tab of the page, asked for what its address asks after \
+         ?, once each --click, a control by its accessible name, is clicked in turn. The window \
+         is --size, 1920x1080 unless told, a pixel of the PNG to a pixel of it, in --theme, light \
+         unless told.",
     )
     .flags(&["--platform"])
-    .options(&["--page", "--tab", "--dsp", "--as", "--size", "--theme"]),
+    .options(&["--page", "--tab", "--dsp", "--as", "--size", "--theme", "--click"]),
     spec(
         "browser",
         &[
@@ -425,11 +431,12 @@ fn help() -> String {
     lines.join("\n")
 }
 
-/// A command's line: its flags and options, and its other arguments, in order.
+/// A command's line: its flags, each option's values in order, and its other arguments, in
+/// order.
 struct Line {
     spec: &'static Spec,
     flags: Vec<String>,
-    options: BTreeMap<String, String>,
+    options: BTreeMap<String, Vec<String>>,
     arguments: Vec<String>,
 }
 /// Reads `args` as `spec` takes them, refusing what it doesn't take.
@@ -456,7 +463,7 @@ fn parse(spec: &'static Spec, args: Vec<String>) -> Result<Line> {
                 Some(value) => value,
                 None => args.next().ok_or_else(|| format!("{name} needs a value"))?,
             };
-            options.insert(name, value);
+            options.entry(name).or_insert_with(Vec::new).push(value);
         } else if spec.flags.contains(&name.as_str()) && inline.is_none() {
             flags.push(name);
         } else {
@@ -477,8 +484,16 @@ impl Line {
     fn flag(&self, name: &str) -> bool {
         self.flags.iter().any(|flag| flag == name)
     }
+    /// The option's value, the last given.
     fn option(&self, name: &str) -> Option<&str> {
-        self.options.get(name).map(String::as_str)
+        self.values(name).last().copied()
+    }
+    /// Each value the option was given, in order: an option given more than once.
+    fn values(&self, name: &str) -> Vec<&str> {
+        self.options
+            .get(name)
+            .map(|values| values.iter().map(String::as_str).collect())
+            .unwrap_or_default()
     }
     fn usage(&self) -> Box<dyn std::error::Error + Send + Sync> {
         format!("Usage: dispatchdev {}", self.spec.line()).into()
@@ -600,7 +615,14 @@ fn run() -> Result<()> {
                     .option("--pages")
                     .map(|pages| pages.split(',').filter(|page| !page.is_empty()).collect())
                     .unwrap_or_default();
-                preview::run(&line.root()?, &pages, &Native)
+                let clicks = line.values("--click");
+                preview::run(
+                    &line.root()?,
+                    &pages,
+                    line.option("--dsp"),
+                    &clicks,
+                    &Native,
+                )
             }
             Some("approve") if line.option("--pages").is_none() => {
                 preview::approve(&line.root()?, line.option("--unchanged"), &Native)
@@ -805,6 +827,7 @@ fn run() -> Result<()> {
             android::run(&line.root()?, action, &Native)
         }
         "shot" => {
+            let clicks = line.values("--click");
             let shot = shot::Shot {
                 open: shot::Open {
                     page: line.option("--page"),
@@ -815,6 +838,7 @@ fn run() -> Result<()> {
                 who: line.option("--as"),
                 size: line.option("--size").unwrap_or(shot::DESKTOP),
                 theme: line.option("--theme").unwrap_or("light"),
+                clicks: &clicks,
             };
             shot::run(&line.root()?, &shot, &Native).map(drop)
         }

@@ -191,11 +191,12 @@ pub fn approve(root: &Path, unchanged: Option<&str>, runner: &dyn Runner) -> Res
 const STARTING: Duration = Duration::from_secs(600);
 
 /// A page to show: a route's id, `None` for the DSP's landing page, on the platform owner's
-/// own pages or a DSP's, on one of its tabs.
+/// own pages or a DSP's, asked for what follows `?` in its address, on one of its tabs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Page {
     pub id: Option<String>,
     pub platform: bool,
+    pub query: Option<String>,
     pub tab: Option<Tab>,
 }
 /// A tab a page opens on.
@@ -208,11 +209,16 @@ pub enum Tab {
 }
 impl Page {
     /// A page as `--pages` names it: `<id>`, or `platform:<id>` for the platform owner's own,
-    /// each with `/<tab>` for one of its tabs.
+    /// each with `/<tab>` for one of its tabs and `?<query>` for what its address asks:
+    /// `conduct?driver=W5DHNV`.
     pub fn named(name: &str) -> Self {
         let (platform, name) = match name.strip_prefix("platform:") {
             Some(name) => (true, name),
             None => (false, name),
+        };
+        let (name, query) = match name.split_once('?') {
+            Some((name, query)) => (name, Some(query.to_owned())),
+            None => (name, None),
         };
         let (id, tab) = match name.split_once('/') {
             Some((id, tab)) => (id, Some(Tab::Id(tab.to_owned()))),
@@ -221,8 +227,17 @@ impl Page {
         Self {
             id: Some(id.to_owned()),
             platform,
+            query,
             tab,
         }
+    }
+    /// Its address, as `shot` opens it: its id, and what it asks after `?`.
+    fn address(&self, id: Option<&str>) -> Option<String> {
+        let id = id?;
+        Some(match &self.query {
+            Some(query) => format!("{id}?{query}"),
+            None => id.to_owned(),
+        })
     }
 }
 
@@ -507,6 +522,7 @@ fn page(root: &Path, path: &str) -> Page {
     Page {
         id: Some(route.id.clone()),
         platform: route.platform,
+        query: None,
         tab: tab.map(Tab::Id),
     }
 }
@@ -526,13 +542,25 @@ fn settings_route(root: &Path) -> Option<String> {
         .find(|route| route.settings)
         .map(|route| route.id)
 }
-/// The page of Settings the server puts `section` on, as the owner sees the first DSP's.
-fn settings_page(root: &Path, section: &str, runner: &dyn Runner) -> Result<Option<String>> {
+/// The page of Settings the server puts `section` on, as the owner sees the DSP `dsp` names, else
+/// the first.
+fn settings_page(
+    root: &Path,
+    section: &str,
+    dsp: Option<&str>,
+    runner: &dyn Runner,
+) -> Result<Option<String>> {
     let server = api::Server::find(root)?;
     let (_, session) = api::sign_in(&server, api::OWNER, None, runner)?;
-    let dsp = session["dsps"][0]["id"]
-        .as_str()
-        .ok_or("The dev server has no DSP to open.")?;
+    let open = shot::Open {
+        page: None,
+        dsp,
+        platform: false,
+        tab: None,
+    };
+    let dsps = session["dsps"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let dsp = open.dsp_id(dsps)?;
+    let dsp = dsp.as_str();
     let answer = api::request(
         &server,
         api::Call {
@@ -773,8 +801,15 @@ fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
 }
 
 /// `dispatchdev preview`: the checkout's change as it is, served, with a screenshot of each page
-/// it touches, or `pages`, wide and on a phone, each with a link that opens on it.
-pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
+/// it touches, or `pages`, wide and on a phone, in the DSP `dsp` names, else the fixture's own,
+/// once `clicks` are clicked on it, each with a link that opens on it.
+pub fn run(
+    root: &Path,
+    named: &[&str],
+    dsp: Option<&str>,
+    clicks: &[&str],
+    runner: &dyn Runner,
+) -> Result<()> {
     let files = files(root, true, runner)?;
     require(
         !files.is_empty() || !named.is_empty(),
@@ -800,7 +835,7 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
             let (id, tab) = match &page.tab {
                 Some(Tab::Section(section)) => {
                     let id = settings_route(root).ok_or("No route draws a DSP's Settings.")?;
-                    let tab = settings_page(root, section, runner)?;
+                    let tab = settings_page(root, section, dsp, runner)?;
                     if tab.is_none() {
                         println!(
                             "Settings shows the owner no section {section}: shown on Settings' \
@@ -812,19 +847,21 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
                 Some(Tab::Id(tab)) => (page.id.clone(), Some(tab.clone())),
                 None => (page.id.clone(), None),
             };
+            let address = page.address(id.as_deref());
             let shoot = |size| {
                 shot::run(
                     root,
                     &shot::Shot {
                         open: shot::Open {
-                            page: id.as_deref(),
-                            dsp: None,
+                            page: address.as_deref(),
+                            dsp,
                             platform: page.platform,
                             tab: tab.as_deref(),
                         },
                         who: None,
                         size,
                         theme: "light",
+                        clicks,
                     },
                     runner,
                 )
@@ -834,6 +871,12 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
             // The link signs in and the browser keeps its fragment, so it opens on the page.
             if let Some(link) = &status.link {
                 println!("Its link, for the chat alone:\n{link}{opened}");
+                if !clicks.is_empty() {
+                    println!(
+                        "The link opens before the clicks: {}.",
+                        clicks.join(", then ")
+                    );
+                }
             }
         }
     }
@@ -1061,6 +1104,7 @@ mod tests {
         let at = |id: &str, platform, tab: Option<&str>| Page {
             id: Some(id.to_owned()),
             platform,
+            query: None,
             tab: tab.map(|tab| Tab::Id(tab.to_owned())),
         };
         let section = |id: &str| Page {
@@ -1148,6 +1192,19 @@ mod tests {
         assert_eq!(
             Page::named("platform:support/inbox"),
             at("support", true, Some("inbox"))
+        );
+        // A page asked for a record, on a tab of it: what it asks may hold a slash.
+        let asked = Page::named("conduct/notes?writeup=w/1&driver=W5DHNV");
+        assert_eq!(
+            asked,
+            Page {
+                query: Some("writeup=w/1&driver=W5DHNV".to_owned()),
+                ..at("conduct", false, Some("notes"))
+            }
+        );
+        assert_eq!(
+            asked.address(Some("conduct")).as_deref(),
+            Some("conduct?writeup=w/1&driver=W5DHNV")
         );
     }
     #[test]
