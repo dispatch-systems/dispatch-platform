@@ -4,7 +4,12 @@
 //! so. A refusal is never tried again, and a call that changes something once is tried again
 //! only after GitHub says the failed try didn't make the change.
 use crate::{Result, Runner, workspace};
-use std::{fmt, path::Path, time::Duration};
+use std::{
+    cell::Cell,
+    fmt,
+    path::Path,
+    time::{Duration, Instant},
+};
 
 /// How long one try may take before it is taken to have hung, and a slower call's: a job's
 /// whole log, a merge or a new PR, which GitHub does more work for.
@@ -29,6 +34,26 @@ const PASSING: [&str; 13] = [
     "temporary failure in name resolution",
     "something went wrong while executing your query",
 ];
+
+thread_local! {
+    /// When what is calling GitHub must be done by, if it set a time: no try runs past it, and
+    /// no wait for another try does.
+    static DEADLINE: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+/// `work` with every GitHub call it makes held to `deadline`, by the runner's clock: a try's
+/// time is cut to what is left, and once nothing is, a call fails as unreachable.
+pub fn within<T>(deadline: Instant, work: impl FnOnce() -> T) -> T {
+    let before = DEADLINE.replace(Some(deadline));
+    let result = work();
+    DEADLINE.set(before);
+    result
+}
+/// What is left of the deadline `within` set, if one was.
+fn left(runner: &dyn Runner) -> Option<Duration> {
+    DEADLINE
+        .get()
+        .map(|deadline| deadline.saturating_duration_since(runner.now()))
+}
 
 /// GitHub didn't answer on any try, for reasons that pass: what waits on it can go on waiting.
 #[derive(Debug)]
@@ -74,6 +99,13 @@ fn attempt(
     let name = command[..command.len().min(3)].join(" ");
     let mut waits = BACKOFF.iter().enumerate();
     loop {
+        let timeout = match left(runner) {
+            Some(left) if left.is_zero() => {
+                return Err(Unreachable(format!("`{name}` ran out of time")).into());
+            }
+            Some(left) => timeout.min(left.as_secs().max(1)),
+            None => timeout,
+        };
         let error = match runner.command(&command, Some(root), timeout) {
             Ok(output) => return Ok(String::from_utf8(output)?.trim().to_owned()),
             Err(error) => error,
@@ -95,6 +127,12 @@ fn attempt(
             ))
             .into());
         };
+        if left(runner).is_some_and(|left| *wait >= left) {
+            return Err(Unreachable(format!(
+                "`{name}` failed ({reason}), with no time left to try again"
+            ))
+            .into());
+        }
         eprintln!(
             "`{name}` failed ({reason}): trying again in {}, try {} of {}.",
             workspace::duration(*wait),

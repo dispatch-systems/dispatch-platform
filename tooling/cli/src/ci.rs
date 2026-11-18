@@ -420,6 +420,11 @@ pub fn landing(name: &str) -> Result<Option<Landed>> {
 /// is getting on every `PROGRESS` on `out`, waits on through GitHub not answering, and stops
 /// after `LANDS`, saying to run it again.
 pub fn landed(root: &Path, runner: &dyn Runner, out: &mut dyn Write) -> Result<()> {
+    // Every call to GitHub, its tries and what it reports of a failed run included, is held to
+    // the same limit, so a slow GitHub can't keep it past it.
+    github::within(runner.now() + LANDS, || land(root, runner, out))
+}
+fn land(root: &Path, runner: &dyn Runner, out: &mut dyn Write) -> Result<()> {
     let branch = workspace::text(runner, &["git", "branch", "--show-current"], Some(root))?;
     let mut wait = Wait {
         runner,
@@ -666,6 +671,9 @@ mod tests {
         starts: Duration,
         ends: Duration,
         down: std::ops::Range<Duration>,
+        /// Whether a call while GitHub is down takes its whole timeout before failing, as one
+        /// that hangs does, or fails at once.
+        hangs: bool,
         started: Instant,
         clock: Cell<Duration>,
         asked: RefCell<Vec<Vec<String>>>,
@@ -682,6 +690,7 @@ mod tests {
                 starts: Duration::ZERO,
                 ends: Duration::ZERO,
                 down: Duration::ZERO..Duration::ZERO,
+                hangs: false,
                 started: Instant::now(),
                 clock: Cell::new(Duration::ZERO),
                 asked: RefCell::new(vec![]),
@@ -710,12 +719,15 @@ mod tests {
         }
     }
     impl Runner for Github {
-        fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+        fn command(&self, args: &[&str], _: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
             self.asked
                 .borrow_mut()
                 .push(args.iter().map(|arg| (*arg).to_owned()).collect());
             let now = self.clock.get();
             if args[0] == "gh" && self.down.contains(&now) {
+                if self.hangs {
+                    self.clock.set(now + Duration::from_secs(timeout));
+                }
                 let call = args[..3].join(" ");
                 return Err(
                     format!("{call} failed: dial tcp: lookup api.github.com: i/o timeout").into(),
@@ -863,6 +875,21 @@ mod tests {
             (1..=12)
                 .map(|n| format!("{}m 00s", 2 * n))
                 .collect::<Vec<_>>()
+        );
+        // GitHub hanging on every call from the run's start: each try is cut to what is left,
+        // so the wait still ends at its limit, not tries' worth of minutes after it.
+        let github = Github {
+            ends: Duration::MAX,
+            down: 30 * Duration::from_secs(1)..Duration::MAX,
+            hangs: true,
+            ..Github::new(MERGED, jobs("success"))
+        };
+        let (result, _) = github.landed();
+        assert!(result.unwrap_err().contains("hasn't ended after 25m 00s"));
+        assert!(
+            github.clock.get() <= LANDS + Duration::from_secs(1),
+            "{:?}",
+            github.clock.get()
         );
     }
     /// GitHub with one run of the checks on commit `abc`, as `gh run list` and `gh run view`
