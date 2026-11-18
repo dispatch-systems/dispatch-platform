@@ -141,8 +141,7 @@ pub(super) fn text_first(db: &Store, c: &Member, input: &Input) -> Result<Reply>
 /// Opens the conversation of `line` with a `number` to text it first; or on Dispatch Phone's own,
 /// one of today's drivers', `driverId`.
 pub fn text_first_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
-    let line = line.map(|line| line.id);
-    served(c, line)?;
+    served(c, line.map(|line| line.id))?;
     // Today's drivers are Dispatch Phone's own.
     let fields: &[&str] = match line {
         None => &["number", "driverId"],

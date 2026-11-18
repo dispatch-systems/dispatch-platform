@@ -9,8 +9,10 @@ use dispatch_core::{
 /// each line it texts; each change to a conversation is noted with its line, so a page waiting on
 /// one line's hears only its own; and the names saved, the numbers blocked and the browsers told
 /// of new messages of another line are kept apart from Dispatch Phone's, which stay as they were
-/// (`0024_communications_lines.sql`). Everything kept before is Dispatch Phone's. Each step is
-/// taken only if it wasn't.
+/// (`0024_communications_lines.sql`). Everything kept before is Dispatch Phone's. And whether
+/// each phone of another line has its texts filed, as its line said as it paired (`texting`, and
+/// `line_texting` on the code that pairs it): none kept before is. Each step is taken only if it
+/// wasn't.
 ///
 /// The numbers' conversations are told apart by their line too: the index that kept one per kind
 /// and number gives way to one keeping one per kind, number and line. Over the conversations with
@@ -19,6 +21,18 @@ use dispatch_core::{
 pub(crate) fn add_lines(db: &Db) -> Result<()> {
     add_column(db, "communications_text_conversations", "line", "TEXT")?;
     add_column(db, "communications_changes", "line", "TEXT")?;
+    add_column(
+        db,
+        "phones_pairings",
+        "line_texting",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    add_column(
+        db,
+        "phones_devices",
+        "texting",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
     db.0.execute_batch(include_str!(
         "../../../migrations/dsp/0024_communications_lines.sql"
     ))?;

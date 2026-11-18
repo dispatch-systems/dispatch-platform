@@ -1,8 +1,9 @@
 //! Each line's texting its own: a number texting Dispatch Phone's phone and another line's has a
 //! conversation on each, every one of another line's a number's, however Routes files the number;
 //! each line lists, counts, opens and answers only its own, from its own phones, and names and
-//! blocks a number on its own alone, logged as its own; and what was kept before the lines were
-//! is Dispatch Phone's.
+//! blocks a number on its own alone, logged as its own; a line whose texts aren't filed yet keeps
+//! them as its phones' alone; and what was kept before the lines were is Dispatch Phone's, left as
+//! it was.
 use super::{
     contacts, filing,
     model::Filed,
@@ -28,6 +29,13 @@ use std::sync::Arc;
 const DESK: Line = Line {
     id: "front_desk",
     name: "Front Desk",
+    texting: true,
+};
+/// Another feature's line whose texts aren't filed yet.
+const NIGHT: Line = Line {
+    id: "night_desk",
+    name: "Night Desk",
+    texting: false,
 };
 /// The number that texts both lines.
 const JORDAN: &str = "+14255550199";
@@ -307,6 +315,50 @@ async fn names_and_blocks_are_each_lines_own_and_logged_as_its_own() {
 }
 
 #[tokio::test]
+async fn a_line_whose_texts_arent_filed_yet_keeps_them_as_its_phones_and_has_no_conversation() {
+    let (_root, state, dsp) = started();
+    let at = dsp.clone();
+    let phone = state
+        .run(move |db| Ok(support::pair_to(db, &at, NIGHT, "+12065550122")))
+        .await
+        .unwrap();
+    let text = texted_on(&state, &dsp, &phone, JORDAN, "About my paycheck", now()).await;
+
+    // Kept by the phone side, filed neither as it came nor by upkeep, however long it waits.
+    filing::unfiled(&state, &dsp).await.unwrap();
+    filing::overdue(&state, &dsp, now() + 24 * 60 * 60 * 1000)
+        .await
+        .unwrap();
+    let at = dsp.clone();
+    let (kept, conversations) = state
+        .read(move |db| {
+            let kept = db.communications_text(&at, &text)?;
+            let conversations = (db.dsp(&at)?)
+                .count("SELECT count(*) FROM communications_text_conversations", [])?;
+            Ok((kept, conversations))
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        kept.map(|kept| (kept.body, kept.conversation)),
+        Some(("About my paycheck".to_owned(), None))
+    );
+    assert_eq!(conversations, 0);
+
+    // Its page answers as a line with nothing yet, and texts no number first.
+    let night = listed(&state, &dsp, Some(NIGHT.id)).await;
+    assert_eq!((night.waiting, night.conversations.len()), (0, 0));
+    let (shared, at) = (state.clone(), dsp.clone());
+    let opened = state
+        .run(move |db| contacts::open(db, &shared, &at, Some(NIGHT), JORDAN))
+        .await;
+    assert_eq!(
+        opened.map(drop).map_err(|error| error.code),
+        Err("not_found".to_owned())
+    );
+}
+
+#[tokio::test]
 async fn what_was_kept_before_the_lines_is_dispatch_phones_own_and_left_as_it_was() {
     let (_root, state, dsp) = started();
     let at = dsp.clone();
@@ -325,6 +377,8 @@ async fn what_was_kept_before_the_lines_is_dispatch_phones_own_and_left_as_it_wa
                  DROP TABLE communications_line_contacts; \
                  DROP TABLE communications_line_blocked; \
                  DROP TABLE communications_line_push; \
+                 ALTER TABLE phones_devices DROP COLUMN texting; \
+                 ALTER TABLE phones_pairings DROP COLUMN line_texting; \
                  INSERT INTO communications_text_conversations (id,kind,number,state,last_at) \
                  VALUES ('txt_kept','number','+14255550199','responded',1000); \
                  INSERT INTO communications_contacts VALUES ('+14255550199','Jordan','me',1000); \
@@ -337,23 +391,26 @@ async fn what_was_kept_before_the_lines_is_dispatch_phones_own_and_left_as_it_wa
             // Dispatch Phone's names, blocks and browsers, as the release before the lines made
             // them: their tables, their indexes and their rows.
             let kept = |db: &dispatch_core::db::Db| -> dispatch_core::Result<Vec<Vec<String>>> {
-                let mut kept: Vec<Vec<String>> = db.query_as(
-                    "SELECT ifnull(sql,'') FROM sqlite_master WHERE tbl_name IN \
+                let mut kept: Vec<Vec<String>> = db
+                    .query_as(
+                        "SELECT ifnull(sql,'') FROM sqlite_master WHERE tbl_name IN \
                      ('communications_contacts','communications_blocked','communications_push') \
                      ORDER BY name",
-                    [],
-                )?
-                .into_iter()
-                .map(|(sql,): (String,)| vec![sql])
-                .collect();
-                kept.extend(db.query_as::<(String, String)>(
-                    "SELECT number,name FROM communications_contacts UNION ALL \
+                        [],
+                    )?
+                    .into_iter()
+                    .map(|(sql,): (String,)| vec![sql])
+                    .collect();
+                kept.extend(
+                    db.query_as::<(String, String)>(
+                        "SELECT number,name FROM communications_contacts UNION ALL \
                      SELECT number,blocked_by FROM communications_blocked UNION ALL \
                      SELECT endpoint,user_id FROM communications_push",
-                    [],
-                )?
-                .into_iter()
-                .map(|(key, by)| vec![key, by]));
+                        [],
+                    )?
+                    .into_iter()
+                    .map(|(key, by)| vec![key, by]),
+                );
                 Ok(kept)
             };
             let was = kept(&before)?;
@@ -372,7 +429,10 @@ async fn what_was_kept_before_the_lines_is_dispatch_phones_own_and_left_as_it_wa
                  1000) ON CONFLICT (endpoint) DO UPDATE SET user_id=excluded.user_id;",
             )?;
             drop(after);
-            Ok((db.communications_text_conversation(&at, "txt_kept")?, revision))
+            Ok((
+                db.communications_text_conversation(&at, "txt_kept")?,
+                revision,
+            ))
         })
         .await
         .unwrap();

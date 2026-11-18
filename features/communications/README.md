@@ -483,6 +483,15 @@ queues a text for a phone.
   numbers' conversations alone, with no Slack, Today's Routes, profile, conversations elsewhere,
   quick replies, GIFs or groups; its waiting, its phones, its changes and who is writing in it
   are its own ([Live](#live)), as are its pushes ([New messages](#new-messages)).
+- **Filed once a line texts:** another line's texts are filed only once it says it texts
+  (`Line::texting`), as each of its phones keeps it from the code that paired it
+  (`phones_pairings.line_texting`, `phones_devices.texting`). Until then its phones' texts are
+  kept by the phone side alone, as before Dispatch Phone filed another line's, in no
+  conversation, and its page answers as a line with nothing yet: nothing listed, waiting or
+  found, and no number texted first (`not_found`). It stays off for every line in the release
+  that keeps each line's texting apart, as a rollback from it returns to one that reads every
+  conversation as Dispatch Phone's; the next release turns it on, for phones paired from then
+  on, whose texts the minute's upkeep files.
 
 - **Filed:** in the same write and transaction as the phone side keeps a phone's report, a
   status, a picture's bytes, a phone removed or an answer queued (`filing::changing`), each text

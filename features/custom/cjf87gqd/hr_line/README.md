@@ -25,5 +25,7 @@ answer from them; nor does HR Line see or change Dispatch Phone's own.
   Dispatch Phone's.
 - **Log:** `cjf87gqd_hr_line.phones.paired`, `cjf87gqd_hr_line.phones.renamed` and
   `cjf87gqd_hr_line.phones.removed`, under Connections, each by the phone's name and number.
+- **Texting:** off (`LINE.texting`): its phones' texts are kept, not filed, until the next
+  release turns it on ([Filed once a line texts](../../../communications/README.md#texts)).
 - **Stores:** nothing of its own yet: its phones and their texts are kept by Dispatch Phone's
   phone side, by their line.
