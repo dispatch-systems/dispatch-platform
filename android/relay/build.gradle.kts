@@ -80,9 +80,17 @@ android {
 
     lint {
         warningsAsErrors = true
-        // A newer Gradle or Android plugin is Dependabot's weekly PR to make. As an error it
-        // failed whatever change next touched an app, on the day of each release.
-        informational += "AndroidGradlePluginVersion"
+        // A newer Gradle, Android plugin or library is Dependabot's weekly PR to make. As an
+        // error it failed whatever change next touched an app, or a release, on the day the
+        // new version came out: AndroidGradlePluginVersion for Gradle and the plugin,
+        // GradleDependency for Google's libraries, NewerVersionAvailable for Maven Central's
+        // (kotlinx-serialization 1.13.0 failed a release's lintProductionRelease, #1054).
+        // Each is still reported; every other warning still fails the build.
+        informational += listOf(
+            "AndroidGradlePluginVersion",
+            "GradleDependency",
+            "NewerVersionAvailable",
+        )
     }
 
     buildFeatures {

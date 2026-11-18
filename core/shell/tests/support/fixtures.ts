@@ -74,6 +74,33 @@ export async function atPage(page: Page, drawn: string) {
 }
 /** Waits for a DSP's Home page, whatever it shows. */
 export const atHome = (page: Page) => atPage(page, 'dsp:overview');
+
+/**
+ * Places widgets on `client`'s Home page in `dspId`, as arranging it would keep them: each by its
+ * id, at its column and row from the top left (0, 0 unless given), `columns` by `rows`. A page
+ * loaded after shows them, with no trip through the editor.
+ */
+export async function placeWidgets(
+  client: Awaited<ReturnType<Dispatch['client']>>,
+  dspId: string,
+  widgets: readonly { id: string; columns: number; rows: number; x?: number; y?: number }[],
+) {
+  const view = await client.select(dspId);
+  const saved = await client.post('/api/dsp/preferences/home.layout', {
+    revision: view.preferences['home.layout']?.revision ?? 0,
+    value: {
+      widgets: widgets.map(({ id, columns, rows, x = 0, y = 0 }) => ({
+        id,
+        x,
+        y,
+        w: columns,
+        h: rows,
+      })),
+    },
+  });
+  expect(saved.status, saved.body).toBe(200);
+  expect(saved.value.outcome, saved.body).toBe('saved');
+}
 /** From the platform's DSP list, choose a DSP and enter its view from its pane. */
 export async function openDsp(page: Page, name: string) {
   await page

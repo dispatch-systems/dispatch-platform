@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { rustfmt } from './source-editing.js';
 
 // The first step of `npm run contracts:generate`: lists every feature
 // in features/ in the app, as only the app may. Its crate goes in the app's Cargo manifest, as
@@ -149,20 +150,16 @@ function filled(manifest: string, file: string, marker: string, lists: Record<st
   return out.join('\n');
 }
 
-/** The longest line rustfmt leaves whole. */
-const RUSTFMT_WIDTH = 100;
-
-/** The registry's list of features, each while the app's Cargo feature of its name is on. */
+/**
+ * The registry's list of features, each while the app's Cargo feature of its name is on, as
+ * rustfmt writes it: a long feature name breaks its lines where rustfmt breaks them.
+ */
 export function wiredList(features: Crate[]) {
   const ident = (crate: string) => crate.replaceAll('-', '_');
-  const entries = features.map(({ name, crate, owner }) => {
-    const feature = `    &${ident(crate)}::FEATURE`;
-    const registered = `.registered(${owner ? `Some("${owner}")` : 'None'}, "${name}")`;
-    // Broken where rustfmt breaks a line too long for its width.
-    const fits = `${feature}${registered},`.length <= RUSTFMT_WIDTH;
-    const entry = fits ? `${feature}${registered}` : `${feature}\n        ${registered}`;
-    return `    #[cfg(feature = "${name}")]\n${entry},\n`;
-  });
+  const entries = features.map(
+    ({ name, crate, owner }) =>
+      `    #[cfg(feature = "${name}")]\n    &${ident(crate)}::FEATURE.registered(${owner ? `Some("${owner}")` : 'None'}, "${name}"),\n`,
+  );
   // Each feature that writes its API types to TypeScript lists them itself.
   const typescript = features
     .filter(({ ts }) => ts)
@@ -170,22 +167,22 @@ export function wiredList(features: Crate[]) {
       ({ name, crate }) =>
         `    #[cfg(feature = "${name}")]\n    all.extend(${ident(crate)}::typescript(cfg));\n`,
     );
-  return (
+  return rustfmt(
     "//! Every feature in features/, written by `npm run contracts:generate`: the registry's,\n" +
-    "//! each while the app's Cargo feature of its name is on. The registry puts them in their\n" +
-    '//! places.\n' +
-    'use dispatch_core::manifest::Feature;\n\n' +
-    `pub const FEATURES: &[&Feature] = &[\n${entries.join('')}];\n\n` +
-    "/// Every feature's API types in TypeScript, as each lists them, for the app's export test.\n" +
-    '#[cfg(test)]\n' +
-    '// A build with no feature has none to ask, and uses neither.\n' +
-    '#[allow(unused_variables)]\n' +
-    'pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {\n' +
-    '    #[allow(unused_mut)]\n' +
-    '    let mut all = dispatch_core::Typescript::new();\n' +
-    typescript.join('') +
-    '    all\n' +
-    '}\n'
+      "//! each while the app's Cargo feature of its name is on. The registry puts them in their\n" +
+      '//! places.\n' +
+      'use dispatch_core::manifest::Feature;\n\n' +
+      `pub const FEATURES: &[&Feature] = &[\n${entries.join('')}];\n\n` +
+      "/// Every feature's API types in TypeScript, as each lists them, for the app's export test.\n" +
+      '#[cfg(test)]\n' +
+      '// A build with no feature has none to ask, and uses neither.\n' +
+      '#[allow(unused_variables)]\n' +
+      'pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {\n' +
+      '    #[allow(unused_mut)]\n' +
+      '    let mut all = dispatch_core::Typescript::new();\n' +
+      typescript.join('') +
+      '    all\n' +
+      '}\n',
   );
 }
 

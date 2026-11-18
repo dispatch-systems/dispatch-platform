@@ -228,6 +228,7 @@ async fn cancelling_a_first_native_read_retains_its_cooldown_before_the_browser_
     assert!(held.native.is_none());
 }
 
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test]
 async fn changing_connection_or_route_scope_during_a_cooldown_stops_its_retry() {
     use dispatch_core::{State, testing};

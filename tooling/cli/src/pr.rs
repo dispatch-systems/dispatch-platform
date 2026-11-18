@@ -139,6 +139,30 @@ pub fn with_review_line(body: &str, line: &str) -> Result<String> {
         false => format!("{before}\n{line}\n\n{rest}"),
     })
 }
+/// The line `pr` opens the Verification section with for a change approved as showing nothing
+/// new, so the user sees the claim in the PR.
+pub fn unchanged_line(why: &str) -> String {
+    format!("UI unchanged: {why}")
+}
+/// `body` with its section `name` opening with `line`, unless the section holds it already.
+pub fn with_line(body: &str, name: &str, line: &str) -> Result<String> {
+    if section(body, name).is_some_and(|text| text.lines().any(|each| each.trim() == line)) {
+        return Ok(body.to_owned());
+    }
+    let heading = format!("## {name}\n");
+    let at = body
+        .match_indices(&heading)
+        .find(|(at, _)| *at == 0 || body[..*at].ends_with('\n'))
+        .ok_or_else(|| format!("The PR body has no ## {name} section."))?
+        .0
+        + heading.len();
+    let (before, rest) = body.split_at(at);
+    let rest = rest.trim_start_matches('\n');
+    Ok(match rest.is_empty() {
+        true => format!("{before}\n{line}\n"),
+        false => format!("{before}\n{line}\n\n{rest}"),
+    })
+}
 /// What's wrong with a body for a change of `title`, if anything.
 pub fn check_body(title: &str, body: &str) -> Result<()> {
     let wanted = sections(title)?;
@@ -345,10 +369,13 @@ pub fn publish(
         ])
     };
     let open = listed()?;
+    let approval = preview::approval(root, runner)?;
     // A change to what a page shows opens its PR only once the user approved how it looks.
     if open.is_empty() {
-        match preview::approval(root, runner)? {
-            preview::Approval::None | preview::Approval::Approved => {}
+        match &approval {
+            preview::Approval::None
+            | preview::Approval::Approved
+            | preview::Approval::Unchanged(_) => {}
             preview::Approval::Missing => {
                 return Err(
                     "This change alters what a page shows: show the user first with \
@@ -367,6 +394,11 @@ pub fn publish(
             }
         }
     }
+    let text = match &approval {
+        preview::Approval::Unchanged(why) => with_line(text, "Verification", &unchanged_line(why))?,
+        _ => text.to_owned(),
+    };
+    let text = text.as_str();
     if only_check {
         println!(
             "The title{} pass: `dispatchdev pr` pushes it.",
@@ -566,6 +598,22 @@ mod tests {
                 "{to}"
             );
         }
+    }
+    #[test]
+    fn a_line_opens_its_section_once() {
+        let body = "## Verification\n\nRan it.\n\n## Review\n\nUnder review\n";
+        let line = unchanged_line("a refactor");
+        let written = with_line(body, "Verification", &line).unwrap();
+        assert_eq!(
+            section(&written, "Verification"),
+            Some("UI unchanged: a refactor\n\nRan it.")
+        );
+        assert_eq!(with_line(&written, "Verification", &line).unwrap(), written);
+        assert_eq!(
+            with_line("## Risk\n\nx\n\n## Verification\n", "Verification", &line).unwrap(),
+            "## Risk\n\nx\n\n## Verification\n\nUI unchanged: a refactor\n"
+        );
+        assert!(with_line("## Risk\n\nx\n", "Verification", &line).is_err());
     }
     #[test]
     fn the_review_line_replaces_the_one_the_section_opened_with() {

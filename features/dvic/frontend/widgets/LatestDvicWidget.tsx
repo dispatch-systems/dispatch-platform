@@ -1,4 +1,4 @@
-import { CircleCheck, ClipboardCheck } from 'lucide-react';
+import { ClipboardCheck } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import type { DvicCoverage } from '../../api/index.js';
 import type { WidgetProps } from '../../../../core/shell/frontend/runtime/slots.js';
@@ -6,13 +6,25 @@ import { useCollectionUpdates } from '../../../../core/collection/frontend/live-
 import { dspHash } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { localDate, shiftDate } from '../../../../core/shell/frontend/lib/day.js';
 import { performancePolicy } from '../../../../core/shell/frontend/lib/performance-policy.js';
+import {
+  WidgetBar,
+  WidgetCount,
+  WidgetFooter,
+  WidgetLink,
+  WidgetList,
+  WidgetNote,
+  WidgetRow,
+  WidgetValue,
+  WidgetZero,
+  widgetFit,
+  type WidgetTone,
+} from '../../../../core/shell/frontend/ui/Widget.js';
 import { summaryUrl, useDvicStatus, useSummary, useWholeDay } from '../../api/client.js';
 import { usePublished } from '../published.js';
 import {
   fleetLabel,
   inspectionBand,
   inspectionClock,
-  inspectionDate,
   inspectionDuration as duration,
   inspectionInitials,
   inspectionShare,
@@ -20,9 +32,16 @@ import {
   isCollected,
   latestCollected,
   shortDrivers,
+  type Band,
   type ShortDriver,
 } from '../dvic.js';
 import './latest-dvic.css';
+
+const tones: Record<Band, WidgetTone> = {
+  high: 'good',
+  mid: 'warn',
+  low: 'bad',
+};
 
 /**
  * Who was short on the latest collected day, shortest first, at any size from one cell to four by
@@ -39,26 +58,23 @@ export function LatestDvicWidget({ columns, rows, view }: WidgetProps) {
   const { publication } = usePublished(status.data);
   const day = useWholeDay(date ?? '', publication);
   const drivers = day.data ? shortDrivers(day.data.inspections) : undefined;
-  const count = drivers?.length;
   const failed = status.error || day.error;
-  const detail = columns >= 3 && rows >= 2;
+  const { narrow, tall, detail, wide } = widgetFit({ columns, rows });
   return (
-    <a
+    <WidgetLink
       className="dvic-latest"
       href={dspHash(view.dsp.id, 'dvic', date ? { day: date } : undefined)}
-      data-columns={columns}
-      data-rows={rows}
+      columns={columns}
+      rows={rows}
+      icon={ClipboardCheck}
+      label="Latest DVIC"
+      short="DVIC"
+      day={date}
     >
-      <header>
-        <ClipboardCheck aria-hidden="true" />
-        {/* One column has room for its date beside DVIC alone. */}
-        <strong>{columns === 1 ? 'DVIC' : 'Latest DVIC'}</strong>
-        {date && <span>{inspectionDate(date, columns >= 3)}</span>}
-      </header>
       {failed ? (
-        <p className="dvic-latest-note">{failed}</p>
+        <WidgetNote>{failed}</WidgetNote>
       ) : status.data && !date ? (
-        <p className="dvic-latest-note">Not collected yet</p>
+        <WidgetNote>Not collected yet</WidgetNote>
       ) : !drivers ? null : !drivers.length ? (
         <Quiet
           date={date!}
@@ -67,36 +83,33 @@ export function LatestDvicWidget({ columns, rows, view }: WidgetProps) {
           rows={rows}
           publication={publication}
         />
-      ) : columns === 1 ? (
+      ) : narrow ? (
         <>
-          <div className="dvic-latest-count">
-            <strong>{count}</strong>
-            <span>short</span>
-          </div>
-          {rows > 1 && (
-            <ol className="dvic-latest-list">
+          <WidgetCount count={drivers.length} label="short" />
+          {tall && (
+            <WidgetList>
               {drivers.map((driver) => (
                 <Driver key={driver.shortest.driverId} driver={driver} brief />
               ))}
-            </ol>
+            </WidgetList>
           )}
         </>
       ) : (
         <>
-          <ol className="dvic-latest-list">
+          <WidgetList>
             {drivers.map((driver) => (
               <Driver
                 key={driver.shortest.driverId}
                 driver={driver}
                 detail={detail}
-                bar={columns >= 4 && rows >= 3}
+                bar={wide && rows >= 3}
               />
             ))}
-          </ol>
-          {rows > 1 && <footer>{count} short</footer>}
+          </WidgetList>
+          {tall && <WidgetFooter>{drivers.length} short</WidgetFooter>}
         </>
       )}
-    </a>
+    </WidgetLink>
   );
 }
 
@@ -127,12 +140,7 @@ function Quiet({
   const most = Math.max(1, ...counts.values());
   return (
     <div className="dvic-latest-quiet" data-days={shown || undefined}>
-      <div className="dvic-latest-zero">
-        <CircleCheck aria-hidden="true" />
-        <span>
-          <strong>0</strong> short
-        </span>
-      </div>
+      <WidgetZero label="short" />
       {summary && (
         <ol className="dvic-latest-days" data-across={across || undefined}>
           {days.map((day) => {
@@ -171,33 +179,21 @@ function Driver({
   brief?: boolean;
 }) {
   return (
-    <li data-band={inspectionBand(shortest)}>
-      {detail && (
-        <span className="dvic-latest-initials" aria-hidden="true">
-          {inspectionInitials(shortest)}
-        </span>
-      )}
-      <span className="dvic-latest-driver">
-        <strong>
-          {shortest.driverName || shortest.driverId}
-          {count > 1 && <span className="dvic-latest-times">×{count}</span>}
-        </strong>
-        {detail && (
-          <small>
-            {inspectionClock(shortest.startTime)} · {fleetLabel(shortest.fleetType)}
-          </small>
-        )}
-      </span>
-      {bar && (
-        <span className="dvic-latest-bar" aria-hidden="true">
-          <span style={{ width: `${inspectionShare(shortest) * 100}%` }} />
-        </span>
-      )}
+    <WidgetRow
+      title={shortest.driverName || shortest.driverId}
+      badge={count > 1 && `×${count}`}
+      detail={
+        detail && `${inspectionClock(shortest.startTime)} · ${fleetLabel(shortest.fleetType)}`
+      }
+      initials={detail ? inspectionInitials(shortest) : undefined}
+      tone={tones[inspectionBand(shortest)]}
+    >
+      {bar && <WidgetBar share={inspectionShare(shortest)} />}
       {!brief && (
-        <span className="dvic-latest-took">
-          {duration(shortest.durationSeconds)} <small>of {duration(shortest.minimumSeconds)}</small>
-        </span>
+        <WidgetValue of={`of ${duration(shortest.minimumSeconds)}`}>
+          {duration(shortest.durationSeconds)}
+        </WidgetValue>
       )}
-    </li>
+    </WidgetRow>
   );
 }

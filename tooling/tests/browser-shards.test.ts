@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { browserTests, shards } from '../ci/browser-shards.js';
+import { browserTests, shards, untimed } from '../ci/browser-shards.js';
 import { workflowField, workflowNumbers } from '../testing/workflow.js';
 
 test('the browser shards split every test into exactly one shard by recorded time', () => {
@@ -28,17 +28,34 @@ test('the browser shards split every test into exactly one shard by recorded tim
   }
 });
 
-test('the recorded times name the suite, and the workflow runs as many shards as it splits', () => {
+test('a renamed test keeps the time recorded under its old title', () => {
+  const times = {
+    'a.spec.ts › old title': 30,
+    'a.spec.ts › kept': 1,
+    'b.spec.ts › gone': 30,
+    'c.spec.ts › one': 1,
+    'c.spec.ts › two': 1,
+    'c.spec.ts › three': 1,
+  };
+  const tests = [
+    'a.spec.ts › new title',
+    'a.spec.ts › kept',
+    // Two new titles where one went: which took its time can't be told.
+    'b.spec.ts › first',
+    'b.spec.ts › second',
+    'c.spec.ts › one',
+    'c.spec.ts › two',
+    'c.spec.ts › three',
+  ];
+  assert.deepEqual(untimed(tests, times), ['b.spec.ts › first', 'b.spec.ts › second']);
+  // The renamed test is still the longest, with a shard to itself; the others count as the
+  // median.
+  assert.deepEqual(shards(tests, 2, times)[0], ['a.spec.ts › new title']);
+});
+
+test('the workflow runs as many shards as the suite splits into', () => {
   const tests = browserTests();
   assert(tests.length > 50);
-  const times = JSON.parse(fs.readFileSync('tooling/ci/browser-durations.json', 'utf8'));
-  assert.deepEqual(
-    Object.keys(times).filter((name) => !tests.includes(name)),
-    [],
-    'remove stale recorded titles',
-  );
-  const timed = tests.filter((name) => name in times);
-  assert(timed.length >= tests.length * 0.9, 'refresh with tooling/ci/browser-durations.py');
   const workflow = fs.readFileSync('.github/workflows/checks.yml', 'utf8');
   const browser = workflowField(workflow, 'jobs', 'browser').body;
   const matrix = workflowNumbers(workflowField(browser, 'strategy', 'matrix', 'shard'));

@@ -302,9 +302,13 @@ export function mergeImports(text: string, piece: string) {
         .filter((name) => !have.includes(bare(name)))
         .map((name) => (wanted.type && !named.type ? `type ${name}` : name));
       if (!missing.length) continue;
+      // Values joining a type-only import make it one of values, its types each marked so.
+      const values =
+        named.type && !wanted.type && missing.some((name) => !name.startsWith('type '));
+      const kept = values ? named.names.map((name) => `type ${bare(name)}`) : named.names;
       text = text.replace(
         named.whole,
-        `import ${named.type ? 'type ' : ''}{ ${[...named.names, ...missing].join(', ')} } from '${wanted.from}';`,
+        `import ${named.type && !values ? 'type ' : ''}{ ${[...kept, ...missing].join(', ')} } from '${wanted.from}';`,
       );
     } else if (!from.length || !wanted.names.length) {
       // A value's import among the module's, before its types', and React's first of all, as

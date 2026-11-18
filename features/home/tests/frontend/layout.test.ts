@@ -1,7 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Widget } from '../../../../core/shell/frontend/runtime/slots.js';
-import { adding, keeping, moving, resized, setting, shown } from '../../frontend/layout.js';
+import {
+  adding,
+  keeping,
+  moving,
+  resized,
+  setting,
+  shown,
+  sizePages,
+} from '../../frontend/layout.js';
+import { sizesUpTo } from '../../../../core/shell/frontend/runtime/slots.js';
 
 const cells = (columns: number, rows: number) => ({ columns, rows });
 const widget = (id: string, more: Partial<Widget> = {}) =>
@@ -137,4 +146,37 @@ test('a size made on one screen is kept on what another kept meanwhile only wher
     at('vans.fleet', 3, 0),
   ]);
   assert.equal(setting(shownNow, at('dvic.today', 0, 0, 6, 3)), undefined);
+});
+
+test('every size a widget declares fits on as few grids as hold them, each once, none over another', () => {
+  const sizes = sizesUpTo({ columns: 4, rows: 4 }, { columns: 2, rows: 2 });
+  const pages = sizePages(sizes);
+  assert.equal(pages.length, 2);
+  const placed = pages.flat();
+  assert.deepEqual(
+    placed.map(({ w, h }) => `${w}x${h}`).sort(),
+    sizes.map(({ columns, rows }) => `${columns}x${rows}`).sort(),
+  );
+  for (const page of pages)
+    for (const [index, a] of page.entries()) {
+      assert(
+        a.x >= 0 && a.y >= 0 && a.x + a.w <= 12 && a.y + a.h <= 7,
+        `${a.w}x${a.h} leaves the grid`,
+      );
+      for (const b of page.slice(index + 1))
+        assert(
+          a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y,
+          `${a.w}x${a.h} covers ${b.w}x${b.h}`,
+        );
+    }
+  // The largest first, at the top left of the first grid.
+  assert.deepEqual(pages[0]![0], { x: 0, y: 0, w: 4, h: 4 });
+  // One the grid holds whole is on a grid of its own.
+  assert.deepEqual(
+    sizePages([
+      { columns: 12, rows: 7 },
+      { columns: 1, rows: 1 },
+    ]).length,
+    2,
+  );
 });

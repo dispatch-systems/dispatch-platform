@@ -1,7 +1,8 @@
 //! `dispatchdev shot`: a PNG of a page of the dev server `npm run dev` runs in the checkout,
 //! kept in the checkout's scratch folder. The account is signed in as `dispatchdev api` signs it
 //! in, once a run of the server, and the checkout's own `tooling/dev/shot.ts` opens the page with
-//! that session in the browser tests' Chromium, on the tab it names.
+//! that session in the browser tests' Chromium, on the tab it names, and clicks what it names,
+//! such as what opens a dialog, before the shot: a pixel of the PNG to a pixel of the window.
 use crate::{
     Result, Runner,
     api::{self, OWNER, Server},
@@ -19,13 +20,19 @@ pub const PHONE: &str = "390x844";
 /// Where the page opens: a page, in a DSP or on the platform owner's own pages, on a tab of the
 /// page.
 pub struct Open<'a> {
+    /// The page's address, with what it is asked after `?`: `conduct?driver=W5DHNV`.
     pub page: Option<&'a str>,
     /// The DSP, by its id or a unique part of its name: the fixture's own unless named.
     pub dsp: Option<&'a str>,
     /// The platform owner's own pages, outside any DSP, in place of a DSP's.
     pub platform: bool,
     pub tab: Option<&'a str>,
+    /// A widget by its id, at every size it declares, as Home shows it off Production: each grid of
+    /// them a screenshot.
+    pub widget: Option<&'a str>,
 }
+/// Home's page, which shows a widget at every size with `?sizes=<id>`.
+const HOME: &str = "overview";
 impl Open<'_> {
     /// Refuses what can't be opened together.
     pub fn check(&self) -> Result<()> {
@@ -36,6 +43,10 @@ impl Open<'_> {
         require(
             self.dsp.is_none() || !self.platform,
             "Choose --dsp or --platform.",
+        )?;
+        require(
+            self.widget.is_none() || (self.page.is_none() && self.tab.is_none() && !self.platform),
+            "--widget opens Home on the widget's sizes: leave out --page, --tab and --platform.",
         )
     }
     /// The id of the DSP it opens, of those a session lists: the one it names, else the first,
@@ -49,7 +60,7 @@ impl Open<'_> {
     }
 }
 /// The page's fragment, as the app reads its address: `#<page>`, or a DSP's page
-/// `#dsp/<id>/<page>`, with `?tab=<tab>` for a tab of it.
+/// `#dsp/<id>/<page>`, with `tab=<tab>` asked of it too for a tab of it.
 pub fn fragment(page: Option<&str>, dsp: Option<&str>, tab: Option<&str>) -> String {
     let page = page.map(|page| page.trim_start_matches('#'));
     let mut fragment = match (dsp, page) {
@@ -58,9 +69,18 @@ pub fn fragment(page: Option<&str>, dsp: Option<&str>, tab: Option<&str>) -> Str
         (None, None) => String::new(),
     };
     if let Some(tab) = tab {
-        fragment.push_str(&format!("?tab={}", encoded(tab)));
+        let joined = if fragment.contains('?') { '&' } else { '?' };
+        fragment.push_str(&format!("{joined}tab={}", encoded(tab)));
     }
     fragment
+}
+/// Home's fragment showing `widget` at every size, in the DSP `dsp` or the one signed in at.
+pub fn sizes(dsp: Option<&str>, widget: &str) -> String {
+    format!(
+        "{}?sizes={}",
+        fragment(Some(HOME), dsp, None),
+        encoded(widget)
+    )
 }
 /// A value as an address holds it, each byte but the unreserved ones escaped.
 fn encoded(value: &str) -> String {
@@ -83,6 +103,8 @@ pub struct Shot<'a> {
     pub size: &'a str,
     /// `light` or `dark`.
     pub theme: &'a str,
+    /// What to click once the page is ready, each by its accessible name, in turn.
+    pub clicks: &'a [&'a str],
 }
 
 /// The cookies of a jar curl keeps, as Playwright loads a browser's: a line each, with
@@ -121,20 +143,43 @@ fn file_name(shot: &Shot<'_>) -> String {
     let words = [
         Some(open.page.unwrap_or("home")),
         open.tab,
+        open.widget,
         open.dsp,
         open.platform.then_some("platform"),
+    ]
+    .into_iter()
+    .chain(shot.clicks.iter().map(|click| Some(*click)))
+    .chain([
         shot.who.and_then(|email| email.split('@').next()),
         Some(shot.size),
         Some(shot.theme),
-    ];
+    ]);
     let name = words
-        .into_iter()
         .flatten()
         .flat_map(|word| word.split(|c: char| !c.is_ascii_alphanumeric()))
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join("-");
     format!("{}.png", name.to_lowercase())
+}
+
+/// The width and height of the PNG `png` holds, from its header.
+fn png_size(png: &[u8]) -> Option<(u32, u32)> {
+    let chunks = png.strip_prefix(b"\x89PNG\r\n\x1a\n")?;
+    // The first chunk is its header: its length, `IHDR`, then the width and the height.
+    let header = chunks
+        .get(4..16)
+        .filter(|header| header.starts_with(b"IHDR"))?;
+    let side = |at: usize| u32::from_be_bytes(header[at..at + 4].try_into().expect("4 bytes"));
+    Some((side(4), side(8)))
+}
+/// Refuses a PNG that isn't `size`, `<width>x<height>`, a pixel of it to a pixel of the window.
+fn matches_window(png: &[u8], size: &str) -> Result<()> {
+    let (width, height) = png_size(png).ok_or("The screenshot isn't a PNG.")?;
+    require(
+        format!("{width}x{height}") == size,
+        &format!("The screenshot is {width}x{height}, not the window's {size}."),
+    )
 }
 
 /// Saves the screenshot and prints its path. Answers with the fragment the page opened at.
@@ -173,7 +218,10 @@ pub fn run(root: &Path, shot: &Shot<'_>, runner: &dyn Runner) -> Result<String> 
     } else {
         None
     };
-    let fragment = fragment(open.page, dsp.as_deref(), open.tab);
+    let fragment = match open.widget {
+        Some(widget) => sizes(dsp.as_deref(), widget),
+        None => fragment(open.page, dsp.as_deref(), open.tab),
+    };
     let url = format!("{}/{fragment}", site.origin);
     // The browser takes the session in a file of its own kind, as private as the jar.
     let storage = server.scratch.join(format!("shot-{who}.json"));
@@ -209,13 +257,24 @@ pub fn run(root: &Path, shot: &Shot<'_>, runner: &dyn Runner) -> Result<String> 
     if let Some(tab) = open.tab {
         args.extend(["--tab", tab]);
     }
+    for click in shot.clicks {
+        args.extend(["--click", click]);
+    }
+    // Each grid of a widget's sizes, the script turning to the next and saving it beside the first.
+    if open.widget.is_some() {
+        args.push("--pages");
+    }
     // What the script says of the page, as a tab it lacks.
     let said = runner.command(&args, Some(root), 120)?;
     let said = String::from_utf8_lossy(&said);
     if !said.trim().is_empty() {
         println!("{}", said.trim());
     }
-    println!("{png}");
+    matches_window(&std::fs::read(png)?, shot.size)?;
+    // The script names each grid's screenshot it saved.
+    if open.widget.is_none() {
+        println!("{png}");
+    }
     Ok(fragment)
 }
 
@@ -231,6 +290,39 @@ mod tests {
         );
         assert_eq!(fragment(None, Some("dsp_2"), None), "#dsp/dsp_2/");
         assert_eq!(fragment(None, None, None), "");
+        // A page asked for a record opens on it, on its tab too.
+        assert_eq!(
+            fragment(Some("conduct?driver=W5DHNV"), Some("dsp_2"), Some("notes")),
+            "#dsp/dsp_2/conduct?driver=W5DHNV&tab=notes"
+        );
+    }
+    #[test]
+    fn a_screenshot_is_the_windows_size_a_pixel_to_a_pixel() {
+        let png = |width: u32, height: u32| {
+            let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+            png.extend(width.to_be_bytes());
+            png.extend(height.to_be_bytes());
+            png
+        };
+        assert!(matches_window(&png(1920, 1080), DESKTOP).is_ok());
+        assert!(matches_window(&png(390, 844), PHONE).is_ok());
+        // Taken at twice the pixels, as a screen of a higher density shows it.
+        let doubled = matches_window(&png(3840, 2160), DESKTOP)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            doubled.contains("3840x2160, not the window's 1920x1080"),
+            "{doubled}"
+        );
+        assert!(matches_window(b"GIF89a", DESKTOP).is_err());
+    }
+    #[test]
+    fn a_widget_opens_on_home_at_every_size() {
+        assert_eq!(
+            sizes(Some("dsp_2"), "dvic.latest"),
+            "#dsp/dsp_2/overview?sizes=dvic.latest"
+        );
+        assert_eq!(sizes(None, "dvic.latest"), "#overview?sizes=dvic.latest");
     }
     #[test]
     fn the_browser_takes_the_session_curl_keeps() {
