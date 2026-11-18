@@ -1,16 +1,20 @@
 //! What a change shows, approved before its PR opens. `preview` serves the checkout as it is and
 //! saves a screenshot of each page the change touches, on the tab or Settings section it touches,
-//! each with a link that opens on that page;
+//! each with a link that opens on that page; the server runs on in a session of its own, at the
+//! same address each time it starts again, until `preview stop` or `finish` stops it;
 //! `preview approve` keeps the UI files the user was shown, by their contents, once they
-//! approved them, and `pr` opens no PR for a change to what a page shows until those are the
+//! approved them, or with `--unchanged` and why, those of a change that shows nothing new, which
+//! the PR then says; and `pr` opens no PR for a change to what a page shows until those are the
 //! files it would push.
 use crate::{Result, Runner, api, dev, require, review, shot, workspace};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
     fs,
+    net::TcpListener,
     os::unix::process::CommandExt,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     time::{Duration, Instant},
 };
 
@@ -18,6 +22,8 @@ use std::{
 const APPROVED: &str = "preview/approved.json";
 /// The UI files as the last `preview` showed them, so a change it showed is the user's to answer.
 const SHOWN: &str = "preview/shown.json";
+/// Why the approved files show nothing new, when they were approved without being shown.
+const UNCHANGED: &str = "preview/unchanged.txt";
 
 /// A change's UI files against what the user approved.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,6 +32,8 @@ pub enum Approval {
     None,
     /// The files are the ones approved.
     Approved,
+    /// The files are the ones approved, unseen, as showing nothing new, for the reason given.
+    Unchanged(String),
     /// Nothing was approved yet.
     Missing,
     /// These differ from what was approved.
@@ -115,9 +123,13 @@ pub fn approval(root: &Path, runner: &dyn Runner) -> Result<Approval> {
         }
     }
     changed.sort();
-    Ok(match changed.is_empty() {
-        true => Approval::Approved,
-        false => Approval::Changed(changed),
+    if !changed.is_empty() {
+        return Ok(Approval::Changed(changed));
+    }
+    let scratch = workspace::checkout_scratch(root)?;
+    Ok(match fs::read_to_string(scratch.join(UNCHANGED)) {
+        Ok(why) => Approval::Unchanged(why.trim().to_owned()),
+        Err(_) => Approval::Approved,
     })
 }
 
@@ -133,19 +145,39 @@ pub fn shown(root: &Path, runner: &dyn Runner) -> Result<bool> {
 }
 
 /// `dispatchdev preview approve`: the UI files as the worktree holds them, kept as what the user
-/// approved. Run only once they said so.
-pub fn approve(root: &Path, runner: &dyn Runner) -> Result<()> {
+/// approved. Run only once they said so; or, `unchanged`, kept unseen with why they show
+/// nothing new, for `pr` to tell the user in the PR.
+pub fn approve(root: &Path, unchanged: Option<&str>, runner: &dyn Runner) -> Result<()> {
     let files = files(root, true, runner)?;
     require(
         !files.is_empty(),
         "The change touches nothing a page shows: there is nothing to approve.",
     )?;
-    let path = workspace::checkout_scratch(root)?.join(APPROVED);
-    workspace::write_private(&path, &serde_json::to_string_pretty(&files)?)?;
+    let scratch = workspace::checkout_scratch(root)?;
+    let why = scratch.join(UNCHANGED);
+    match unchanged.map(str::trim) {
+        Some(reason) => {
+            require(
+                !reason.is_empty() && !reason.contains('\n'),
+                "--unchanged says on one line why nothing a page shows changed.",
+            )?;
+            workspace::write_private(&why, reason)?;
+        }
+        None if why.exists() => fs::remove_file(&why)?,
+        None => {}
+    }
+    workspace::write_private(
+        &scratch.join(APPROVED),
+        &serde_json::to_string_pretty(&files)?,
+    )?;
     println!(
-        "Kept {} UI file{} as approved: {}.",
+        "Kept {} UI file{} as {}: {}.",
         files.len(),
         if files.len() == 1 { "" } else { "s" },
+        match unchanged {
+            Some(_) => "showing nothing new",
+            None => "approved",
+        },
         files.keys().cloned().collect::<Vec<_>>().join(", ")
     );
     println!(
@@ -159,11 +191,12 @@ pub fn approve(root: &Path, runner: &dyn Runner) -> Result<()> {
 const STARTING: Duration = Duration::from_secs(600);
 
 /// A page to show: a route's id, `None` for the DSP's landing page, on the platform owner's
-/// own pages or a DSP's, on one of its tabs.
+/// own pages or a DSP's, asked for what follows `?` in its address, on one of its tabs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Page {
     pub id: Option<String>,
     pub platform: bool,
+    pub query: Option<String>,
     pub tab: Option<Tab>,
 }
 /// A tab a page opens on.
@@ -176,11 +209,16 @@ pub enum Tab {
 }
 impl Page {
     /// A page as `--pages` names it: `<id>`, or `platform:<id>` for the platform owner's own,
-    /// each with `/<tab>` for one of its tabs.
+    /// each with `/<tab>` for one of its tabs and `?<query>` for what its address asks:
+    /// `conduct?driver=W5DHNV`.
     pub fn named(name: &str) -> Self {
         let (platform, name) = match name.strip_prefix("platform:") {
             Some(name) => (true, name),
             None => (false, name),
+        };
+        let (name, query) = match name.split_once('?') {
+            Some((name, query)) => (name, Some(query.to_owned())),
+            None => (name, None),
         };
         let (id, tab) = match name.split_once('/') {
             Some((id, tab)) => (id, Some(Tab::Id(tab.to_owned()))),
@@ -189,8 +227,17 @@ impl Page {
         Self {
             id: Some(id.to_owned()),
             platform,
+            query,
             tab,
         }
+    }
+    /// Its address, as `shot` opens it: its id, and what it asks after `?`.
+    fn address(&self, id: Option<&str>) -> Option<String> {
+        let id = id?;
+        Some(match &self.query {
+            Some(query) => format!("{id}?{query}"),
+            None => id.to_owned(),
+        })
     }
 }
 
@@ -475,6 +522,7 @@ fn page(root: &Path, path: &str) -> Page {
     Page {
         id: Some(route.id.clone()),
         platform: route.platform,
+        query: None,
         tab: tab.map(Tab::Id),
     }
 }
@@ -494,13 +542,25 @@ fn settings_route(root: &Path) -> Option<String> {
         .find(|route| route.settings)
         .map(|route| route.id)
 }
-/// The page of Settings the server puts `section` on, as the owner sees the first DSP's.
-fn settings_page(root: &Path, section: &str, runner: &dyn Runner) -> Result<Option<String>> {
+/// The page of Settings the server puts `section` on, as the owner sees the DSP `dsp` names, else
+/// the first.
+fn settings_page(
+    root: &Path,
+    section: &str,
+    dsp: Option<&str>,
+    runner: &dyn Runner,
+) -> Result<Option<String>> {
     let server = api::Server::find(root)?;
     let (_, session) = api::sign_in(&server, api::OWNER, None, runner)?;
-    let dsp = session["dsps"][0]["id"]
-        .as_str()
-        .ok_or("The dev server has no DSP to open.")?;
+    let open = shot::Open {
+        page: None,
+        dsp,
+        platform: false,
+        tab: None,
+    };
+    let dsps = session["dsps"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let dsp = open.dsp_id(dsps)?;
+    let dsp = dsp.as_str();
     let answer = api::request(
         &server,
         api::Call {
@@ -529,8 +589,147 @@ fn placed(settings: &serde_json::Value, section: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// The server `preview` started last, kept in the checkout's scratch folder once it ends too, so
+/// the next one serves at the same address and the links sent before it still open.
+const SERVER: &str = "preview/server.json";
+/// What `preview` kept of the server it started.
+#[derive(Deserialize, Serialize)]
+struct Started {
+    /// Its session's leader, the process `preview` started, by its pid, and when it started and
+    /// its command line as `ps` told them once it served.
+    pid: i32,
+    started: String,
+    command: String,
+    host: String,
+    port: u16,
+    /// What follows `/__preview/` in the link that signs the owner in.
+    entry: String,
+}
+impl Started {
+    fn origin(&self) -> String {
+        format!("http://{}:{}", self.host, self.port)
+    }
+}
+/// The server `preview` started in a checkout, while it runs.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct Server {
+    pub pid: i32,
+    pub origin: String,
+}
+impl Server {
+    /// How `status` and `owed` tell it, so no server runs on unnoticed.
+    pub fn line(&self) -> String {
+        format!(
+            "Dev server: {} (pid {}), until `dispatchdev preview stop` or `finish` stops it",
+            self.origin, self.pid
+        )
+    }
+}
+fn started(scratch: &Path) -> Option<Started> {
+    serde_json::from_str(&fs::read_to_string(scratch.join(SERVER)).ok()?).ok()
+}
+/// The server `preview` started that still runs, the process its scratch folder at `scratch`
+/// names, by when it started and its command line, not a later one given its pid.
+fn running(scratch: &Path, runner: &dyn Runner) -> Option<Started> {
+    started(scratch).filter(|started| {
+        dev::identity(started.pid, runner).is_some_and(|now| {
+            (now.started.as_str(), now.command.as_str())
+                == (started.started.as_str(), started.command.as_str())
+        })
+    })
+}
+/// The server `preview` started in the checkout whose scratch folder is `scratch`, while it runs.
+pub fn server(scratch: &Path, runner: &dyn Runner) -> Option<Server> {
+    running(scratch, runner).map(|started| Server {
+        pid: started.pid,
+        origin: started.origin(),
+    })
+}
+/// Starts `command` in a session of its own, both its streams in `log`: the end of the command
+/// or the agent's turn that started it signals neither it nor what it starts.
+pub(crate) fn detached(command: &mut Command, log: &Path) -> Result<Child> {
+    // One file for both streams, so neither writes over the other.
+    let output = fs::File::create(log)?;
+    command
+        .stdin(Stdio::null())
+        .stdout(output.try_clone()?)
+        .stderr(output);
+    // SAFETY: setsid is async-signal-safe, and nothing else runs between fork and exec.
+    unsafe {
+        command.pre_exec(|| match libc::setsid() {
+            -1 => Err(std::io::Error::last_os_error()),
+            _ => Ok(()),
+        });
+    }
+    Ok(command.spawn()?)
+}
+/// Keeps the server whose session `pid` leads, serving at `host:port` with `entry`, as the one
+/// `preview` started.
+pub(crate) fn keep(
+    scratch: &Path,
+    pid: i32,
+    host: &str,
+    port: u16,
+    entry: &str,
+    runner: &dyn Runner,
+) -> Result<()> {
+    let process = dev::identity(pid, runner)
+        .ok_or_else(|| format!("The dev server {pid} stopped as it started."))?;
+    let started = Started {
+        pid,
+        started: process.started,
+        command: process.command,
+        host: host.to_owned(),
+        port,
+        entry: entry.to_owned(),
+    };
+    workspace::write_private(
+        &scratch.join(SERVER),
+        &serde_json::to_string_pretty(&started)?,
+    )
+}
+/// Stops the checkout's dev server: the one `preview` started, found by the record in `scratch`
+/// and checked to be that process, with everything its session started; then one started by
+/// hand, as `dev::stop` checks it. Answers the process it stopped, if one ran.
+pub fn stop(root: &Path, scratch: &Path, runner: &dyn Runner) -> Result<Option<i32>> {
+    let leader = running(scratch, runner).map(|started| started.pid);
+    if let Some(pid) = leader {
+        // Its session is its process group, which a session's leader never leaves.
+        unsafe { libc::kill(-pid, libc::SIGTERM) };
+        let stopping = Instant::now();
+        // Until no process is left in the group.
+        while unsafe { libc::kill(-pid, 0) } == 0 {
+            require(
+                stopping.elapsed() < Duration::from_secs(30),
+                &format!("The dev server {pid} didn't stop: stop it, then run this again."),
+            )?;
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
+    let by_hand = dev::stop(root, runner)?;
+    Ok(leader.or(by_hand))
+}
+/// `dispatchdev preview stop`.
+pub fn stop_serving(root: &Path, runner: &dyn Runner) -> Result<()> {
+    match stop(root, &workspace::checkout_scratch(root)?, runner)? {
+        Some(pid) => println!("Stopped the dev server {pid}."),
+        None => println!("No dev server runs in this checkout."),
+    }
+    Ok(())
+}
+/// The port a new server listens on: the last one's, so its links still open, unless something
+/// else holds it now; then any.
+fn port(host: &str, earlier: Option<&Started>) -> u16 {
+    earlier
+        .map(|earlier| earlier.port)
+        .filter(|port| TcpListener::bind((host, *port)).is_ok())
+        .unwrap_or(0)
+}
+
 /// The checkout's dev server, serving its backend as it is now: the one running, else a new one,
-/// once the one it replaces, checked to be the server it recorded, has stopped.
+/// once the one it replaces, checked to be the server it recorded, has stopped. A new one runs
+/// apart from this command, at the address the last one served at, until `finish` or `preview
+/// stop` stops it.
 fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
     // Only a server started from the checkout's files as they are now, its pages' code aside,
     // serves it: a newer build on disk says nothing of what an older server runs.
@@ -538,31 +737,31 @@ fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
     if status.running && status.source_matches == Some(true) {
         return Ok(status);
     }
-    if status.running
-        && let Some(pid) = dev::stop(root, runner)?
-    {
+    // The one `preview` started too, though its record in the checkout is gone.
+    let scratch = workspace::checkout_scratch(root)?;
+    if let Some(pid) = stop(root, &scratch, runner)? {
         println!("Stopped the dev server {pid}: it served other code.");
     }
-    let log = workspace::checkout_scratch(root)?.join("dev-server.log");
-    // One file for both streams, so neither writes over the other.
-    let output = fs::File::create(&log)?;
+    // Served on the tailnet's address, so the link opens on the user's phone or laptop.
+    let host = workspace::text(runner, &["tailscale", "ip", "-4"], Some(root))
+        .ok()
+        .and_then(|host| host.lines().next().map(str::to_owned))
+        .filter(|host| !host.is_empty())
+        .unwrap_or_else(|| "127.0.0.1".to_owned());
+    let earlier = started(&scratch);
+    let port = port(&host, earlier.as_ref());
+    let log = scratch.join("dev-server.log");
     let mut command = Command::new("npm");
     command
         .args(["run", "dev"])
         .current_dir(root)
         .env(workspace::NPM_LOGLEVEL.0, workspace::NPM_LOGLEVEL.1)
-        .stdin(Stdio::null())
-        .stdout(output.try_clone()?)
-        .stderr(output)
-        // Its own process group, so it outlives this command.
-        .process_group(0);
-    // Served on the tailnet's address, so the link opens on the user's phone or laptop.
-    if let Ok(host) = workspace::text(runner, &["tailscale", "ip", "-4"], Some(root))
-        && let Some(host) = host.lines().next().filter(|host| !host.is_empty())
-    {
-        command.env("DISPATCH_DEV_HOST", host);
+        .env("DISPATCH_DEV_HOST", &host)
+        .env("DISPATCH_DEV_PORT", port.to_string());
+    if let Some(earlier) = &earlier {
+        command.env("DISPATCH_DEV_ENTRY", &earlier.entry);
     }
-    let mut child = command.spawn()?;
+    let mut child = detached(&mut command, &log)?;
     println!("Starting the dev server; its log is {}.", log.display());
     let starting = Instant::now();
     loop {
@@ -571,7 +770,25 @@ fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
             return Err(format!("The dev server stopped ({exit}): see {}.", log.display()).into());
         }
         let status = dev::status(root, runner)?;
-        if status.running && status.source_matches == Some(true) {
+        if status.running
+            && status.source_matches == Some(true)
+            && let (Some(origin), Some(link)) = (&status.origin, &status.link)
+        {
+            let entry = link
+                .strip_prefix(&format!("{origin}/__preview/"))
+                .ok_or("The dev server's link isn't its own.")?;
+            let served = origin
+                .rsplit_once(':')
+                .and_then(|(_, port)| port.parse().ok())
+                .ok_or("The dev server's address has no port.")?;
+            keep(&scratch, child.id() as i32, &host, served, entry, runner)?;
+            if let Some(earlier) = earlier.filter(|earlier| earlier.origin() != *origin) {
+                println!(
+                    "It serves at {origin}, not {}, which something else holds: the links sent \
+                     before don't open.",
+                    earlier.origin()
+                );
+            }
             return Ok(status);
         }
         require(
@@ -585,8 +802,15 @@ fn serving(root: &Path, runner: &dyn Runner) -> Result<dev::Status> {
 }
 
 /// `dispatchdev preview`: the checkout's change as it is, served, with a screenshot of each page
-/// it touches, or `pages`, wide and on a phone, each with a link that opens on it.
-pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
+/// it touches, or `pages`, wide and on a phone, in the DSP `dsp` names, else the fixture's own,
+/// once `clicks` are clicked on it, each with a link that opens on it.
+pub fn run(
+    root: &Path,
+    named: &[&str],
+    dsp: Option<&str>,
+    clicks: &[&str],
+    runner: &dyn Runner,
+) -> Result<()> {
     let files = files(root, true, runner)?;
     require(
         !files.is_empty() || !named.is_empty(),
@@ -612,7 +836,7 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
             let (id, tab) = match &page.tab {
                 Some(Tab::Section(section)) => {
                     let id = settings_route(root).ok_or("No route draws a DSP's Settings.")?;
-                    let tab = settings_page(root, section, runner)?;
+                    let tab = settings_page(root, section, dsp, runner)?;
                     if tab.is_none() {
                         println!(
                             "Settings shows the owner no section {section}: shown on Settings' \
@@ -624,19 +848,21 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
                 Some(Tab::Id(tab)) => (page.id.clone(), Some(tab.clone())),
                 None => (page.id.clone(), None),
             };
+            let address = page.address(id.as_deref());
             let shoot = |size| {
                 shot::run(
                     root,
                     &shot::Shot {
                         open: shot::Open {
-                            page: id.as_deref(),
-                            dsp: None,
+                            page: address.as_deref(),
+                            dsp,
                             platform: page.platform,
                             tab: tab.as_deref(),
                         },
                         who: None,
                         size,
                         theme: "light",
+                        clicks,
                     },
                     runner,
                 )
@@ -646,6 +872,12 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
             // The link signs in and the browser keeps its fragment, so it opens on the page.
             if let Some(link) = &status.link {
                 println!("Its link, for the chat alone:\n{link}{opened}");
+                if !clicks.is_empty() {
+                    println!(
+                        "The link opens before the clicks: {}.",
+                        clicks.join(", then ")
+                    );
+                }
             }
         }
     }
@@ -672,6 +904,96 @@ pub fn run(root: &Path, named: &[&str], runner: &dyn Runner) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Native;
+    use std::os::unix::process::ExitStatusExt;
+
+    #[test]
+    fn the_server_preview_starts_runs_in_a_session_of_its_own_until_stopped_with_what_it_started() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        for args in [
+            &["git", "init", "-qb", "main"][..],
+            &[
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-qm",
+                "x",
+                "--allow-empty",
+            ],
+        ] {
+            Native.command(args, Some(&root), 30).unwrap();
+        }
+        let scratch = root.join("scratch");
+        let log = root.join("dev-server.log");
+        // A server and what it starts, which outlive the command that started them.
+        let child = detached(
+            Command::new("sh").args(["-c", "echo serving; sleep 30 & wait"]),
+            &log,
+        )
+        .unwrap();
+        let pid = child.id() as i32;
+        let ended = std::thread::spawn(move || {
+            let mut child = child;
+            child.wait().unwrap()
+        });
+        assert_eq!(unsafe { libc::getsid(pid) }, pid, "a session of its own");
+        let held = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = held.local_addr().unwrap().port();
+        let entry = "0b7a2c1e-5d4f-4e3a-9c8b-7a6f5e4d3c2b";
+        keep(&scratch, pid, "127.0.0.1", port, entry, &Native).unwrap();
+        assert_eq!(
+            server(&scratch, &Native),
+            Some(Server {
+                pid,
+                origin: format!("http://127.0.0.1:{port}")
+            })
+        );
+        // The next server takes the last one's port, unless something else holds it.
+        let earlier = started(&scratch).unwrap();
+        assert_eq!(earlier.entry, entry);
+        assert_eq!(super::port("127.0.0.1", Some(&earlier)), 0);
+        drop(held);
+        // A process another test is starting can hold a copy of a socket a moment after it
+        // closed, the one each look opens too.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while super::port("127.0.0.1", Some(&earlier)) != port {
+            assert!(
+                Instant::now() < deadline,
+                "the port it was let go of is taken again"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(super::port("127.0.0.1", None), 0);
+        // A process with its pid that started at another time isn't the server.
+        let path = scratch.join(SERVER);
+        let kept = fs::read_to_string(&path).unwrap();
+        let mut other: serde_json::Value = serde_json::from_str(&kept).unwrap();
+        other["started"] = "Mon Jan 1 00:00:00 2024".into();
+        workspace::write_private(&path, &other.to_string()).unwrap();
+        assert_eq!(server(&scratch, &Native), None);
+        assert_eq!(stop(&root, &scratch, &Native).unwrap(), None);
+        assert_eq!(unsafe { libc::kill(pid, 0) }, 0, "left running");
+        workspace::write_private(&path, &kept).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !fs::read_to_string(&log).unwrap().contains("serving") {
+            assert!(Instant::now() < deadline, "its output goes to its log");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(stop(&root, &scratch, &Native).unwrap(), Some(pid));
+        assert_eq!(ended.join().unwrap().signal(), Some(libc::SIGTERM));
+        assert_eq!(
+            unsafe { libc::kill(-pid, 0) },
+            -1,
+            "nothing it started is left"
+        );
+        assert_eq!(server(&scratch, &Native), None);
+        // Its address is kept for the next one.
+        assert_eq!(started(&scratch).unwrap().port, port);
+    }
     #[test]
     fn a_ui_file_shows_the_page_tab_or_settings_section_its_owner_draws_it_on() {
         let temp = tempfile::tempdir().unwrap();
@@ -783,6 +1105,7 @@ mod tests {
         let at = |id: &str, platform, tab: Option<&str>| Page {
             id: Some(id.to_owned()),
             platform,
+            query: None,
             tab: tab.map(|tab| Tab::Id(tab.to_owned())),
         };
         let section = |id: &str| Page {
@@ -870,6 +1193,19 @@ mod tests {
         assert_eq!(
             Page::named("platform:support/inbox"),
             at("support", true, Some("inbox"))
+        );
+        // A page asked for a record, on a tab of it: what it asks may hold a slash.
+        let asked = Page::named("conduct/notes?writeup=w/1&driver=W5DHNV");
+        assert_eq!(
+            asked,
+            Page {
+                query: Some("writeup=w/1&driver=W5DHNV".to_owned()),
+                ..at("conduct", false, Some("notes"))
+            }
+        );
+        assert_eq!(
+            asked.address(Some("conduct")).as_deref(),
+            Some("conduct?writeup=w/1&driver=W5DHNV")
         );
     }
     #[test]

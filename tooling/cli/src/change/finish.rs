@@ -1,5 +1,5 @@
 use super::{Clone, Repository, valid_name};
-use crate::{Result, Runner, dev, github, require, review, workspace};
+use crate::{Result, Runner, dev, github, preview, require, review, workspace};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -32,7 +32,8 @@ pub struct FinishPlan {
     pub remote_head: Option<String>,
     pub worktree_present: bool,
     pub ignored: Vec<String>,
-    /// The worktree's running dev server, which `finish` stops first.
+    /// The worktree's running dev server, which `finish` stops first: the session `preview`
+    /// started, else one started by hand.
     pub dev_server: Option<i32>,
     pub scratch_entries: Vec<String>,
     pub blockers: Vec<String>,
@@ -210,10 +211,14 @@ pub fn finish_plan(
                     if !status.is_empty() { plan.blockers.push("The worktree holds uncommitted changes: commit or drop them first.".into()); }
                     let ignored = workspace::text(runner, &["git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"], Some(&real))?;
                     plan.ignored = ignored.split('\0').filter(|name| !name.is_empty()).map(str::to_owned).collect();
-                    plan.dev_server = dev::status(&real, runner)
-                        .ok()
-                        .filter(|status| status.running)
-                        .and_then(|status| status.process.map(|process| process.pid));
+                    plan.dev_server = preview::server(&plan.scratch, runner)
+                        .map(|server| server.pid)
+                        .or_else(|| {
+                            dev::status(&real, runner)
+                                .ok()
+                                .filter(|status| status.running)
+                                .and_then(|status| status.process.map(|process| process.pid))
+                        });
                 }
                 _ => plan.blockers.push("The directory is not this branch's registered worktree: inspect it before cleanup.".into()),
             }
@@ -268,7 +273,7 @@ pub fn finish(from: &Path, name: &str, abandon: bool, runner: &dyn Runner) -> Re
         )?;
     }
     if plan.dev_server.is_some() {
-        dev::stop(&plan.worktree, runner)?;
+        preview::stop(&plan.worktree, &plan.scratch, runner)?;
     }
     if plan.worktree_present {
         clone.git(

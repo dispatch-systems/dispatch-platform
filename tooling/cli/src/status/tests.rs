@@ -108,17 +108,22 @@ fn a_change_to_what_a_page_shows_waits_on_the_user_once_shown_until_approved() {
         };
         assert_eq!(shown.whose(), Whose::Owner);
     }
-    let approved = Case {
-        approval: Approval::Approved,
-        ..Case::default()
-    };
-    assert_eq!(
-        approved.next(),
-        (
-            vec!["`dispatchdev check`, then `dispatchdev pr`".to_owned()],
-            Whose::Agent
-        )
-    );
+    for approval in [
+        Approval::Approved,
+        Approval::Unchanged("a refactor".to_owned()),
+    ] {
+        let approved = Case {
+            approval,
+            ..Case::default()
+        };
+        assert_eq!(
+            approved.next(),
+            (
+                vec!["`dispatchdev check`, then `dispatchdev pr`".to_owned()],
+                Whose::Agent
+            )
+        );
+    }
 }
 #[test]
 fn an_open_pr_waits_on_github_until_its_checks_end() {
