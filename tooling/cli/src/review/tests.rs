@@ -389,7 +389,7 @@ impl Fixture {
         commit(&root, "base");
         git(&root, &["push", "-q", "-u", "origin", "HEAD:main"]);
         git(&root, &["switch", "-q", "-c", "keep-week"]);
-        let scratch = workspace::scratch(&name);
+        let scratch = workspace::scratch(&name).unwrap();
         let fixture = Self {
             _temp: temp,
             root,

@@ -193,15 +193,15 @@ impl Worktree {
     }
 
     /// The branch's scratch folder, where its previews and collection runs keep their private
-    /// state and its PR body is written.
-    pub fn scratch(&self) -> PathBuf {
-        PathBuf::from(format!("/tmp/dispatch-{}", self.name))
+    /// state and its PR body is written: a change's, as the CLI keeps it.
+    pub fn scratch(&self) -> Result<PathBuf> {
+        dispatchdev_cli::workspace::scratch(&self.name)
     }
 
     /// Removes what an earlier attempt left in the scratch folder: each folder whose name starts
     /// with one of `prefixes`.
     pub fn clear_scratch(&self, prefixes: &[&str]) -> Result<()> {
-        let scratch = self.scratch();
+        let scratch = self.scratch()?;
         if scratch.is_dir() {
             for entry in std::fs::read_dir(&scratch)? {
                 let entry = entry?;
@@ -332,7 +332,7 @@ impl Worktree {
         {
             return Err(error);
         }
-        let scratch = self.scratch();
+        let scratch = self.scratch()?;
         if scratch.exists() {
             std::fs::remove_dir_all(scratch)?;
         }

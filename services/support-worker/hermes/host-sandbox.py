@@ -133,9 +133,17 @@ def project_git(root, destination):
             str(target / "objects"), "--ro-bind", str(pointer), str(root / ".git")]
 
 
+def assigned_scratch(root):
+    # The branch's scratch folder as the CLI keeps a change's, by its real path, made private.
+    folders = (Path.home() / "dispatch-platform/scratch").resolve()
+    folders.mkdir(parents=True, exist_ok=True, mode=0o700)
+    scratch = folders / root.name
+    scratch.mkdir(exist_ok=True, mode=0o700)
+    return scratch
+
+
 def build(root, node, command):
-    scratch = Path(f"/tmp/dispatch-{root.name}")
-    scratch.mkdir(parents=True, exist_ok=True, mode=0o700)
+    scratch = assigned_scratch(root)
     home = Path.home()
     args = runtime() + ["--bind", str(root), str(root), "--chdir", str(root)]
     args += project_git(root, scratch / "build-git")
@@ -157,8 +165,7 @@ def build(root, node, command):
 
 
 def preview(root, state):
-    scratch = Path(f"/tmp/dispatch-{root.name}")
-    scratch.mkdir(parents=True, exist_ok=True, mode=0o700)
+    scratch = assigned_scratch(root)
     if state is None:
         state = Path(tempfile.mkdtemp(prefix="browser-state-", dir=scratch))
     else:

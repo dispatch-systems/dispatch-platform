@@ -146,7 +146,7 @@ pub fn finish_plan(
         (reference == branch).then(|| head.to_owned())
     });
     let worktree = clone.worktrees.join(name);
-    let scratch = workspace::scratch(name);
+    let scratch = workspace::current_scratch(name)?;
     let mut plan = FinishPlan {
         name: name.to_owned(),
         root: clone.root.clone(),

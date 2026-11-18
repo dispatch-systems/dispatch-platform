@@ -489,17 +489,45 @@ fn the_scaffolder_keeps_its_temporary_files_in_the_checkouts_scratch_folder_by_i
          writeFileSync('tmpdir', process.env.TMPDIR ?? '');\n",
     )
     .unwrap();
-    // Its scratch folder is a link to a folder of the test's own, as macOS keeps /tmp behind
-    // one; made here, so it is no one else's, and the only thing removed.
-    let target = workspace.path().join("scratch");
-    std::fs::create_dir(&target).unwrap();
-    let scratch = std::path::PathBuf::from(format!("/tmp/dispatch-{name}"));
-    std::os::unix::fs::symlink(&target, &scratch).unwrap();
-    let (ok, _, error) = run(&["generate", "--check", "--root", checkout.to_str().unwrap()]);
-    std::fs::remove_file(&scratch).unwrap();
-    assert!(ok, "{error}");
+    // A home of the test's own, whose dispatch-platform is a link, as the MacBook's is.
+    let home = workspace.path().join("home");
+    let platform = workspace.path().join("Projects/dispatch-platform");
+    std::fs::create_dir(&home).unwrap();
+    std::fs::create_dir_all(&platform).unwrap();
+    std::os::unix::fs::symlink(&platform, home.join("dispatch-platform")).unwrap();
+    // The change began while scratch folders were kept in /tmp: its decisions are there.
+    let old = std::path::PathBuf::from(format!("/tmp/dispatch-{name}"));
+    std::fs::create_dir(&old).unwrap();
+    std::fs::write(old.join("decisions.md"), "approved").unwrap();
+    let generate = || {
+        let result = Command::new(env!("CARGO_BIN_EXE_dispatchdev"))
+            .args(["generate", "--check", "--root", checkout.to_str().unwrap()])
+            .env("HOME", &home)
+            .output()
+            .unwrap();
+        let error = String::from_utf8_lossy(&result.stderr).into_owned();
+        assert!(result.status.success(), "{error}");
+        error
+    };
+    let moved = generate();
+    let scratch = std::fs::canonicalize(&platform)
+        .unwrap()
+        .join("scratch")
+        .join(&name);
     assert_eq!(
         std::fs::read_to_string(checkout.join("tmpdir")).unwrap(),
-        std::fs::canonicalize(&target).unwrap().to_str().unwrap()
+        scratch.to_str().unwrap()
     );
+    assert_eq!(
+        std::fs::read_to_string(scratch.join("decisions.md")).unwrap(),
+        "approved"
+    );
+    assert!(!old.exists());
+    assert!(moved.contains("Moved the scratch folder"), "{moved}");
+    // Once: a folder in /tmp again never takes the place of the one there now.
+    std::fs::create_dir(&old).unwrap();
+    let kept = generate();
+    std::fs::remove_dir(&old).unwrap();
+    assert!(!kept.contains("Moved"), "{kept}");
+    assert!(scratch.join("decisions.md").is_file());
 }

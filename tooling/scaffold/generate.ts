@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { unwired, wire } from './wire.js';
@@ -107,9 +108,9 @@ export function failedOtherwise(log: string) {
 
 /** Where a checkout keeps what it makes outside itself: its change's scratch folder. */
 function scratch(root: string) {
-  const dir = `/tmp/dispatch-${path.basename(root)}`;
+  const dir = path.join(os.homedir(), 'dispatch-platform/scratch', path.basename(root));
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return dir;
+  return fs.realpathSync(dir);
 }
 
 /** Whether this user can run a command in a systemd scope of its own, as on Dev's machine. */

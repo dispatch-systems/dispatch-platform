@@ -130,7 +130,7 @@ python3 -c 'import socket; sock=socket.socket(); sock.settimeout(1); assert sock
             self.assertEqual((root / "source.txt").read_text(), "changed")
             self.assertEqual((dev / ".git/config").read_bytes(), host_config)
             self.assertEqual(secret.read_text(), "must never enter changed code")
-            shutil.rmtree(Path(f"/tmp/dispatch-{root.name}"), ignore_errors=True)
+            shutil.rmtree(module.assigned_scratch(root))
 
 
 if __name__ == "__main__":

@@ -101,7 +101,7 @@ pub async fn publish(
     let body = format!(
         "## Summary\n\n{summary}\n\n{change}\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. Code review omitted under the owner’s support workflow policy. Screenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n"
     );
-    let scratch = tree.scratch();
+    let scratch = tree.scratch()?;
     fs::create_dir_all(&scratch)?;
     let file = scratch.join("pr-body.md");
     fs::write(&file, body)?;

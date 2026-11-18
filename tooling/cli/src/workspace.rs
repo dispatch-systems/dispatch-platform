@@ -42,9 +42,38 @@ pub fn feature_directory(root: &Path, feature: &str) -> Option<PathBuf> {
     None
 }
 
-/// Where the checkout named `name` keeps everything it makes outside itself.
-pub fn scratch(name: &str) -> PathBuf {
+/// Where the checkout named `name` keeps everything it makes outside itself: a folder of
+/// `~/dispatch-platform/scratch`, by that folder's real path. The stores tests make refuse a
+/// path through a symlink, and the MacBook keeps `~/dispatch-platform` behind one.
+pub fn scratch(name: &str) -> Result<PathBuf> {
+    let home = std::env::var_os("HOME").ok_or("HOME is required for the scratch folders.")?;
+    Ok(real(&Path::new(&home).join("dispatch-platform/scratch"))?.join(name))
+}
+/// The scratch folder of the change named `name` as it is now: where `scratch` keeps it, unless
+/// only the one it kept in `/tmp` before is there, which no command has moved yet.
+pub fn current_scratch(name: &str) -> Result<PathBuf> {
+    let dir = scratch(name)?;
+    let old = left_in_tmp(name);
+    Ok(match fs::symlink_metadata(&dir) {
+        Err(_) if fs::symlink_metadata(&old).is_ok_and(|meta| meta.is_dir()) => old,
+        _ => dir,
+    })
+}
+/// Where a change kept its scratch folder before they moved home: macOS clears `/tmp`.
+fn left_in_tmp(name: &str) -> PathBuf {
     PathBuf::from(format!("/tmp/dispatch-{name}"))
+}
+/// `path` by its real path as far as it is there, and as it is named past that.
+fn real(path: &Path) -> Result<PathBuf> {
+    match fs::canonicalize(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            match (path.parent(), path.file_name()) {
+                (Some(parent), Some(name)) => Ok(real(parent)?.join(name)),
+                _ => Err(error.into()),
+            }
+        }
+        real => Ok(real?),
+    }
 }
 /// The name of the checkout at `root`: its folder's.
 pub fn checkout_name(root: &Path) -> Result<&str> {
@@ -52,19 +81,75 @@ pub fn checkout_name(root: &Path) -> Result<&str> {
         .and_then(|name| name.to_str())
         .ok_or_else(|| "A checkout without a folder name".into())
 }
-/// The scratch folder of the checkout at `root`, made private if it is new, by its real path:
-/// the stores tests make refuse a path through a symlink, and macOS keeps `/tmp` behind one.
+/// The scratch folder of the checkout at `root`, by its real path: the one it kept in `/tmp`
+/// moved into place if it has none yet, else made private if it is new.
 pub fn checkout_scratch(root: &Path) -> Result<PathBuf> {
-    Ok(fs::canonicalize(scratch_dir(checkout_name(root)?)?)?)
+    let name = checkout_name(root)?;
+    let dir = scratch(name)?;
+    move_into_place(&left_in_tmp(name), &dir)?;
+    private_dir(&dir)?;
+    Ok(fs::canonicalize(dir)?)
 }
-/// The scratch folder of the checkout named `name`, made private if it is new.
-fn scratch_dir(name: &str) -> Result<PathBuf> {
-    let dir = scratch(name);
+/// A folder only this user can open, with the folders it is in, if it is new.
+fn private_dir(dir: &Path) -> Result<()> {
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
-        .create(&dir)?;
-    Ok(dir)
+        .create(dir)?;
+    Ok(())
+}
+/// Moves the scratch folder `old` to `dir`, once: only while `dir` isn't there and `old` is a
+/// folder itself, never what a link names. Across disks it is copied beside `dir` and renamed
+/// into place once whole, before `old` goes, so nothing is lost to a move cut short.
+fn move_into_place(old: &Path, dir: &Path) -> Result<()> {
+    if fs::symlink_metadata(dir).is_ok()
+        || !fs::symlink_metadata(old).is_ok_and(|meta| meta.is_dir())
+    {
+        return Ok(());
+    }
+    private_dir(dir.parent().ok_or("A scratch folder without a parent")?)?;
+    match fs::rename(old, dir) {
+        Err(error) if error.kind() == std::io::ErrorKind::CrossesDevices => {
+            let mut partial = dir.as_os_str().to_owned();
+            partial.push(".partial");
+            let partial = PathBuf::from(partial);
+            if partial.exists() {
+                fs::remove_dir_all(&partial)?;
+            }
+            copy(old, &partial)?;
+            fs::rename(&partial, dir)?;
+            fs::remove_dir_all(old)?;
+        }
+        // Another command moved it meanwhile.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && dir.is_dir() => return Ok(()),
+        moved => moved?,
+    }
+    crate::review::reconnect(dir, &crate::Native)?;
+    eprintln!(
+        "Moved the scratch folder {} to {}.",
+        old.display(),
+        dir.display()
+    );
+    Ok(())
+}
+/// Copies the folder `from` to `to`, which isn't there yet, each file with its mode and each
+/// link as a link. Anything else, such as a server's socket, means nothing once moved.
+fn copy(from: &Path, to: &Path) -> Result<()> {
+    fs::create_dir(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let (source, target) = (entry.path(), to.join(entry.file_name()));
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            copy(&source, &target)?;
+        } else if kind.is_symlink() {
+            std::os::unix::fs::symlink(fs::read_link(&source)?, &target)?;
+        } else if kind.is_file() {
+            fs::copy(&source, &target)?;
+        }
+    }
+    fs::set_permissions(to, fs::metadata(from)?.permissions())?;
+    Ok(())
 }
 /// A file only this user can read, replaced whole.
 pub fn write_private(path: &Path, text: &str) -> Result<()> {
@@ -279,5 +364,53 @@ mod tests {
         let measured = size(&crate::Native, temp.path());
         assert!(measured.is_some_and(|bytes| bytes >= 8192), "{measured:?}");
         assert_eq!(size(&crate::Native, &temp.path().join("gone")), None);
+    }
+    #[test]
+    fn a_scratch_folder_moved_from_tmp_keeps_its_review_checkout_one_of_the_clones() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(temp.path()).unwrap();
+        let clone = base.join("repo");
+        fs::create_dir(&clone).unwrap();
+        let git = |args: &[&str]| {
+            let identity = ["-c", "user.name=t", "-c", "user.email=t@t"];
+            git(&crate::Native, &clone, &[&identity[..], args].concat()).unwrap()
+        };
+        git(&["init", "-q"]);
+        git(&["commit", "-q", "--allow-empty", "-m", "x"]);
+        let old = base.join("tmp/dispatch-change");
+        let reading = old.join("review/1/checkout");
+        git(&["worktree", "add", "-q", "--detach", reading.to_str().unwrap()]);
+        let dir = base.join("scratch/change");
+        move_into_place(&old, &dir).unwrap();
+        assert!(!old.exists());
+        // `take` and `finish` remove it through git, by where it is now.
+        let moved = dir.join("review/1/checkout");
+        git(&["worktree", "remove", "--force", moved.to_str().unwrap()]);
+        assert!(!moved.exists());
+    }
+    #[test]
+    fn a_copy_across_disks_keeps_each_file_with_its_mode_and_each_link() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let from = temp.path().join("from");
+        fs::create_dir_all(from.join("review/1")).unwrap();
+        fs::write(from.join("review/1/brief.md"), "brief").unwrap();
+        write_private(&from.join("decisions.md"), "approved").unwrap();
+        std::os::unix::fs::symlink("decisions.md", from.join("link")).unwrap();
+        fs::set_permissions(&from, fs::Permissions::from_mode(0o700)).unwrap();
+        let to = temp.path().join("to");
+        copy(&from, &to).unwrap();
+        let mode = |path: &Path| fs::symlink_metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&to), 0o700);
+        assert_eq!(mode(&to.join("decisions.md")), 0o600);
+        assert_eq!(
+            fs::read_to_string(to.join("decisions.md")).unwrap(),
+            "approved"
+        );
+        assert_eq!(
+            fs::read_to_string(to.join("review/1/brief.md")).unwrap(),
+            "brief"
+        );
+        assert_eq!(fs::read_link(to.join("link")).unwrap(), Path::new("decisions.md"));
     }
 }
