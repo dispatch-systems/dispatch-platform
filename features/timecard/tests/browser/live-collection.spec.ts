@@ -7,6 +7,9 @@ import {
   demo,
   login,
   atHome,
+  fromPage,
+  openDsp,
+  placeWidgets,
 } from '../../../../core/shell/tests/support/fixtures.js';
 import { expectDate, setDate } from '../support/page.js';
 import { paycomDefaults } from '../../frontend/paycom.js';
@@ -224,4 +227,31 @@ test('driver results update open timecards and meal breaks without resetting the
   await announce();
   await expect(page.getByText('No meal breaks or punches for this date')).toBeVisible();
   await page.unrouteAll({ behavior: 'ignoreErrors' });
+});
+
+test('the widgets on Home that follow collections share one sleeping request', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await placeWidgets(owner, dsp.id, [
+    { id: 'timecard.late_das', columns: 2, rows: 2 },
+    { id: 'dvic.latest', columns: 2, rows: 2, x: 2 },
+  ]);
+  // Each follower starts from no revision: one request asks so, however many follow.
+  let started = 0;
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/dsp/collection-updates' && url.searchParams.get('after') === '')
+      started++;
+  });
+  await login(page);
+  await openDsp(page, dsp.name);
+  await atHome(page);
+  await expect(page.getByRole('article', { name: 'Late DAs', exact: true })).toContainText('late');
+  await expect(page.getByRole('article', { name: 'Latest DVIC', exact: true })).toBeVisible();
+  // Both widgets started following before they drew; a read asked after them comes after.
+  await fromPage(page, '/api/session');
+  expect(started).toBe(1);
 });
