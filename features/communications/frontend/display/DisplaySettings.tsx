@@ -20,7 +20,7 @@ import {
 } from './display.js';
 import { allowed as notificationsAllowed, canNotify } from '../alerts/notices.js';
 import { canPush } from '../alerts/push.js';
-import { DISPATCH_PHONE, keptAt, own, type TextingLine } from '../line.js';
+import { DISPATCH_PHONE, keptAt, Line, own, type TextingLine } from '../line.js';
 import '../communications.css';
 import './display.css';
 
@@ -431,12 +431,10 @@ export function DisplaySettings({
         </div>
       </div>
 
-      <DisplayPreview
-        display={shown}
-        phone={phone}
-        texts={!own(line)}
-        timeZone={view.dsp.timezone}
-      />
+      {/* The page of its own line, with what that line's page has. */}
+      <Line.Provider value={line}>
+        <DisplayPreview display={shown} phone={phone} timeZone={view.dsp.timezone} />
+      </Line.Provider>
     </div>
   );
 }

@@ -77,4 +77,15 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   await expect(page.getByText('Payroll will call you')).toHaveCount(0);
   await expect(page.getByText('Jordan Ellis')).toHaveCount(0);
 
+  // HR Line's Display section previews its own page, without Dispatch Phone's quick replies.
+  const saved = await owner.post('/api/dsp/dispatch-phone/quick-replies', {
+    replies: ['On my way'],
+    revision: 0,
+  });
+  expect(saved.status).toBe(200);
+  await page.goto(`${origin}/#dsp/${north.id}/settings?tab=display`);
+  const replies = (section: string) =>
+    page.locator(`[data-settings-section="${section}"] .quick-replies-button`);
+  await expect(replies('communications.display')).toHaveCount(1);
+  await expect(replies('cjf87gqd_hr_line.display')).toHaveCount(0);
 });

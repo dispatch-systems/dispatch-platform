@@ -12,6 +12,7 @@ import { Thread } from '../conversations/Thread.js';
 import { useLayout } from '../page/useLayout.js';
 import { dockAt, pageLook, Shown, type Display } from './display.js';
 import { sample } from './sample.js';
+import { own, useLine } from '../line.js';
 
 // Message display's preview: the Communications page as `display` has it look, drawn by the
 // page's own parts with a made-up morning (`sample`), on a screen `width` by `height` (a phone's
@@ -26,7 +27,6 @@ export function Preview({
   display,
   phone,
   profile,
-  texts,
   width,
   height,
   timeZone,
@@ -35,13 +35,13 @@ export function Preview({
   phone: boolean;
   /** Whether Jamal's profile is open. */
   profile: boolean;
-  /** Whether its conversations are by text, as another feature's line's all are. */
-  texts: boolean;
   width: number;
   height: number;
   timeZone: string;
 }) {
   const now = useMemo(() => Date.now(), []);
+  // Another feature's line's conversations are all by text.
+  const texts = !own(useLine());
   const {
     inbox,
     open,

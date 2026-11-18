@@ -3,6 +3,7 @@ import { Choice } from './controls.js';
 import { widths, type Display } from './display.js';
 import { ACTUAL_LEAST, frame } from './frame.js';
 import { Preview } from './Preview.js';
+import { own, useLine } from '../line.js';
 
 /** The size of what `box` holds, as it changes. */
 function useRoom(box: RefObject<HTMLElement | null>) {
@@ -57,15 +58,14 @@ function usePage(box: RefObject<HTMLElement | null>) {
 export function DisplayPreview({
   display: shown,
   phone,
-  texts,
   timeZone,
 }: {
   display: Display;
   phone: boolean;
-  /** Whether its conversations are by text, with no profile, as another feature's line's are. */
-  texts: boolean;
   timeZone: string;
 }) {
+  // Another feature's line's conversations are all by text, with no profile.
+  const texts = !own(useLine());
   const [size, setSize] = useState<'actual' | 'fit'>('fit');
   const [profile, setProfile] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
@@ -121,7 +121,6 @@ export function DisplayPreview({
                 display={shown}
                 phone={phone}
                 profile={profile && !texts}
-                texts={texts}
                 width={width}
                 height={height}
                 timeZone={timeZone}
