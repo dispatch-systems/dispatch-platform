@@ -244,12 +244,21 @@ const COMMANDS: &[Spec] = &[
     .options(&["--owner", "--only", "--file"]),
     spec(
         "dev",
-        &["dev status [--json]"],
+        &[
+            "dev status [--json]",
+            "dev custom-id <dsp> <id>",
+            "dev feature <dsp> <feature>",
+            "            <on | off>",
+        ],
         "The checkout's fixture server, its process and served source identity, without \
-         starting, stopping or signing in. JSON omits the sign-in link and password.",
+         starting, stopping or signing in. JSON omits the sign-in link and password. custom-id \
+         gives a DSP there, by its name or id, a known custom ID, and feature switches one of \
+         its features on or off, each through the platform owner's route as DSP \
+         administration does, logged and audited as there; a server that says it is \
+         Production is refused.",
     )
     .flags(&["--json"])
-    .arguments(1),
+    .arguments(4),
     spec(
         "verify",
         &["verify <feature>"],
@@ -763,15 +772,40 @@ fn run() -> Result<()> {
             }
         }
         "dev" => {
-            if line.name()? != "status" {
-                return Err("Use dispatchdev dev status [--json].".into());
-            }
-            let status = dev::status(&line.root()?, &Native)?;
-            if line.flag("--json") {
-                println!("{}", serde_json::to_string_pretty(&status)?);
-            } else {
-                status.print();
-            }
+            let arguments: Vec<&str> = line.arguments.iter().map(String::as_str).collect();
+            let change = match arguments.as_slice() {
+                ["status"] => {
+                    let status = dev::status(&line.root()?, &Native)?;
+                    if line.flag("--json") {
+                        println!("{}", serde_json::to_string_pretty(&status)?);
+                    } else {
+                        status.print();
+                    }
+                    return Ok(());
+                }
+                [_, ..] if line.flag("--json") => {
+                    return Err("--json goes with dev status.".into());
+                }
+                ["custom-id", dsp, id] => (*dsp, api::Change::CustomId(id)),
+                ["feature", dsp, feature, state @ ("on" | "off")] => (
+                    *dsp,
+                    api::Change::Feature {
+                        feature,
+                        enabled: *state == "on",
+                    },
+                ),
+                _ => {
+                    return Err(
+                        "Use dispatchdev dev status [--json], dev custom-id <dsp> <id> \
+                                or dev feature <dsp> <feature> <on | off>."
+                            .into(),
+                    );
+                }
+            };
+            println!(
+                "{}",
+                api::change(&line.root()?, change.0, change.1, &Native)?
+            );
             Ok(())
         }
         "verify" => {
