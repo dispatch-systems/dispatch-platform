@@ -25,13 +25,6 @@ use dispatch_core::{
 use dispatch_routes_contract::MOST_ID_LENGTH;
 use std::sync::Arc;
 
-/// The route's access to the texting of `line`, Dispatch Phone's own for none.
-fn lined(grant: Dsp, line: Option<Line<'static>>) -> Access {
-    Access {
-        grant,
-        line: line.map(|line| line.id),
-    }
-}
 /// The conversation by text the route names.
 fn texted(input: &Input) -> Result<String> {
     Reference::parse(input.param("id"))?.texted()
@@ -49,7 +42,7 @@ pub async fn retry_of(
     access: Dsp,
     line: Option<Line<'static>>,
 ) -> Result<Reply> {
-    let (asked, access) = (input.clone(), lined(access, line));
+    let (asked, access) = (input.clone(), Access::of(access, line));
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &[])?;
     let conversation = texted(&input)?;
@@ -238,7 +231,7 @@ async fn text_shown(
     line: Option<Line<'static>>,
     preview: bool,
 ) -> Result<Reply> {
-    let (asked, access) = (input.clone(), lined(access, line));
+    let (asked, access) = (input.clone(), Access::of(access, line));
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.query, &["v"])?;
     let version = optional(&input.query, "v", |q, key| v::text(q, key, 1, 64))?;
@@ -256,7 +249,7 @@ pub async fn fetch_text_file_of(
     access: Dsp,
     line: Option<Line<'static>>,
 ) -> Result<Reply> {
-    let (asked, access) = (input.clone(), lined(access, line));
+    let (asked, access) = (input.clone(), Access::of(access, line));
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.query, &[])?;
     v::fields(&input.body, &[])?;
@@ -282,7 +275,7 @@ pub async fn add_text_photo_of(
     photo: Upload,
     line: Option<Line<'static>>,
 ) -> Result<Reply> {
-    let (asked, access) = (input.clone(), lined(access, line));
+    let (asked, access) = (input.clone(), Access::of(access, line));
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.query, &["name", "type"])?;
     let name = v::name(&input.query, "name", 200)?;

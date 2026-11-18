@@ -117,13 +117,7 @@ pub async fn updates_of(
         text.parse().map_err(|_| Error::new("invalid_input", 400))
     };
     let (after, seen) = (number("after")?, number("typing")?);
-    let (asked, access) = (
-        input.clone(),
-        Access {
-            grant: access,
-            line: line.map(|line| line.id),
-        },
-    );
+    let (asked, access) = (input.clone(), Access::of(access, line));
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     // Who is waiting, as their request says each time it's read again.
     let again = move |db: &Store| access.grant.authorize(db, &input);

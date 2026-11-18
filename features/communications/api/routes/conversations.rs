@@ -135,11 +135,8 @@ pub async fn send_of(
 ) -> Result<Reply> {
     let asked = input.clone();
     let reference = Reference::parse(input.param("id"))?;
-    let line = line.map(|line| line.id);
-    let access = Access {
-        grant: access,
-        line,
-    };
+    let access = Access::of(access, line);
+    let line = access.line;
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     let limits = compose::of(&reference);
     // GIFs are Dispatch Phone's own.
@@ -169,11 +166,8 @@ pub async fn typing_of(
     let asked = input.clone();
     let reference = Reference::parse(input.param("id"))?;
     let of = reference.clone();
-    let line = line.map(|line| line.id);
-    let access = Access {
-        grant: access,
-        line,
-    };
+    let access = Access::of(access, line);
+    let line = access.line;
     let c = state
         .read(move |db| {
             let c = access.authorize(db, &asked)?;
