@@ -9,76 +9,95 @@ import {
 } from '../../shell/frontend/runtime/data-policy.js';
 import { getCollectionUpdates } from '../api/client.js';
 
+/** The sleeping request each view follows, and how many on the page follow it. */
+const following = new Map<string, { users: number; stop: () => void }>();
+
 /**
  * One sleeping request for a page that follows its collections live, shared across its days and
- * tabs. A finished collection refreshes the reads its feature's cache rules say it reaches.
+ * tabs, and by every widget and page following them at once. A finished collection refreshes the
+ * reads its feature's cache rules say it reaches.
  */
 export function useCollectionUpdates() {
   const token = view;
   useEffect(() => {
-    let disposed = false;
-    let pending: ReturnType<typeof setTimeout> | undefined;
-    let after = '';
-    let pendingVersion: string | undefined;
-    let pendingChanges: CollectionChange[] = [];
-    const refresh = (version: string, changes: CollectionChange[]) => {
-      pendingVersion = version;
-      pendingChanges.push(...changes);
-      if (pending) return;
-      // Coalesce closely spaced driver results from the collection lanes.
-      pending = setTimeout(() => {
-        pending = undefined;
-        if (!disposed) {
-          const changes = pendingChanges;
-          pendingChanges = [];
-          dataCache.observeVersion('collections', pendingVersion!, (url) =>
-            collectionAffects(url, changes),
-          );
-        }
-      }, 400);
-    };
-    const poll = longPoll(
-      async (signal) => {
-        const result = await getCollectionUpdates(
-          after,
-          AbortSignal.any([signal, AbortSignal.timeout(30000)]),
-        );
-        if (!signal.aborted && !disposed) {
-          // Record the baseline before a fast first update can coalesce with it.
-          if (after === '')
-            dataCache.observeVersion('collections', result.revision, collectionData);
-          else if (result.revision !== after) refresh(result.revision, result.changes);
-          after = result.revision;
-        }
-      },
-      (_cause, stopped, first) => {
-        // A transient transport failure still gets a conventional data refresh.
-        if (!stopped && first) dataCache.invalidate(collectionData);
-      },
-    );
-    const visibility = () => {
-      poll.clearRetry();
-      if (document.hidden || !navigator.onLine) {
-        poll.pause();
-        if (pending) clearTimeout(pending);
-        pending = undefined;
-        pendingChanges = [];
-      } else {
-        after = '';
-        void poll.listen();
-      }
-    };
-    document.addEventListener('visibilitychange', visibility);
-    window.addEventListener('online', visibility);
-    window.addEventListener('offline', visibility);
-    void poll.listen();
+    let shared = following.get(token);
+    if (!shared) {
+      shared = { users: 0, stop: follow() };
+      following.set(token, shared);
+    }
+    shared.users++;
+    const mine = shared;
     return () => {
-      disposed = true;
-      poll.dispose();
-      if (pending) clearTimeout(pending);
-      document.removeEventListener('visibilitychange', visibility);
-      window.removeEventListener('online', visibility);
-      window.removeEventListener('offline', visibility);
+      if (--mine.users) return;
+      following.delete(token);
+      mine.stop();
     };
   }, [token]);
+}
+
+/** Starts the view's sleeping request, returning what stops it. */
+function follow() {
+  let disposed = false;
+  let pending: ReturnType<typeof setTimeout> | undefined;
+  let after = '';
+  let pendingVersion: string | undefined;
+  let pendingChanges: CollectionChange[] = [];
+  const refresh = (version: string, changes: CollectionChange[]) => {
+    pendingVersion = version;
+    pendingChanges.push(...changes);
+    if (pending) return;
+    // Coalesce closely spaced driver results from the collection lanes.
+    pending = setTimeout(() => {
+      pending = undefined;
+      if (!disposed) {
+        const changes = pendingChanges;
+        pendingChanges = [];
+        dataCache.observeVersion('collections', pendingVersion!, (url) =>
+          collectionAffects(url, changes),
+        );
+      }
+    }, 400);
+  };
+  const poll = longPoll(
+    async (signal) => {
+      const result = await getCollectionUpdates(
+        after,
+        AbortSignal.any([signal, AbortSignal.timeout(30000)]),
+      );
+      if (!signal.aborted && !disposed) {
+        // Record the baseline before a fast first update can coalesce with it.
+        if (after === '') dataCache.observeVersion('collections', result.revision, collectionData);
+        else if (result.revision !== after) refresh(result.revision, result.changes);
+        after = result.revision;
+      }
+    },
+    (_cause, stopped, first) => {
+      // A transient transport failure still gets a conventional data refresh.
+      if (!stopped && first) dataCache.invalidate(collectionData);
+    },
+  );
+  const visibility = () => {
+    poll.clearRetry();
+    if (document.hidden || !navigator.onLine) {
+      poll.pause();
+      if (pending) clearTimeout(pending);
+      pending = undefined;
+      pendingChanges = [];
+    } else {
+      after = '';
+      void poll.listen();
+    }
+  };
+  document.addEventListener('visibilitychange', visibility);
+  window.addEventListener('online', visibility);
+  window.addEventListener('offline', visibility);
+  void poll.listen();
+  return () => {
+    disposed = true;
+    poll.dispose();
+    if (pending) clearTimeout(pending);
+    document.removeEventListener('visibilitychange', visibility);
+    window.removeEventListener('online', visibility);
+    window.removeEventListener('offline', visibility);
+  };
 }

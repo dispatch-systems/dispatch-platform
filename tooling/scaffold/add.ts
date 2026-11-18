@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { featureDirectory, featureLocations } from '../shared/features.js';
 import { renderFeature, settingsNote, shipping, showing } from './new-feature.js';
 import { UsageError, names, parseArguments } from './common.js';
@@ -134,14 +135,13 @@ export async function planAdd(root: string, argv: string[]) {
     throw new UsageError(`${name} has the widget ${name}.${value!} already`);
   if (piece === 'tab-of' && value === name)
     throw new UsageError(`A tab of ${name}'s own page is one of its own tabs: add it there`);
+  // What each feature uses and keeps, as `dispatchdev generate` last mapped it.
+  const map = JSON.parse(read(root, 'app/generated/features.json')) as Record<
+    string,
+    { collectors: string[]; depends_on: string[]; tables: Record<string, string[]> }
+  >;
   // Its people's table, by the database the feature keeps it in.
-  const tables =
-    (
-      JSON.parse(read(root, 'app/generated/features.json')) as Record<
-        string,
-        { tables: Record<string, string[]> }
-      >
-    )[name]?.tables ?? {};
+  const tables = map[name]?.tables ?? {};
   const table = args.options.get('table');
   const database = Object.entries(tables).find(([, list]) => table && list.includes(table))?.[0];
   if (
@@ -270,44 +270,42 @@ export async function planAdd(root: string, argv: string[]) {
   if (piece === 'widget') await shipping(root, plan, `${name}.${value!}`);
   // The test a contract or settings brings installs the feature with what it uses: the
   // collectors and features the feature map says it uses, what its other tests install, however
-  // they name it, and what its manifest, as the piece leaves it, depends on.
+  // they name it, and what its manifest, as the piece leaves it, depends on. A feature among them
+  // brings what it uses in turn, all the way down, as the registry wants each registered; what
+  // the feature doesn't declare itself is a dependency of its tests alone.
   const tested = ({ contract: 'exposed', settings: 'settings' } as Record<string, string>)[piece!];
   if (tested) {
     const now = (file: string) => plan.changes.get(file) ?? read(root, file);
-    const used = new Map<string, 'collector' | 'feature'>();
-    const kindOf = (each: string) =>
-      exists(root, `collectors/${each}/collector.rs`)
-        ? 'collector'
-        : each !== name && exists(root, `${featureDirectory(root, each)}/feature.rs`)
-          ? 'feature'
-          : undefined;
-    const mapped = (
-      JSON.parse(read(root, 'app/generated/features.json')) as Record<
-        string,
-        { collectors: string[]; depends_on: string[] }
-      >
-    )[name];
-    for (const each of [...(mapped?.collectors ?? []), ...(mapped?.depends_on ?? [])]) {
-      const kind = kindOf(each);
-      if (kind) used.set(each, kind);
-    }
+    const used = new Map<string, { kind: 'collector' | 'feature'; at: string }>();
+    const use = (each: string) => {
+      if (used.has(each)) return;
+      if (exists(root, `collectors/${each}/collector.rs`))
+        used.set(each, { kind: 'collector', at: `collectors/${each}` });
+      else if (each !== name && exists(root, `${featureDirectory(root, each)}/feature.rs`)) {
+        used.set(each, { kind: 'feature', at: featureDirectory(root, each) });
+        [...(map[each]?.collectors ?? []), ...(map[each]?.depends_on ?? [])].forEach(use);
+      }
+    };
+    [...(map[name]?.collectors ?? []), ...(map[name]?.depends_on ?? [])].forEach(use);
     for (const file of files(root, dir, /\.rs$/))
       for (const [, collectors, features] of now(file).matchAll(
         /::install\(\s*&\[([^\]]*)\],\s*&\[([^\]]*)\]/g,
       ))
         for (const [, each] of `${collectors} ${features}`.matchAll(
           /&(?:dispatch_)?(\w+)::(?:COLLECTOR|FEATURE)\b/g,
-        )) {
-          const kind = kindOf(each!);
-          if (kind) used.set(each!, kind);
-        }
+        ))
+          use(each!);
     const declared = /\bdepends_on:\s*&\[([^\]]*)\]/.exec(now(`${dir}/feature.rs`))?.[1] ?? '';
-    for (const [, each] of declared.matchAll(/"([^"]+)"/g)) {
-      const kind = kindOf(each!);
-      if (kind) used.set(each!, kind);
-    }
-    for (const [each, kind] of used)
+    for (const [, each] of declared.matchAll(/"([^"]+)"/g)) use(each!);
+    for (const [each, { kind }] of used)
       installing(root, plan, dir, { [kind]: each }, `${dir}/tests/backend/${tested}.rs`);
+    const cargo = `${dir}/Cargo.toml`;
+    const crates = [...used.values()].map(({ at }) => {
+      const crate = /^name = "([^"]+)"$/m.exec(read(root, `${at}/Cargo.toml`))![1];
+      return `${crate} = { path = "${path.posix.relative(dir, at)}" }`;
+    });
+    const merged = mergeToml(now(cargo), `[dev-dependencies]\n${crates.join('\n')}\n`);
+    if (merged !== now(cargo)) plan.changes.set(cargo, merged);
   }
   if (piece === 'settings') plan.notes.push(settingsNote(name, slug));
   if (joins)

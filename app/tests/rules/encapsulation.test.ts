@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { holds } from './support/holds.js';
-import { declared, inTest } from './support/manifests.js';
+import { declared, installedWith, inTest } from './support/manifests.js';
 import { isTestFile, ownerOf, read, root } from './support/repo.js';
 import { lexFile, rust } from './support/rust.js';
 import { imports, scriptFiles } from './support/typescript.js';
@@ -36,8 +36,8 @@ test("each owner's TypeScript imports only itself, core and what it declares", (
 type Listing = { product: Set<string>; all: Set<string> };
 /**
  * Whether a file lists features or collectors as only the app may. A feature's or collector's
- * tests may name the manifests of itself and of what it may use, the dependencies rule's set,
- * to install a registry of just those, and the MCP's tests those its tools need; core's tests
+ * tests may name the manifests of itself, of what it may use, and of what those use in turn, to
+ * install a registry of just those, and the MCP's tests those its tools need; core's tests
  * name none.
  */
 function listsOthers(file: string, { product, all }: Listing): boolean {
@@ -45,7 +45,7 @@ function listsOthers(file: string, { product, all }: Listing): boolean {
   const owner = ownerOf(file);
   if (product.size > 1 || !owner || !['feature', 'collector', 'mcp'].includes(owner.layer))
     return true;
-  const may = new Set([owner.dir, ...declared(owner)]);
+  const may = new Set([owner.dir, ...installedWith(owner)]);
   return [...all].some((dir) => !may.has(dir));
 }
 
