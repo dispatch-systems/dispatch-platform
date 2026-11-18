@@ -17,6 +17,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Eye, EyeOff, GripVertical, type LucideIcon } from 'lucide-react';
 import type { SidebarArrangement } from '../../../accounts/api/index.js';
+import './sidebar-edit.css';
 
 /** What it shows of an item of the app's sidebar. */
 type Item = { id: string; label: string; icon?: LucideIcon };

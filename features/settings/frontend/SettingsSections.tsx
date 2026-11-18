@@ -1,13 +1,15 @@
-import { Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
 import type { SettingsAnswer } from '../../../core/settings/api/index.js';
 import { LeaveGuards, type Guards } from '../../../core/shell/frontend/runtime/leave.js';
 import { settingsSection } from '../../../core/shell/frontend/runtime/slots.js';
 import { Loading } from '../../../core/shell/frontend/ui/index.js';
 import { whoseSettings } from './drafts.js';
-import type { Found } from './find.js';
-import { Section, sectionElement } from './Section.js';
-import { drawnSections, sectionsOn } from './pages.js';
+import { sectionElement, type Found } from './find.js';
+import { drawnSections, loadSection, sectionsOn } from './pages.js';
+
+// A declared section's code loads with the first page that draws one (loadPage).
+const Section = lazy(() => loadSection().then((module) => ({ default: module.Section })));
 
 /**
  * One page of Settings: its sections in their order, a declared one drawn from what the server

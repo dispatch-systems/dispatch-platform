@@ -77,9 +77,18 @@ const customOn = (settings: SettingsAnswer, view: DspView, page: string | undefi
   sectionsOn(settings, view, page).flatMap((section) =>
     section.custom ? (settingsSection(section.id) ?? []) : [],
   );
-/** Loads the code of a page's custom sections. */
-export const loadPage = (settings: SettingsAnswer, view: DspView, page: string | undefined) =>
-  Promise.all(customOn(settings, view, page).map((section) => section.load()));
+/** Loads the code that draws a declared section. */
+export const loadSection = () => import('./Section.js');
+/** Loads the code of a page's sections: its custom ones', and while it has a declared one, theirs. */
+export const loadPage = (settings: SettingsAnswer, view: DspView, page: string | undefined) => {
+  const declared = drawnSections(settings, view).some(
+    (section) => section.page === page && !section.custom,
+  );
+  return Promise.all([
+    ...customOn(settings, view, page).map((section) => section.load()),
+    ...(declared ? [loadSection()] : []),
+  ]);
+};
 
 /** The page the address names, while it names this DSP's Settings. */
 function addressed(view: DspView) {
