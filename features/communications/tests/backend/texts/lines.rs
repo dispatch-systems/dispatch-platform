@@ -2,8 +2,8 @@
 //! conversation on each, every one of another line's a number's, however Routes files the number;
 //! each line lists, counts, opens and answers only its own, from its own phones, and names and
 //! blocks a number on its own alone, logged as its own; a line whose texts aren't filed yet keeps
-//! them as its phones' alone; and what was kept before the lines were is Dispatch Phone's, left as
-//! it was.
+//! them as its phones' alone; another line's page, waiting or answering, is refused once Dispatch
+//! Phone is off; and what was kept before the lines were is Dispatch Phone's, left as it was.
 use super::{
     contacts, filing,
     model::Filed,
@@ -11,8 +11,9 @@ use super::{
     storage::{ContactStore, TextStore},
 };
 use crate::backend::{
+    access::Access,
     changes::ChangeStore,
-    inbox,
+    inbox, live,
     model::ConversationKind,
     phone::{
         model::Direction,
@@ -22,7 +23,12 @@ use crate::backend::{
     support::{self, filed, migrate, phoned, phones, started, texted, texted_on, today},
 };
 use crate::{Communications, Conversation};
-use dispatch_core::{State, db::now, testing};
+use dispatch_core::{
+    State,
+    db::{Store, now},
+    server::http::route::Dsp,
+    testing,
+};
 use std::sync::Arc;
 
 /// Another feature's line, as a test pairs a phone to it.
@@ -37,6 +43,9 @@ const NIGHT: Line = Line {
     name: "Night Desk",
     texting: false,
 };
+/// What another line's page is behind: a permission of its own, which Dispatch Phone being off
+/// doesn't take away.
+const MANAGE: Dsp = Dsp("connections.manage");
 /// The number that texts both lines.
 const JORDAN: &str = "+14255550199";
 
@@ -214,7 +223,11 @@ async fn an_answer_goes_from_its_conversations_line_and_each_line_answers_only_i
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let send = |line: Option<&'static str>, id: &str, text: &'static str| {
         let (state, c, id) = (state.clone(), c.clone(), id.to_owned());
-        async move { reply::send(&state, &c, support::USE, line, &id, text, (&[], None)).await }
+        let access = Access {
+            grant: support::USE,
+            line,
+        };
+        async move { reply::send(&state, &c, access, &id, text, (&[], None)).await }
     };
     let outbox = |of: String| {
         let (at, state) = (dsp.clone(), state.clone());
@@ -312,6 +325,57 @@ async fn names_and_blocks_are_each_lines_own_and_logged_as_its_own() {
         logged,
         ["front_desk.contact_saved", "front_desk.number_blocked"]
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn another_lines_page_waiting_or_answering_is_refused_once_dispatch_phone_is_off() {
+    let (_root, state, dsp) = started();
+    let phone = desk(&state, &dsp).await;
+    let theirs = texted_on(&state, &dsp, &phone, JORDAN, "About my paycheck", now()).await;
+    let theirs = filed(&state, &dsp, &theirs).await;
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let access = Access {
+        grant: MANAGE,
+        line: Some(DESK.id),
+    };
+    // Who is waiting, let in as each request of theirs would be, as things stand then.
+    let (auth, at) = (c.auth.clone(), dsp.clone());
+    let again = move |db: &Store| db.context(&auth, &at, MANAGE.0);
+    let (shared, at, me) = (state.clone(), dsp.clone(), c.auth.user.id.clone());
+    let (now_at, _) = state
+        .read(move |db| inbox::updates(db, &shared, &at, DESK.id.into(), -1, &me))
+        .await
+        .unwrap();
+
+    // Its page waits on its changes, with nothing new, as Dispatch Phone is switched off; then
+    // its line changes. Read again, it's refused, not answered.
+    let waiting = tokio::spawn({
+        let (state, dsp, again) = (state.clone(), dsp.clone(), again.clone());
+        let (after, seen) = (now_at.revision, now_at.typing.version as i64);
+        async move { inbox::waited(&state, access, &dsp, again, after, seen).await }
+    });
+    support::switch(&state, &dsp, crate::FEATURE.switch.id, false).await;
+    live::changed_on(&state, &dsp, Some(DESK.id));
+    let refused = waiting.await.unwrap().map(drop).map_err(|error| error.code);
+    assert_eq!(refused, Err("not_found".to_owned()));
+
+    // Nor does an answer written now go, its access read again as it's queued.
+    let now_c = state.read(again).await.unwrap();
+    let refused = reply::send(
+        &state,
+        &now_c,
+        access,
+        &theirs.id,
+        "Payroll will call you",
+        (&[], None),
+    )
+    .await
+    .map(drop)
+    .map_err(|error| error.code);
+    assert_eq!(refused, Err("not_found".to_owned()));
+    let (at, from) = (dsp.clone(), phone.clone());
+    let outbox = state.read(move |db| db.phones_outbox(&at, &from)).await;
+    assert!(outbox.unwrap().is_empty());
 }
 
 #[tokio::test]

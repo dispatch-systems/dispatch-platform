@@ -24,6 +24,7 @@ pub use routes::failing;
 
 use crate::api::types::Message;
 use crate::backend::{
+    access::Access,
     conversations, model,
     storage::{
         conversations::{Conversation, ConversationStore},
@@ -63,6 +64,11 @@ use std::{
 
 /// Reading the DSP's conversations and answering them.
 pub const USE: Dsp = Dsp("communications.use");
+/// Dispatch Phone's own line's texting, as its routes let a member in.
+pub const OWN: Access = Access {
+    grant: USE,
+    line: None,
+};
 /// What the workspace's admin approved: what Slack and Communications ask for.
 const APPROVED: &[&str] = &[
     "users:read",

@@ -6,6 +6,7 @@ use super::served;
 use crate::{
     api::types::PushKey,
     backend::{
+        access::Access,
         push::{
             self, OWN, Pushed,
             storage::{Address, PushStore, Subscription},
@@ -21,7 +22,7 @@ use dispatch_core::{
     foundation::{config::Site, validate as v},
     server::http::{
         input::{Input, Reply},
-        route::{Dsp, Grant, Member},
+        route::{Dsp, Member},
     },
 };
 use serde_json::Value;
@@ -59,9 +60,14 @@ pub async fn subscribe_of(
     access: Dsp,
     pushed: &'static Pushed,
 ) -> Result<Reply> {
-    let asked = input.clone();
+    let (asked, access) = (
+        input.clone(),
+        Access {
+            grant: access,
+            line: pushed.line,
+        },
+    );
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    served(&c, pushed.line)?;
     ensure(
         webpush::vapid(&state.config).is_some(),
         "communications_push_off",

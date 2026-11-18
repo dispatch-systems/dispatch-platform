@@ -5,6 +5,7 @@
 //! Dispatch Phone's own (none), with Slack's and Today's Routes, or another feature's, which has
 //! its own numbers' texts alone.
 use super::{
+    access::Access,
     changes::ChangeStore,
     conversations,
     groups::{self, storage::groups::GroupStore},
@@ -18,8 +19,15 @@ use crate::api::types::{
     Communications, CommunicationsUpdates, CommunicationsWaiting, CommunicationsWorkspace, Message,
     WaitingMessage,
 };
-use dispatch_core::{Result, State, db::Store};
-use std::collections::HashMap;
+use dispatch_core::{
+    Result, State,
+    accounts::Context,
+    db::{self, Store},
+};
+use std::{collections::HashMap, sync::Arc, time::Duration};
+
+/// How long a page waiting on changes waits before it's answered with none.
+const WAIT: Duration = Duration::from_secs(20);
 
 /// `GET /api/dsp/communications`, for the member `me`: each section of the line `line` the DSP
 /// has, its conversations waiting, as the counts go by them, and the groups waiting; then the
@@ -128,6 +136,42 @@ pub fn updates(
         },
         next,
     ))
+}
+/// What a page of the DSP `dsp` waiting on the changes of `access`'s line since the change `after`
+/// is answered with, as `updates` reads it: once it, or who is writing, differs from what the page
+/// has (`seen`, the version of that), or twenty seconds pass; woken by that line's changes alone,
+/// or as the next of those writing stops. Who is waiting is let in again for each read, as `again`
+/// reads their access then and `access` admits them: it may have ended, or Dispatch Phone been
+/// switched off for another line, while it waited.
+pub async fn waited(
+    state: &Arc<State>,
+    access: Access,
+    dsp: &str,
+    again: impl Fn(&Store) -> Result<Context> + Clone + Send + 'static,
+    after: i64,
+    seen: i64,
+) -> Result<CommunicationsUpdates> {
+    let _slot = state.topics.wait_slot()?;
+    // Subscribed before reading, so a change between the read and the wait still wakes it.
+    let mut listener = live::listen(state, dsp, access.line);
+    let until = tokio::time::Instant::now() + WAIT;
+    loop {
+        let (again, shared) = (again.clone(), state.clone());
+        let (answer, next) = state
+            .read(move |db| {
+                let c = access.admit(again(db)?)?;
+                updates(db, &shared, &c.dsp.id, access.line, after, &c.auth.user.id)
+            })
+            .await?;
+        let now = tokio::time::Instant::now();
+        if answer.revision != after || answer.typing.version as i64 != seen || now >= until {
+            return Ok(answer);
+        }
+        // Woken by a change, or by the next of those writing stopping, or at the end.
+        let stops = next.map(|at| now + Duration::from_millis((at - db::now()).max(0) as u64));
+        let wake = stops.map_or(until, |stops| stops.min(until));
+        let _ = tokio::time::timeout_at(wake, listener.changed()).await;
+    }
 }
 /// The DSP's Slack workspaces, as the page shows them: Dispatch Phone's own line's alone.
 fn workspaces(db: &Store, dsp: &str, line: Option<&str>) -> Result<Vec<CommunicationsWorkspace>> {

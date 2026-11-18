@@ -1006,7 +1006,9 @@ Behind `communications.use`:
 - Each of those of the conversations by text, of whom the DSP can text, of a text's pictures and
   of pushes is of Dispatch Phone's own line here. Another feature mounts the same for its own line
   (`api::lines`), under its own path and permission, refused (`not_found`) while Dispatch Phone is
-  off: its overview, waiting, updates, search and older pages, Messaging's alone; a conversation
+  off, checked again with the member's access after each wait, as each read of a page waiting on
+  updates and each answer, Retry, picture or subscription kept after its wait (`access::Access`):
+  its overview, waiting, updates, search and older pages, Messaging's alone; a conversation
   and its window, answering with `text` and `photos`, Retry, Done and typing; a number's name,
   block and unblock; texting a `number` first; its contacts; a text's pictures, their previews and
   fetching a video; a picture for a text not sent yet; and its pushes' key, subscribing and letting

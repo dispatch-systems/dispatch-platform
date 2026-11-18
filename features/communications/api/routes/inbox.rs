@@ -4,7 +4,8 @@
 //! own here, another feature's from its own routes (`api::lines`), which has Messaging alone.
 use super::{before, served, team};
 use crate::backend::{
-    inbox, live,
+    access::Access,
+    inbox,
     model::ConversationKind,
     phone::storage::Line,
     sections::{self, Asked, Query},
@@ -18,10 +19,7 @@ use dispatch_core::{
         route::{Dsp, Grant, Member},
     },
 };
-use std::{sync::Arc, time::Duration};
-
-/// How long a page waiting on changes waits before it's answered with none.
-const WAIT: Duration = Duration::from_secs(20);
+use std::sync::Arc;
 
 /// The conversations waiting, and the latest answered of the workspace `team` or every one.
 pub(super) fn overview(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -119,30 +117,15 @@ pub async fn updates_of(
         text.parse().map_err(|_| Error::new("invalid_input", 400))
     };
     let (after, seen) = (number("after")?, number("typing")?);
-    let asked = input.clone();
+    let (asked, access) = (
+        input.clone(),
+        Access {
+            grant: access,
+            line: line.map(|line| line.id),
+        },
+    );
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    let line = line.map(|line| line.id);
-    served(&c, line)?;
-    let _slot = state.topics.wait_slot()?;
-    // Subscribed before reading, so a change between the read and the wait still wakes it.
-    let mut listener = live::listen(&state, &c.dsp.id, line);
-    let until = tokio::time::Instant::now() + WAIT;
-    loop {
-        let (asked, shared) = (input.clone(), state.clone());
-        let (answer, next) = state
-            .read(move |db| {
-                let c = access.authorize(db, &asked)?;
-                inbox::updates(db, &shared, &c.dsp.id, line, after, &c.auth.user.id)
-            })
-            .await?;
-        let now = tokio::time::Instant::now();
-        if answer.revision != after || answer.typing.version as i64 != seen || now >= until {
-            return Reply::of(&answer);
-        }
-        // Woken by a change, or by the next of those writing stopping, or at the end.
-        let stops = next
-            .map(|at| now + Duration::from_millis((at - dispatch_core::db::now()).max(0) as u64));
-        let wake = stops.map_or(until, |stops| stops.min(until));
-        let _ = tokio::time::timeout_at(wake, listener.changed()).await;
-    }
+    // Who is waiting, as their request says each time it's read again.
+    let again = move |db: &Store| access.grant.authorize(db, &input);
+    Reply::of(&inbox::waited(&state, access, &c.dsp.id, again, after, seen).await?)
 }

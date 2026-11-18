@@ -28,8 +28,8 @@ pub(crate) mod texts;
 use crate::{
     api::types::MessageGif,
     backend::{
-        compose, gifs as chosen, initials, model::Reference, phone::model as texting,
-        storage::DOMAIN,
+        access::served, compose, gifs as chosen, initials, model::Reference,
+        phone::model as texting, storage::DOMAIN,
     },
 };
 use axum::http::Method;
@@ -338,15 +338,6 @@ pub fn routes() -> Vec<Route> {
     routes
 }
 
-/// Refuses another line's route while Dispatch Phone is off for the DSP, which that line's own
-/// permission still lets a member in: its texts are Dispatch Phone's to keep.
-fn served(c: &Context, line: Option<&str>) -> Result<()> {
-    ensure(
-        line.is_none() || c.has(crate::FEATURE.switch.id),
-        "not_found",
-        404,
-    )
-}
 /// One of Communications' IDs, `<prefix>_` and 32 hexadecimal digits.
 fn id(value: &str, prefix: &str) -> Result<String> {
     ensure(

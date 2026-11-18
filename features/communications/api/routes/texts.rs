@@ -6,6 +6,7 @@
 //! rest are Dispatch Phone's own.
 use super::{served, texting_id};
 use crate::backend::{
+    access::Access,
     model::Reference,
     phone::{numbers::NUMBER_MOST, storage::Line},
     texts,
@@ -17,13 +18,20 @@ use dispatch_core::{
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, optional, optional_text},
-        route::{Dsp, Grant, Member},
+        route::{Dsp, Member},
         upload::Upload,
     },
 };
 use dispatch_routes_contract::MOST_ID_LENGTH;
 use std::sync::Arc;
 
+/// The route's access to the texting of `line`, Dispatch Phone's own for none.
+fn lined(grant: Dsp, line: Option<Line<'static>>) -> Access {
+    Access {
+        grant,
+        line: line.map(|line| line.id),
+    }
+}
 /// The conversation by text the route names.
 fn texted(input: &Input) -> Result<String> {
     Reference::parse(input.param("id"))?.texted()
@@ -41,14 +49,12 @@ pub async fn retry_of(
     access: Dsp,
     line: Option<Line<'static>>,
 ) -> Result<Reply> {
-    let asked = input.clone();
+    let (asked, access) = (input.clone(), lined(access, line));
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    let line = line.map(|line| line.id);
-    served(&c, line)?;
     v::fields(&input.body, &[])?;
     let conversation = texted(&input)?;
     let text = texting_id(input.param("message"))?;
-    Reply::of(&texts::reply::retry(&state, &c, access, line, &conversation, &text).await?)
+    Reply::of(&texts::reply::retry(&state, &c, access, &conversation, &text).await?)
 }
 /// Saves a `name` for the number of a conversation by text.
 pub(super) fn save_contact(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -232,14 +238,12 @@ async fn text_shown(
     line: Option<Line<'static>>,
     preview: bool,
 ) -> Result<Reply> {
-    let asked = input.clone();
+    let (asked, access) = (input.clone(), lined(access, line));
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    let line = line.map(|line| line.id);
-    served(&c, line)?;
     v::fields(&input.query, &["v"])?;
     let version = optional(&input.query, "v", |q, key| v::text(q, key, 1, 64))?;
     let wanted = texting_id(input.param("id"))?;
-    texts::reading::file(&state, &c, access, line, &wanted, version, preview).await
+    texts::reading::file(&state, &c, access, &wanted, version, preview).await
 }
 /// Asks the phone of a text's video it keeps for its bytes, to play it.
 pub(super) async fn fetch_text_file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
@@ -252,14 +256,12 @@ pub async fn fetch_text_file_of(
     access: Dsp,
     line: Option<Line<'static>>,
 ) -> Result<Reply> {
-    let asked = input.clone();
+    let (asked, access) = (input.clone(), lined(access, line));
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    let line = line.map(|line| line.id);
-    served(&c, line)?;
     v::fields(&input.query, &[])?;
     v::fields(&input.body, &[])?;
     let wanted = texting_id(input.param("id"))?;
-    texts::reading::fetch(&state, &c, access, line, &wanted).await
+    texts::reading::fetch(&state, &c, access, &wanted).await
 }
 /// Keeps a picture added for a text not sent yet, as the phone side keeps it: its `name` and
 /// `type` in the query.
@@ -280,9 +282,8 @@ pub async fn add_text_photo_of(
     photo: Upload,
     line: Option<Line<'static>>,
 ) -> Result<Reply> {
-    let asked = input.clone();
+    let (asked, access) = (input.clone(), lined(access, line));
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    served(&c, line.map(|line| line.id))?;
     v::fields(&input.query, &["name", "type"])?;
     let name = v::name(&input.query, "name", 200)?;
     let kind = v::text(&input.query, "type", 1, 100)?;

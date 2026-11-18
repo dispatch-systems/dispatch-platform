@@ -5,7 +5,8 @@
 //! where another line's conversation, or Slack's, isn't found.
 use super::{PLACE_MOST, gif, photo_id, photos, served, slack_id, team};
 use crate::backend::{
-    compose, contacts, dispatcher, live, model::Reference, phone::storage::Line, reply,
+    access::Access, compose, contacts, dispatcher, live, model::Reference, phone::storage::Line,
+    reply,
 };
 use dispatch_core::{
     Result, State,
@@ -134,9 +135,12 @@ pub async fn send_of(
 ) -> Result<Reply> {
     let asked = input.clone();
     let reference = Reference::parse(input.param("id"))?;
-    let c = state.read(move |db| access.authorize(db, &asked)).await?;
     let line = line.map(|line| line.id);
-    served(&c, line)?;
+    let access = Access {
+        grant: access,
+        line,
+    };
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
     let limits = compose::of(&reference);
     // GIFs are Dispatch Phone's own.
     let fields: &[&str] = match line {
@@ -148,7 +152,7 @@ pub async fn send_of(
     let photos = photos(&input.body, photo_id(&reference))?;
     let gif = gif(&input.body, &c, state.config.fixture)?;
     let adding = (photos.as_slice(), gif.as_ref());
-    let message = dispatcher::send(&state, &c, access, line, &reference, text, adding).await?;
+    let message = dispatcher::send(&state, &c, access, &reference, text, adding).await?;
     Reply::of_status(&message, 201)
 }
 /// Notes that the member is writing in a conversation, for the next few seconds.
@@ -166,10 +170,13 @@ pub async fn typing_of(
     let reference = Reference::parse(input.param("id"))?;
     let of = reference.clone();
     let line = line.map(|line| line.id);
+    let access = Access {
+        grant: access,
+        line,
+    };
     let c = state
         .read(move |db| {
             let c = access.authorize(db, &asked)?;
-            served(&c, line)?;
             dispatcher::found(db, &c.dsp.id, line, &of)?;
             Ok(c)
         })

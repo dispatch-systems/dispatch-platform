@@ -5,6 +5,7 @@
 //! to each. Each is of one line: Dispatch Phone's own (none), Slack's among it, or another
 //! feature's, whose conversations are all by text; a conversation of another line isn't found.
 use super::{
+    access::Access,
     conversations, live,
     model::Reference,
     profile, reply,
@@ -12,9 +13,7 @@ use super::{
     texts::{self, storage::TextStore},
 };
 use crate::api::types::{Conversation, ConversationMessages, MessageGif, Profile, SentMessage};
-use dispatch_core::{
-    Result, State, accounts::Context, db::Store, ensure, server::http::route::Dsp,
-};
+use dispatch_core::{Result, State, accounts::Context, db::Store, ensure};
 use std::sync::Arc;
 
 /// The conversation `reference` of the line `line` and its latest messages, or those before the
@@ -121,20 +120,17 @@ fn own(line: Option<&str>) -> Result<()> {
 pub async fn send(
     state: &Arc<State>,
     c: &Context,
-    access: Dsp,
-    line: Option<&str>,
+    access: Access,
     reference: &Reference,
     written: &str,
     adding: (&[String], Option<&MessageGif>),
 ) -> Result<SentMessage> {
     let message = match reference {
         Reference::Slack(id) => {
-            own(line)?;
-            reply::send(state, c, access, id, written, adding).await?
+            own(access.line)?;
+            reply::send(state, c, access.grant, id, written, adding).await?
         }
-        Reference::Text(id) => {
-            texts::reply::send(state, c, access, line, id, written, adding).await?
-        }
+        Reference::Text(id) => texts::reply::send(state, c, access, id, written, adding).await?,
     };
     let (shared, asked, sent_in, sent) = (
         state.clone(),
@@ -142,14 +138,14 @@ pub async fn send(
         reference.clone(),
         message.id.clone(),
     );
-    let line = line.map(str::to_owned);
+    let line = access.line;
     let conversation = state
         .read(move |db| {
             let c = access.revalidate(db, &asked)?;
             match &sent_in {
                 Reference::Slack(id) => conversations::one(db, &shared, &c.dsp.id, id),
                 Reference::Text(id) => {
-                    texts::reading::filed(db, &shared, &c.dsp.id, line.as_deref(), &sent, id)
+                    texts::reading::filed(db, &shared, &c.dsp.id, line, &sent, id)
                 }
             }
         })

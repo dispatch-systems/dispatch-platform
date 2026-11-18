@@ -280,8 +280,7 @@ async fn a_phone_handed_to_another_driver_takes_the_days_conversation_with_it_bo
     let answer = reply::send(
         &state,
         &c,
-        support::USE,
-        None,
+        support::OWN,
         &conversation,
         "Van 214",
         (&[], None),
@@ -318,17 +317,9 @@ async fn todays_texts_both_ways_go_to_the_driver_whose_work_phone_it_is_once_liv
     let number = filed(&state, &dsp, &asked).await;
     assert_eq!(number.kind, ConversationKind::Number);
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let answer = reply::send(
-        &state,
-        &c,
-        support::USE,
-        None,
-        &number.id,
-        "Van 214",
-        (&[], None),
-    )
-    .await
-    .unwrap();
+    let answer = reply::send(&state, &c, support::OWN, &number.id, "Van 214", (&[], None))
+        .await
+        .unwrap();
 
     // The first live read shows Avery with it: both are theirs, and the number's conversation,
     // holding none, leaves the list.
@@ -355,8 +346,7 @@ async fn a_drivers_texts_stay_theirs_as_how_one_went_changes_while_routes_is_off
     let answer = reply::send(
         &state,
         &c,
-        support::USE,
-        None,
+        support::OWN,
         &conversation,
         "Van 214",
         (&[], None),

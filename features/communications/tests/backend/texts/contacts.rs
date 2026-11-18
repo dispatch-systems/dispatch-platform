@@ -31,17 +31,9 @@ async fn a_number_opened_to_text_first_is_where_its_texts_go_a_drivers_while_its
         let reference = Reference::Text(conversation.id.clone());
         let (state, c) = (state.clone(), c.clone());
         async move {
-            dispatcher::send(
-                &state,
-                &c,
-                support::USE,
-                None,
-                &reference,
-                text,
-                (&[], None),
-            )
-            .await
-            .unwrap()
+            dispatcher::send(&state, &c, support::OWN, &reference, text, (&[], None))
+                .await
+                .unwrap()
         }
     };
 

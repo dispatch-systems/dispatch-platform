@@ -22,6 +22,7 @@ use super::{
 use crate::{
     api::types::{CommunicationsUpload, Message, MessageGif},
     backend::{
+        access::Access,
         compose::{self, checked, photo_kind},
         live,
         model::ConversationKind,
@@ -38,25 +39,24 @@ use dispatch_core::{
     accounts::Context,
     db::{Store, now},
     ensure,
-    server::http::{route::Dsp, upload::Upload},
+    server::http::upload::Upload,
 };
 use std::sync::Arc;
 
-/// Sends what the member `c` wrote in the conversation by text `id` of the line `line`, with the
+/// Sends what the member `c` wrote in the conversation by text `id` of `access`'s line, with the
 /// pictures they added for it, or a GIF in their place (`adding`), to where a text written there
-/// goes as it's queued, from a phone of that line: the text, as kept.
+/// goes as it's queued, from a phone of that line, while they may still use it: the text, as kept.
 pub async fn send(
     state: &Arc<State>,
     c: &Context,
-    access: Dsp,
-    line: Option<&str>,
+    access: Access,
     id: &str,
     written: &str,
     (photos, gif): (&[String], Option<&MessageGif>),
 ) -> Result<Message> {
     let body = checked(written, photos, gif.is_some(), compose::TEXT)?.to_owned();
     let (asked, at, files, gif) = (c.clone(), id.to_owned(), photos.to_vec(), gif.cloned());
-    let from = line.map(str::to_owned);
+    let (line, from) = (access.line, access.line.map(str::to_owned));
     let (sent, device) = filing::changing(state, &c.dsp.id, move |db| {
         let c = access.revalidate(db, &asked)?;
         let outgoing = Outgoing {
@@ -115,19 +115,18 @@ fn goes_now(db: &Store, dsp: &str, line: Option<&str>, id: &str, text: &str) -> 
     )
 }
 
-/// Sends again the text `text`, which Dispatch sent in the conversation `id` of the line `line` and
+/// Sends again the text `text`, which Dispatch sent in the conversation `id` of `access`'s line and
 /// failed, while it goes where a text written now would, and the member may still send it, checked
 /// in the write that queues it, from a phone of its own line. The text, as kept.
 pub async fn retry(
     state: &Arc<State>,
     c: &Context,
-    access: Dsp,
-    line: Option<&str>,
+    access: Access,
     id: &str,
     text: &str,
 ) -> Result<Message> {
     let (asked, at, wanted) = (c.clone(), id.to_owned(), text.to_owned());
-    let from = line.map(str::to_owned);
+    let (line, from) = (access.line, access.line.map(str::to_owned));
     let (sent, device) = filing::changing(state, &c.dsp.id, move |db| {
         let c = access.revalidate(db, &asked)?;
         goes_now(db, &c.dsp.id, from.as_deref(), &at, &wanted)?;
@@ -143,13 +142,13 @@ pub async fn retry(
 }
 
 /// Keeps a picture the member `c` adds for a text not sent yet, named `name`, of the kind `mime`,
-/// as the page reads it. One that isn't a photo a text carries is refused, by its kind. Their
-/// access is checked again in the write that keeps it, once its bytes are in, as Slack's photos'
-/// is: one whose access ended meanwhile keeps none of it.
+/// as the page reads it, on `access`'s line. One that isn't a photo a text carries is refused, by
+/// its kind. Their access is checked again in the write that keeps it, once its bytes are in, as
+/// Slack's photos' is: one whose access ended meanwhile keeps none of it.
 pub async fn upload(
     state: &Arc<State>,
     c: &Context,
-    access: Dsp,
+    access: Access,
     name: &str,
     mime: &str,
     photo: Upload,

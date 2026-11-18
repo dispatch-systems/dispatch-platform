@@ -16,6 +16,7 @@ use crate::api::types::{
     Conversation, ConversationMessages, Conversations, Message, MessageFile, Sender,
 };
 use crate::backend::{
+    access::Access,
     bytes, compose, elsewhere,
     model::{ConversationKind, ConversationState, Direction, FileStatus, PAGE},
     people::People,
@@ -28,7 +29,7 @@ use dispatch_core::{
     Error, Result, State,
     accounts::Context,
     db::{Store, now},
-    server::http::{input::Reply, route::Dsp},
+    server::http::input::Reply,
 };
 use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
@@ -507,17 +508,17 @@ pub fn message(
 }
 
 /// A text's picture or file, `id`, as the phone side keeps it, or its `preview`: a picture's own,
-/// or the picture of the first frame of a video, of a text of the line `line`, for the member `c`,
+/// or the picture of the first frame of a video, of a text of `access`'s line, for the member `c`,
 /// whose access is checked again once it's read: it may have ended while it was.
 pub async fn file(
     state: &Arc<State>,
     c: &Context,
-    access: Dsp,
-    line: Option<&str>,
+    access: Access,
     id: &str,
     version: Option<&str>,
     preview: bool,
 ) -> Result<Reply> {
+    let line = access.line;
     let poster = match preview {
         true => files::preview(state, &c.dsp.id, line, id).await?,
         false => None,
@@ -534,18 +535,12 @@ pub async fn file(
     Ok(file)
 }
 
-/// Asks the phone of a text's video `id` of the line `line`, which it keeps, for its bytes, for the
+/// Asks the phone of a text's video `id` of `access`'s line, which it keeps, for its bytes, for the
 /// member `c`, whose access is checked again in the write that asks, and waits a while for them:
 /// whether they're kept.
-pub async fn fetch(
-    state: &Arc<State>,
-    c: &Context,
-    access: Dsp,
-    line: Option<&str>,
-    id: &str,
-) -> Result<Reply> {
+pub async fn fetch(state: &Arc<State>, c: &Context, access: Access, id: &str) -> Result<Reply> {
     let asked = c.clone();
-    let kept = files::fetch(state, &c.dsp.id, line, id, move |db| {
+    let kept = files::fetch(state, &c.dsp.id, access.line, id, move |db| {
         access.revalidate(db, &asked).map(|_| ())
     })
     .await?;
