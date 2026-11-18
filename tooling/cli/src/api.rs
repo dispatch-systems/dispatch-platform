@@ -239,6 +239,11 @@ pub fn run(root: &Path, call: Call<'_>, runner: &dyn Runner) -> Result<bool> {
 
 pub(crate) fn request(server: &Server, call: Call<'_>, runner: &dyn Runner) -> Result<Answer> {
     let (site, session) = sign_in(server, call.who.unwrap_or(OWNER), call.dsp, runner)?;
+    send(&site, &session, call, runner)
+}
+
+/// `call` from `site`, in the `session` signed in there.
+fn send(site: &Site, session: &Value, call: Call<'_>, runner: &dyn Runner) -> Result<Answer> {
     let csrf = session["csrf"]
         .as_str()
         .ok_or("The session has no CSRF token")?;
@@ -304,9 +309,157 @@ pub(crate) fn request(server: &Server, call: Call<'_>, runner: &dyn Runner) -> R
     site.curl(runner, &args)
 }
 
+/// What `dispatchdev dev` changes of a DSP on the checkout's fixture server, through the platform
+/// owner's own route, as DSP administration does: checked, logged in the activity log and
+/// audited as there.
+pub enum Change<'a> {
+    /// A known custom ID, in place of its random one, so the custom features of that ID show.
+    CustomId(&'a str),
+}
+
+/// Makes `change` to the DSP `wanted` names on the dev server `npm run dev` runs in the checkout
+/// at `root`, as the platform owner, and says what it did. It reaches no server but that one,
+/// and refuses one whose session says it is Production.
+pub fn change(
+    root: &Path,
+    wanted: &str,
+    change: Change<'_>,
+    runner: &dyn Runner,
+) -> Result<String> {
+    apply(&Server::find(root)?, wanted, change, runner)
+}
+
+fn apply(server: &Server, wanted: &str, change: Change<'_>, runner: &dyn Runner) -> Result<String> {
+    let (site, session) = sign_in(server, OWNER, None, runner)?;
+    require(
+        session["environment"] == "preview",
+        "That server says it is Production: dispatchdev dev changes only a checkout's own \
+         fixture server.",
+    )?;
+    let dsps = session["dsps"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let found = dsp(dsps, wanted)?;
+    let id = found["id"].as_str().ok_or("A DSP without an id")?;
+    let name = found["name"].as_str().unwrap_or(id);
+    let (path, body, done) = match change {
+        Change::CustomId(custom) => (
+            format!("/api/platform/dsps/{id}/custom-id"),
+            json!({ "customId": custom }),
+            format!("{name} has the custom ID {custom}."),
+        ),
+    };
+    let body = body.to_string();
+    let call = Call {
+        method: "POST",
+        path: &path,
+        dsp: None,
+        who: None,
+        data: Some(&body),
+    };
+    let answer = send(&site, &session, call, runner)?;
+    require(
+        answer.status < 400,
+        &format!("The server answered {}: {}", answer.status, answer.body),
+    )?;
+    Ok(done)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+
+    /// The fixture server as curl reaches it: the owner's session, in `environment`, and every
+    /// request sent, by its arguments.
+    struct Fixture {
+        environment: &'static str,
+        sent: RefCell<Vec<Vec<String>>>,
+        _scratch: tempfile::TempDir,
+        server: Server,
+    }
+    impl Fixture {
+        fn new(environment: &'static str) -> Self {
+            let scratch = tempfile::tempdir().unwrap();
+            let server = Server {
+                host: "127.0.0.1".into(),
+                port: 41733,
+                link: "http://127.0.0.1:41733/__preview/owner".into(),
+                password: "fixture-only".into(),
+                scratch: scratch.path().to_owned(),
+            };
+            Self {
+                environment,
+                sent: RefCell::new(vec![]),
+                _scratch: scratch,
+                server,
+            }
+        }
+        /// What was posted, by its address and body.
+        fn posted(&self) -> Vec<(String, Value)> {
+            self.sent
+                .borrow()
+                .iter()
+                .filter(|args| args.contains(&"POST".to_owned()))
+                .map(|args| {
+                    let at = args.iter().position(|arg| arg == "--data-binary").unwrap();
+                    let body = serde_json::from_str(&args[at + 1]).unwrap();
+                    (args.last().unwrap().clone(), body)
+                })
+                .collect()
+        }
+    }
+    impl Runner for Fixture {
+        fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+            assert_eq!(args[0], "curl");
+            self.sent
+                .borrow_mut()
+                .push(args.iter().map(|arg| (*arg).to_owned()).collect());
+            let url = args.last().unwrap();
+            let answer = if url.ends_with("/api/session") {
+                json!({"csrf": "fixture-csrf", "environment": self.environment, "dsps": [
+                    {"id": "dsp_1", "name": "Dev DSP"},
+                    {"id": "dsp_2", "name": "Northline Logistics"},
+                ]})
+            } else if url.contains("/api/platform/dsps/") {
+                assert!(args.contains(&"x-csrf-token: fixture-csrf"));
+                json!({})
+            } else {
+                panic!("unexpected request {url}");
+            };
+            Ok(format!("{answer}\n200").into_bytes())
+        }
+    }
+
+    #[test]
+    fn dev_changes_a_dsp_through_the_owners_route_and_never_on_production() {
+        let fixture = Fixture::new("preview");
+        let said = apply(
+            &fixture.server,
+            "northline",
+            Change::CustomId("k7m2qx4p"),
+            &fixture,
+        )
+        .unwrap();
+        assert_eq!(said, "Northline Logistics has the custom ID k7m2qx4p.");
+        assert_eq!(
+            fixture.posted(),
+            [(
+                "http://127.0.0.1:41733/api/platform/dsps/dsp_2/custom-id".to_owned(),
+                json!({"customId": "k7m2qx4p"})
+            )]
+        );
+
+        let production = Fixture::new("production");
+        let refused = apply(
+            &production.server,
+            "northline",
+            Change::CustomId("k7m2qx4p"),
+            &production,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(refused.contains("says it is Production"), "{refused}");
+        assert_eq!(production.posted(), []);
+    }
     #[test]
     fn the_record_names_where_the_server_listens() {
         assert_eq!(
