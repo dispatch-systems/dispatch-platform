@@ -776,7 +776,7 @@ mod tests {
         let (result, said) = github.landed();
         assert_eq!(
             result.unwrap_err(),
-            "main's run of the checks on abc, the commit #7 merged as, hasn't ended after 25m 00s \
+            "main's run of the checks on abc, the commit #7 merged as hasn't ended after 25m 00s \
              (run 5 is in_progress): `dispatchdev landed` again waits on, or look at the run on \
              GitHub."
         );
