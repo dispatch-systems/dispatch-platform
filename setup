@@ -192,6 +192,16 @@ if [[ -d $agents/skills ]]; then
   remove_old_links "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md" "$HOME"/.claude/skills/* \
     "$HOME"/.agents/skills/*
 fi
+# Their hooks, which Claude's settings and Codex's hooks.json run from .claude/hooks.
+if [[ -d $agents/hooks ]]; then
+  link "$agents/hooks" "$sessions/.claude/hooks"
+  if [[ -e $agents/hooks/claude-settings.json ]]; then
+    link "$agents/hooks/claude-settings.json" "$sessions/.claude/settings.json"
+  fi
+  if [[ -e $agents/hooks/codex-hooks.json ]]; then
+    link "$agents/hooks/codex-hooks.json" "$sessions/.codex/hooks.json"
+  fi
+fi
 
 command -v gh >/dev/null || say "Install GitHub's gh to open PRs from here."
 say "Ready: npm run dev serves the dashboard on demo data."
