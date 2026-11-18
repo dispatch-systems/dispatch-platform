@@ -52,14 +52,46 @@ pub fn plan(root: &Path, runner: &dyn Runner) -> Result<Plan> {
     .map(str::to_owned)
     .collect();
     let (plan, workspace) = test_selection::read(root);
-    let commands = test_selection::affected(&changed, &plan, &workspace)
+    let mut commands: Vec<String> = test_selection::affected(&changed, &plan, &workspace)
         .into_iter()
         .filter(|command| command.starts_with("cargo clippy"))
         .collect();
+    if changed.iter().any(|file| dashboard(file)) {
+        commands.push(SIZES.to_owned());
+    }
     Ok(Plan {
         commands,
         base: command(&["git", "rev-parse", "--short", "origin/main"])?,
     })
+}
+/// The dashboard's page-size budgets, measured on its production build alone, in about half a
+/// minute: the artifact test holds the release build to the same budgets on the PR, after the
+/// whole build. Over a budget, it measures `main` too, in as long again.
+pub const SIZES: &str = "npm run --silent check:sizes";
+/// What the dashboard's build reads besides the owners' frontend code: its packages, its
+/// configuration, the Vite plugins `vite.config.ts` builds with, and what measures its sizes.
+const DASHBOARD: &[&str] = &[
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json",
+    "vite.config.ts",
+    "tooling/build/compress-assets.ts",
+    "tooling/build/dashboard.ts",
+    "tooling/build/page-sizes.ts",
+    "tooling/build/private-features.ts",
+    "tooling/shared/features.ts",
+    "tooling/testing/dashboard-assets.ts",
+    "tooling/testing/page-budgets.ts",
+];
+/// Whether a changed file can change what the dashboard bundles, or how its size is measured:
+/// an owner's frontend code outside its tests, such as its `frontend/` folder and its API's
+/// client, or one of `DASHBOARD`.
+fn dashboard(file: &str) -> bool {
+    let path = Path::new(file);
+    DASHBOARD.contains(&file)
+        || (test_selection::owner(file).is_some()
+            && build::frontend(path)
+            && !path.components().any(|part| part.as_os_str() == "tests"))
 }
 /// What follows a passing check.
 pub const NEXT: &str = "Next, dispatchdev pr opens its PR from the scratch folder's \
@@ -164,7 +196,7 @@ fn side_by_side(root: &Path, commands: &[String], env: &Environment) -> Result<b
                 let log = logs.join(format!("{}.log", index + 1));
                 let (scratch, said) = (&scratch, &said);
                 scope.spawn(move || -> Result<bool> {
-                    let slot = match command.starts_with("cargo ") {
+                    let slot = match command.starts_with("cargo ") || command == SIZES {
                         true => Slot::take(root, command, env, &crate::Native)?,
                         false => None,
                     };
@@ -173,7 +205,12 @@ fn side_by_side(root: &Path, commands: &[String], env: &Environment) -> Result<b
                     // A failure's lines stay together under its own.
                     let _said = said.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                     crate::test::line(ok, took, command);
-                    if !ok {
+                    if command == SIZES {
+                        // What it measured, a line for each graph and what's thin or over.
+                        for line in fs::read_to_string(&log).unwrap_or_default().lines() {
+                            println!("      {line}");
+                        }
+                    } else if !ok {
                         crate::test::explain(&log);
                     }
                     Ok(ok)
@@ -546,6 +583,27 @@ mod tests {
         let mut own = env.clone();
         own.insert("CARGO_TARGET_DIR".into(), "/tmp/elsewhere".into());
         assert!(Pass::of(&root, &commands, &own, &tree).unwrap().is_none());
+    }
+    #[test]
+    fn page_sizes_are_measured_when_the_diff_reaches_what_the_dashboard_bundles() {
+        for file in [
+            "features/dvic/frontend/DvicPage.tsx",
+            "features/dvic/frontend/dvic.css",
+            "core/accounts/api/client.ts",
+            "app/frontend/index.html",
+            "features/custom/cjf87gqd/legacy_tracker/frontend/index.ts",
+        ] {
+            assert!(dashboard(file), "{file} reaches the dashboard");
+        }
+        for file in [
+            "features/dvic/backend/lib.rs",
+            "features/dvic/tests/frontend/dvic.test.ts",
+            "features/dvic/tests/browser/dvic.spec.ts",
+            "tooling/cli/src/check.rs",
+            "docs/readme.md",
+        ] {
+            assert!(!dashboard(file), "{file} doesn't reach the dashboard");
+        }
     }
     #[test]
     fn a_check_needs_a_committed_branch_of_its_own() {

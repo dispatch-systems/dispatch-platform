@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { build as viteBuild } from 'vite';
 import { writeManifest } from './artifact.js';
-import { compressAssets } from './compress-assets.js';
+import { buildDashboard } from './dashboard.js';
 import { replaceBuild } from './build-output.js';
 
 const root = process.cwd(),
@@ -67,18 +66,8 @@ const manifest = await replaceBuild(out, async (staging) => {
   execFileSync('python3', ['tooling/security/check-build-paths.py', backend, worker], {
     stdio: 'inherit',
   });
-  await viteBuild({
-    build: {
-      outDir: path.join(staging, 'dashboard'),
-      manifest: true,
-    },
-  });
   // Test shared modules and route CSS too. Build metadata stays outside the served dashboard.
-  const assetsFile = path.join(staging, 'dashboard/.vite/manifest.json');
-  const dashboardAssets = JSON.parse(fs.readFileSync(assetsFile, 'utf8'));
-  fs.unlinkSync(assetsFile);
-  fs.rmdirSync(path.join(staging, 'dashboard/.vite'));
-  await compressAssets(path.join(staging, 'dashboard/assets'));
+  const dashboardAssets = await buildDashboard(path.join(staging, 'dashboard'));
   // DSP Dispatch: Relay's APKs, which `dispatchdev build` packed from CI's builds with
   // relay.json naming them: the server hands out its environment's build. The server serves
   // nothing else under dashboard/, the only folder installed updaters accept new files in.
