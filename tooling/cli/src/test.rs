@@ -12,6 +12,7 @@ use serde_json::Value;
 use std::{
     ffi::OsStr,
     fs,
+    io::{Read, Write},
     os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
@@ -19,6 +20,15 @@ use std::{
 /// Where runs build: a folder each inside the checkout, so the compiler's path policy covers
 /// it, ignored by Git.
 const BUILDS: &str = ".test-build";
+/// The lock in `BUILDS` every live run of a checkout shares: the run that can take it alone at
+/// its end is the last.
+const RUNS: &str = "runs";
+/// What runs made in the checkout for the browser tests' packaging, a line each, in `BUILDS`.
+/// The last run to end deletes it, so no run's end takes from under another what it tests with;
+/// what a killed run made goes when the next run ends.
+const MADE: &str = "made";
+/// What the browser tests' packaging makes in the checkout.
+const PACKAGED: [&str; 2] = ["target/release", ".build"];
 
 /// Packages the runtime for the browser tests with the debug backend, which the run's own Rust
 /// builds share or the build cache holds, where a release build takes minutes. A PR's checks do
@@ -364,14 +374,88 @@ fn claim(builds: &Path) -> Result<(PathBuf, fs::File)> {
     }
     Ok((build, lock))
 }
-/// A run's build folder in a checkout, and what the browser tests' packaging makes there, all
-/// deleted when the run ends.
+/// A file in `builds` of the checkout's runs. A symbolic link is never followed.
+fn open(builds: &Path, name: &str, options: &mut fs::OpenOptions) -> std::io::Result<fs::File> {
+    options
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(builds.join(name))
+}
+/// Joins the checkout's live runs in `builds`: holds their shared lock, and records what of the
+/// packaging's isn't in the checkout `root` yet. It waits only while the last run before it
+/// deletes what they made.
+fn join(root: &Path, builds: &Path) -> Result<fs::File> {
+    let runs = open(
+        builds,
+        RUNS,
+        fs::OpenOptions::new().read(true).write(true).create(true),
+    )?;
+    runs.lock_shared()?;
+    let missing: String = PACKAGED
+        .iter()
+        .filter(|path| !root.join(path).exists())
+        .map(|path| format!("{path}\n"))
+        .collect();
+    if !missing.is_empty() {
+        open(
+            builds,
+            MADE,
+            fs::OpenOptions::new().append(true).create(true),
+        )?
+        .write_all(missing.as_bytes())?;
+    }
+    Ok(runs)
+}
+/// Leaves the checkout's live runs, letting go of `runs`. The last of them deletes what they
+/// made, and answers how much it deleted; with `keep`, what they made is the checkout's own at
+/// once, so no run ending after it deletes it.
+fn leave(root: &Path, builds: &Path, runs: fs::File, keep: bool) -> Result<u64> {
+    // A run kept: what the runs made is the checkout's own from now, whichever run ends last.
+    // The record goes while this run still shares the lock, so no run's cleanup has read it yet.
+    if keep {
+        let cleared = fs::remove_file(builds.join(MADE));
+        drop(runs);
+        return match cleared {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+            _ => Ok(0),
+        };
+    }
+    drop(runs);
+    let last = open(builds, RUNS, fs::OpenOptions::new().read(true))?;
+    if last.try_lock_exclusive().is_err() {
+        return Ok(0);
+    }
+    let mut made = String::new();
+    match open(builds, MADE, fs::OpenOptions::new().read(true)) {
+        Ok(mut record) => {
+            record.read_to_string(&mut made)?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(error.into()),
+    }
+    let mut freed = 0;
+    for path in PACKAGED
+        .iter()
+        .filter(|path| made.lines().any(|line| line == **path))
+        .map(|path| root.join(path))
+        .filter(|path| path.exists())
+    {
+        freed += workspace::size(&crate::Native, &path).unwrap_or(0);
+        fs::remove_dir_all(&path)?;
+    }
+    match fs::remove_file(builds.join(MADE)) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+        _ => Ok(freed),
+    }
+}
+/// A run's build folder in a checkout, deleted when the run ends, and what the browser tests'
+/// packaging makes there, deleted when the last run side by side with it ends.
 pub struct Run {
     root: PathBuf,
     pub build: PathBuf,
     /// Holds the build folder until the run ends.
     _held: fs::File,
-    made: Vec<PathBuf>,
+    /// Shares the checkout's runs' lock until the run ends.
+    runs: fs::File,
     binary: PathBuf,
     tmp: PathBuf,
     /// The checkout's package build can take the debug backend.
@@ -382,15 +466,11 @@ pub struct Run {
 impl Run {
     /// A run in `root`, its temporary files in `tmp`.
     pub fn start(root: &Path, tmp: &Path) -> Result<Self> {
-        let (build, held) = claim(&root.join(BUILDS))?;
+        let builds = root.join(BUILDS);
+        let (build, held) = claim(&builds)?;
         Ok(Self {
             root: root.to_owned(),
-            // What the browser tests' packaging makes in the checkout, if it isn't there already.
-            made: ["target/release", ".build"]
-                .iter()
-                .map(|path| root.join(path))
-                .filter(|path| !path.exists())
-                .collect(),
+            runs: join(root, &builds)?,
             binary: build.join("debug/dispatch-backend"),
             build,
             _held: held,
@@ -453,14 +533,14 @@ impl Run {
     }
     /// Deletes everything the run made, and answers how much that was.
     pub fn end(self) -> Result<u64> {
-        let mut freed: u64 = 0;
-        for path in
-            std::iter::once(self.build).chain(self.made.into_iter().filter(|path| path.exists()))
-        {
-            freed += workspace::size(&crate::Native, &path).unwrap_or(0);
-            fs::remove_dir_all(&path)?;
-        }
-        Ok(freed)
+        let freed = workspace::size(&crate::Native, &self.build).unwrap_or(0);
+        fs::remove_dir_all(&self.build)?;
+        Ok(freed + leave(&self.root, &self.root.join(BUILDS), self.runs, false)?)
+    }
+    /// Keeps everything the run made, and answers its build folder.
+    pub fn keep(self) -> Result<PathBuf> {
+        leave(&self.root, &self.root.join(BUILDS), self.runs, true)?;
+        Ok(self.build)
     }
 }
 /// A step's line: whether it passed, how long it took, and what it ran.
@@ -503,7 +583,7 @@ pub fn run_commands(root: &Path, commands: &[String], keep: bool) -> Result<bool
     }
     crate::signals::finish();
     if keep {
-        println!("Kept the build in {}.", run.build.display());
+        println!("Kept the build in {}.", run.keep()?.display());
         return Ok(passed);
     }
     let freed = run.end()?;

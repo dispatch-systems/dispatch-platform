@@ -3,7 +3,10 @@
 //! an open file, which a child another thread starts shares from its start until it becomes its
 //! own program, so beside tests that start commands a folder a run just let go of still looks
 //! held, and the next run builds elsewhere.
-use dispatchdev_cli::{test::run_commands, workspace};
+use dispatchdev_cli::{
+    test::{Run, run_commands},
+    workspace,
+};
 use fs2::FileExt;
 use std::{
     fs,
@@ -96,4 +99,56 @@ fn a_run_leaves_a_folder_it_cannot_hold_and_builds_in_the_next() {
     assert!(refused.to_string().contains("is a link"), "{refused}");
     assert!(outside.join("1/mine").exists());
     let _ = fs::remove_dir_all(workspace::scratch("held-test-checkout").unwrap());
+}
+#[test]
+fn a_run_ending_leaves_the_package_a_run_beside_it_tests_with() {
+    let _alone = alone();
+    let temp = tempfile::tempdir().unwrap();
+    let (root, tmp) = (temp.path(), temp.path().join("tmp"));
+    let backend = root.join(".build/services/rust/dispatch-backend");
+    let package = || {
+        fs::create_dir_all(backend.parent().unwrap()).unwrap();
+        fs::write(&backend, "").unwrap();
+    };
+    // The first run packages, and a second starts in the same checkout while it tests.
+    let first = Run::start(root, &tmp).unwrap();
+    package();
+    let second = Run::start(root, &tmp).unwrap();
+    first.end().unwrap();
+    assert!(
+        backend.exists(),
+        "the first run's end took the second's backend"
+    );
+    second.end().unwrap();
+    assert!(
+        !root.join(".build").exists(),
+        "the last run's end left the package"
+    );
+    // A package the checkout had before any run stays.
+    package();
+    Run::start(root, &tmp).unwrap().end().unwrap();
+    assert!(backend.exists());
+    // A kept run's package stays the checkout's own.
+    fs::remove_dir_all(root.join(".build")).unwrap();
+    let kept = Run::start(root, &tmp).unwrap();
+    package();
+    kept.keep().unwrap();
+    Run::start(root, &tmp).unwrap().end().unwrap();
+    assert!(backend.exists());
+    // Kept while another run tests beside it, it stays once that one ends too.
+    fs::remove_dir_all(root.join(".build")).unwrap();
+    let kept = Run::start(root, &tmp).unwrap();
+    package();
+    let beside = Run::start(root, &tmp).unwrap();
+    kept.keep().unwrap();
+    beside.end().unwrap();
+    assert!(backend.exists(), "the run beside it took what was kept");
+    // A last run whose record a kept run cleared meanwhile ends without an error, and deletes
+    // nothing.
+    fs::remove_dir_all(root.join(".build")).unwrap();
+    let last = Run::start(root, &tmp).unwrap();
+    package();
+    fs::remove_file(root.join(".test-build/made")).unwrap();
+    last.end().unwrap();
+    assert!(backend.exists());
 }
