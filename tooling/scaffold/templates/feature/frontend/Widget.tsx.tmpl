@@ -1,10 +1,23 @@
+import { {{icon}} } from 'lucide-react';
 import type { WidgetProps } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
+{{#widgetOpens}}
+import { dspHash } from '{{toRoot}}core/shell/frontend/runtime/navigation.js';
+{{/widgetOpens}}
+import { WidgetLink } from '{{toRoot}}core/shell/frontend/ui/Widget.js';
 
-/** {{label}}'s widget on a member's Home page, at the size of its own they chose. */
-export function {{pascal}}Widget({ columns, rows }: WidgetProps) {
+/** {{widgetLabel}} on a member's Home page, at any size from one cell to four by four. */
+export function {{widgetPascal}}Widget({ columns, rows{{#widgetOpens}}, view{{/widgetOpens}} }: WidgetProps) {
   return (
-    <section aria-label="{{label}}" data-columns={columns} data-rows={rows}>
-      {/* TODO(scaffold): what it shows at each of the sizes it declares. */}
-    </section>
+    <WidgetLink
+{{#widgetOpens}}
+      href={dspHash(view.dsp.id, '{{widgetOpens}}')}
+{{/widgetOpens}}
+      columns={columns}
+      rows={rows}
+      icon={{{icon}}}
+      label="{{widgetLabel}}"
+    >
+      {/* TODO(scaffold): what it shows at each size, laid out by widgetFit({ columns, rows }). */}
+    </WidgetLink>
   );
 }

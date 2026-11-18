@@ -28,7 +28,8 @@ export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
   sidebar <pages>     a sidebar of its own pages, as entries,history: its item in a DSP's
                       sidebar opens their list in place of the app's
   tab-of <feature>    a tab of another feature's page
-  widget              a widget a member adds to their Home page
+  widget <name>       a widget a member adds to their Home page, as late_das: its id
+                      <feature>.<name>, at every size to four by four
   settings            a section of a DSP's Settings, on a page of its own, that its backend
                       declares and reads: for those who manage it
   api                 api/ with one endpoint behind the view permission
@@ -38,6 +39,7 @@ export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
                       offers: its contract crate in contract/, what fulfils it, and a test
   --shown             with contract, one a page shows: its name and the permission that shows
                       what it keeps, the feature's view, which offered(<name>) reads
+  --part <id>         with widget, the part of the feature it goes with: off or hidden with it
   --icon <name>       its page's icon, from lucide-react
   --dry-run           print what it would write and change nothing
   --json              print what it made, or would make, as JSON
@@ -52,14 +54,14 @@ const PIECES: Record<string, { valued: boolean; readme: string; uses: string[] }
   page: { valued: false, readme: 'Page', uses: ['view'] },
   sidebar: { valued: true, readme: 'Sidebar', uses: ['view'] },
   'tab-of': { valued: true, readme: 'Tab', uses: [] },
-  widget: { valued: false, readme: 'Widget', uses: ['view'] },
+  widget: { valued: true, readme: 'Widget', uses: ['view'] },
   settings: { valued: false, readme: 'Settings', uses: ['manage'] },
   api: { valued: false, readme: 'API', uses: ['view'] },
   people: { valued: true, readme: 'People', uses: [] },
   contract: { valued: true, readme: 'Exposed', uses: [] },
 };
 const FLAGS = ['dry-run', 'shown'];
-const OPTIONS = ['to', 'table', 'icon', 'out', 'root'];
+const OPTIONS = ['to', 'table', 'icon', 'part', 'out', 'root'];
 
 export async function planAdd(root: string, argv: string[]) {
   const args = parseArguments(argv, FLAGS, OPTIONS);
@@ -124,6 +126,12 @@ export async function planAdd(root: string, argv: string[]) {
         `${name} retired ${permission}, which the ${piece} would use: add it by hand`,
       );
   }
+  if (
+    piece === 'widget' &&
+    exists(root, frontend) &&
+    read(root, frontend).includes(`'${name}.${value!}'`)
+  )
+    throw new UsageError(`${name} has the widget ${name}.${value!} already`);
   if (piece === 'tab-of' && value === name)
     throw new UsageError(`A tab of ${name}'s own page is one of its own tabs: add it there`);
   // Its people's table, by the database the feature keeps it in.
@@ -164,6 +172,7 @@ export async function planAdd(root: string, argv: string[]) {
       ...(value ? [value] : []),
       ...(piece === 'people' ? ['--tables', database!, '--table', table!] : []),
       ...(args.options.has('icon') ? ['--icon', args.options.get('icon')!] : []),
+      ...(args.options.has('part') ? ['--part', args.options.get('part')!] : []),
       ...(shown ? ['--shown'] : []),
     ],
     true,
@@ -258,7 +267,7 @@ export async function planAdd(root: string, argv: string[]) {
   const site = peopleSources(root).find((source) => source.id === value)?.site;
   if (piece === 'people' && site) installing(root, plan, dir, { collector: site });
   if (shown) await showing(root, plan, value!);
-  if (piece === 'widget') await shipping(root, plan, `${name}.overview`);
+  if (piece === 'widget') await shipping(root, plan, `${name}.${value!}`);
   // The test a contract or settings brings installs the feature with what it uses: the
   // collectors and features the feature map says it uses, what its other tests install, however
   // they name it, and what its manifest, as the piece leaves it, depends on.

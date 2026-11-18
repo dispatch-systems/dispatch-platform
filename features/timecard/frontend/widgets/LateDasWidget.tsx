@@ -1,22 +1,25 @@
-import { AlarmClock, CircleCheck } from 'lucide-react';
+import { AlarmClock } from 'lucide-react';
 import type { WidgetProps } from '../../../../core/shell/frontend/runtime/slots.js';
 import { useCollectionUpdates } from '../../../../core/collection/frontend/live-collection.js';
 import { dspHash } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { localDate } from '../../../../core/shell/frontend/lib/day.js';
-import { dateFormatter } from '../../../../core/shell/frontend/lib/date-format.js';
+import {
+  WidgetCount,
+  WidgetFooter,
+  WidgetLink,
+  WidgetList,
+  WidgetNote,
+  WidgetPill,
+  WidgetRow,
+  WidgetValue,
+  WidgetZero,
+  initials,
+  widgetFit,
+} from '../../../../core/shell/frontend/ui/Widget.js';
 import { useMealComparison, usePaycomSettings } from '../../api/client.js';
 import { mealPageUrl } from '../../api/urls.js';
 import type { MealEmployee } from '../../api/index.js';
 import { clockLabel, displayMeal, parseClock, personName } from '../meal-breaks.js';
-import './late-das.css';
-
-const day = (date: string, weekday: boolean) =>
-  dateFormatter('en-US', {
-    timeZone: 'UTC',
-    month: 'short',
-    day: 'numeric',
-    ...(weekday ? { weekday: 'short' } : {}),
-  }).format(new Date(date + 'T12:00:00Z'));
 
 /** How long after the last minute on time an IN DAY punch came: +14m, +1h 5m, +2h. */
 function lateBy(minutes: number) {
@@ -40,64 +43,50 @@ export function LateDasWidget({ columns, rows, view }: WidgetProps) {
   const late = read.data?.date === today ? read.data : undefined;
   const failed = settings.error || read.error;
   const rule = settings.data?.late.time;
-  const detail = columns >= 3 && rows >= 2;
+  const { narrow, tall, detail, wide } = widgetFit({ columns, rows });
   const lateRows = late?.rows ?? [];
   return (
-    <a
-      className="late-das"
+    <WidgetLink
       href={dspHash(view.dsp.id, 'paycom', { late: today })}
-      data-columns={columns}
-      data-rows={rows}
+      columns={columns}
+      rows={rows}
+      icon={AlarmClock}
+      label="Late DAs"
+      short="Late"
+      day={today}
     >
-      <header>
-        <AlarmClock aria-hidden="true" />
-        {/* One column has room for its date beside Late alone. */}
-        <strong>{columns === 1 ? 'Late' : 'Late DAs'}</strong>
-        <span>{day(today, columns >= 3)}</span>
-      </header>
       {failed ? (
-        <p className="late-das-note">{failed}</p>
+        <WidgetNote>{failed}</WidgetNote>
       ) : !late || !settings.data || !rule ? null : !late.counts.all ? (
-        <p className="late-das-note">No Paycom punches yet</p>
+        <WidgetNote>No Paycom punches yet</WidgetNote>
       ) : !lateRows.length ? (
-        <div className="late-das-none">
-          <CircleCheck aria-hidden="true" />
-          <span>
-            <strong>0</strong> late
-          </span>
-          {columns > 1 && rows > 1 && <small>At or after {clockLabel(rule)}</small>}
-        </div>
+        <WidgetZero label="late">{!narrow && tall && `At or after ${clockLabel(rule)}`}</WidgetZero>
       ) : (
         <>
-          {columns === 1 && (
-            <div className="late-das-count">
-              <strong>{lateRows.length}</strong>
-              <span>late</span>
-            </div>
-          )}
-          {(columns > 1 || rows > 1) && (
-            <ol className="late-das-list">
+          {narrow && <WidgetCount count={lateRows.length} label="late" />}
+          {(!narrow || tall) && (
+            <WidgetList>
               {lateRows.map((row) => (
                 <Late
                   key={row.id}
                   row={row}
                   name={personName(row.name, settings.data!.nameOrder)}
                   rule={rule}
-                  brief={columns === 1}
+                  brief={narrow}
                   detail={detail}
-                  by={columns >= 4}
+                  by={wide}
                 />
               ))}
-            </ol>
+            </WidgetList>
           )}
-          {columns > 1 && rows > 1 && (
-            <footer>
+          {!narrow && tall && (
+            <WidgetFooter>
               {lateRows.length} late · at or after {clockLabel(rule)}
-            </footer>
+            </WidgetFooter>
           )}
         </>
       )}
-    </a>
+    </WidgetLink>
   );
 }
 
@@ -119,30 +108,18 @@ function Late({
 }) {
   const inDay = displayMeal(row).paycom.inDay;
   const from = parseClock(rule);
-  const department = row.paycom?.department;
   return (
-    <li>
-      {detail && (
-        <span className="late-das-initials" aria-hidden="true">
-          {name
-            .split(' ')
-            .slice(0, 2)
-            .map((word) => word[0])
-            .join('')}
-        </span>
-      )}
-      <span className="late-das-who">
-        <strong>{name}</strong>
-        {detail && department && <small>{department}</small>}
-      </span>
+    <WidgetRow
+      title={name}
+      detail={detail && row.paycom?.department}
+      initials={detail ? initials(name) : undefined}
+    >
       {!brief && inDay && (
         <>
-          {by && from !== null && (
-            <span className="late-das-by">{lateBy(inDay.minute - from + 1)}</span>
-          )}
-          <span className="late-das-time">{inDay.label}</span>
+          {by && from !== null && <WidgetPill>{lateBy(inDay.minute - from + 1)}</WidgetPill>}
+          <WidgetValue>{inDay.label}</WidgetValue>
         </>
       )}
-    </li>
+    </WidgetRow>
   );
 }

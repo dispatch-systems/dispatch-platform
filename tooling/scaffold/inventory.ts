@@ -93,10 +93,24 @@ export function declaredWidgets(source: string) {
     .map((entry) => ({
       id: text('id', entry),
       label: text('label', entry),
-      sizes: [...entry.matchAll(/\{ columns: (\d+), rows: (\d+) \}/g)].map(
-        ([, columns, rows]) => `${columns}×${rows}`,
-      ),
+      sizes: sizesOf(entry),
     }));
+}
+/**
+ * The sizes a widget's entry declares, the one it is added at first: each it lists, or every
+ * one to the most that `sizesUpTo(most, first)` names.
+ */
+function sizesOf(entry: string) {
+  const listed = [...entry.matchAll(/\{ columns: (\d+), rows: (\d+) \}/g)].map(
+    ([, columns, rows]) => `${columns}×${rows}`,
+  );
+  if (!/\bsizes: sizesUpTo\(/.test(entry)) return listed;
+  const [most, first] = listed;
+  const [columns, rows] = most!.split('×').map(Number);
+  const every = Array.from({ length: columns! }, (_, column) =>
+    Array.from({ length: rows! }, (_, row) => `${column + 1}×${row + 1}`),
+  ).flat();
+  return [first!, ...every.filter((size) => size !== first)];
 }
 /** Whether a backend slot holds something: a non-empty list, object or value. */
 const filled = (value: unknown): boolean =>

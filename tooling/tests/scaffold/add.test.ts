@@ -66,12 +66,32 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
   assert(!tab.changes.has('features/documents/feature.rs'));
 
   // A widget on Vans, which has no page: its entry joins the manifest's slots, and what draws it
-  // is written beside it.
-  const widget = await add('widget', '--to', 'vans');
-  assert(writes(widget, 'features/vans').includes('frontend/widgets/VansWidget.tsx'));
+  // is written beside it, with its test.
+  const widget = await add('widget', 'fleet', '--to', 'vans');
+  assert(writes(widget, 'features/vans').includes('frontend/widgets/FleetWidget.tsx'));
+  assert(writes(widget, 'features/vans').includes('tests/browser/fleet-widget.spec.ts'));
   const vans = changed(widget, 'features/vans/frontend/feature.ts');
-  assert.match(vans, /widgets: \[\s*\{\s*id: 'vans\.overview',/);
+  assert.match(vans, /widgets: \[\s*\{\s*id: 'vans\.fleet',/);
   assert.equal(vans.match(/^\s+platformSlots:/gm)?.length, 1);
+  assert.match(
+    vans,
+    /^import \{ (type FrontendFeature, sizesUpTo|sizesUpTo, type FrontendFeature) \} from /m,
+  );
+  // A second joins the first, and one of a part of DVIC goes with it; one it has is refused.
+  const dvic = changed(
+    await add('widget', 'week', '--to', 'dvic', '--part', 'dvic.day'),
+    'features/dvic/frontend/feature.ts',
+  );
+  assert.match(dvic, /id: 'dvic\.latest',[\s\S]*id: 'dvic\.week',[\s\S]*part: 'dvic\.day',/);
+  assert.equal(dvic.match(/^\s+widgets:/gm)?.length, 1);
+  await assert.rejects(
+    add('widget', 'latest', '--to', 'dvic'),
+    /has the widget dvic\.latest already/,
+  );
+  await assert.rejects(
+    add('widget', 'week', '--to', 'dvic', '--part', 'dvic.nothing'),
+    /--part names one of dvic's parts/,
+  );
 
   // An API on Live Route Data: its routes, its permission, its types' export, and the ts Cargo
   // feature.
@@ -170,7 +190,7 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
   );
   // A README's line joins its list, whatever its last item's bold lead says.
   assert.match(
-    changed(await add('widget', '--to', 'home'), 'features/home/README.md'),
+    changed(await add('widget', 'notes', '--to', 'home'), 'features/home/README.md'),
     /\*\*[^\n]*\n- \*\*Widget:\*\*/,
   );
   // A permissions field it lacks holds only what the piece uses.
