@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, android, api, build, change, check, ci, dev, merge, observation, pr,
-    preview, review, scaffold, shot, status, test, verify,
+    Native, Result, Runner, android, api, build, change, check, ci, dev, merge, observation, owed,
+    pr, preview, review, scaffold, shot, status, test, verify,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -166,6 +166,17 @@ const COMMANDS: &[Spec] = &[
          the user approved what it shows, its PR and required check, its review, and what \
          comes next.",
     ),
+    spec(
+        "owed",
+        &["owed [<name>...] [--json]"],
+        "Each change in progress, in the platform's worktrees and the agent docs', or the ones \
+         named: its branch, head and PR, what comes next as status says it, through landed \
+         and finish once it merged, and whose move that is: the agent's, the user's, \
+         GitHub's, its reviewers', or none, ready to merge. What fails for one change is told in its \
+         own entry.",
+    )
+    .flags(&["--json"])
+    .arguments(usize::MAX),
     spec(
         "preview",
         &["preview [--pages <page[/tab],...>]", "preview approve"],
@@ -367,7 +378,9 @@ const SECTIONS: &[(&str, &[&str])] = &[
     ("Checking a branch:", &["check", "test", "verify"]),
     (
         "Reviewing and merging:",
-        &["preview", "review", "ci", "merge", "landed", "status"],
+        &[
+            "preview", "review", "ci", "merge", "landed", "status", "owed",
+        ],
     ),
     ("Trying it:", &["dev", "api", "shot", "browser", "android"]),
     (
@@ -566,6 +579,11 @@ fn run() -> Result<()> {
         "ci" => ci::run(&line.root()?, std::time::SystemTime::now(), &Native),
         "landed" => ci::landed(&line.root()?, &Native, &std::thread::sleep),
         "status" => status::run(&line.root()?, std::time::SystemTime::now(), &Native),
+        "owed" => {
+            let names: Vec<&str> = line.arguments.iter().map(String::as_str).collect();
+            let env = std::env::vars().collect();
+            owed::run(&line.root()?, &names, line.flag("--json"), &env, &Native)
+        }
         "preview" => match line.arguments.first().map(String::as_str) {
             None => {
                 let pages: Vec<&str> = line
