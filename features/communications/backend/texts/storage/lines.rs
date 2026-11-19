@@ -11,8 +11,9 @@ use dispatch_core::{
 /// of new messages of another line are kept apart from Dispatch Phone's, which stay as they were
 /// (`0024_communications_lines.sql`). Everything kept before is Dispatch Phone's. And whether
 /// each phone of another line has its texts filed, as its line said as it paired (`texting`, and
-/// `line_texting` on the code that pairs it): none kept before is. Each step is taken only if it
-/// wasn't.
+/// `line_texting` on the code that pairs it): none kept before is. Neither is read since every
+/// phone's texts are filed, but each is still written, for a rollback to the release that read
+/// them (`phones_new_pairing`). Each step is taken only if it wasn't.
 ///
 /// The numbers' conversations are told apart by their line too: the index that kept one per kind
 /// and number gives way to one keeping one per kind, number and line. Over the conversations with

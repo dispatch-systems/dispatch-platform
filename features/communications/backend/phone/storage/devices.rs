@@ -66,13 +66,6 @@ pub(crate) fn add_lines(db: &Db) -> Result<()> {
 pub struct Line<'a> {
     pub id: &'a str,
     pub name: &'a str,
-    /// Whether its texts are filed, in conversations of its own its page reads and answers, and
-    /// it may text a number first. Off, its phones keep their texts as the phone side's alone, as
-    /// before Dispatch Phone filed another line's, and its page answers as a line with nothing
-    /// yet: off until the release after the one that kept each line's texting apart, as a
-    /// rollback to a release without lines reads every conversation as Dispatch Phone's. Each
-    /// phone keeps it as its line said as it paired (`phones_devices.texting`).
-    pub texting: bool,
 }
 
 /// One of the DSP's phones, as kept.
@@ -320,11 +313,7 @@ impl DeviceStore for Store {
         at: i64,
     ) -> Result<String> {
         let id = crypto::id("pairing")?;
-        let (line, line_name, texting) = (
-            line.map(|line| line.id),
-            line.map(|line| line.name),
-            line.is_some_and(|line| line.texting),
-        );
+        let (line, line_name) = (line.map(|line| line.id), line.map(|line| line.name));
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             db.exec(
@@ -332,20 +321,15 @@ impl DeviceStore for Store {
                  WHERE used_at IS NULL AND replaced_at IS NULL AND line IS ?",
                 params![at, line],
             )?;
+            // The code and the phone it pairs say its texts are filed (`line_texting`, `texting`),
+            // as every phone's are. Nothing reads them now, but the release before files another
+            // line's phone's texts only where its phone says so, copied from its code as it
+            // pairs, so a rollback to it still files those of each phone and code made since.
             db.exec(
                 "INSERT INTO phones_pairings \
                  (id,code_sha256,created_by,created_at,expires_at,line,line_name,line_texting) \
-                 VALUES (?,?,?,?,?,?,?,?)",
-                params![
-                    id,
-                    code_sha256,
-                    by,
-                    at,
-                    at + PAIRING_MS,
-                    line,
-                    line_name,
-                    texting
-                ],
+                 VALUES (?,?,?,?,?,?,?,1)",
+                params![id, code_sha256, by, at, at + PAIRING_MS, line, line_name],
             )?;
             Ok(())
         })?;
@@ -383,7 +367,7 @@ impl DeviceStore for Store {
         db.transaction(|| {
             let code = db
                 .one(
-                    "SELECT created_by,line,line_name,line_texting FROM phones_pairings \
+                    "SELECT created_by,line,line_name FROM phones_pairings \
                      WHERE code_sha256=? \
                      AND used_at IS NULL AND replaced_at IS NULL AND expires_at>?",
                     params![code_sha256, at],
@@ -400,10 +384,11 @@ impl DeviceStore for Store {
                 (Some(name), 0) => name.to_owned(),
                 (Some(name), _) => format!("{name} {}", count + 1),
             };
+            // Its texts filed (`texting`), for the release before (`phones_new_pairing`).
             db.exec(
                 "INSERT INTO phones_devices \
                  (id,name,number,model,app_version,key_sha256,paired_at,paired_by,last_seen_at,\
-                 line,texting) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                 line,texting) VALUES (?,?,?,?,?,?,?,?,?,?,1)",
                 params![
                     id,
                     name,
@@ -414,8 +399,7 @@ impl DeviceStore for Store {
                     at,
                     s(&code, "created_by"),
                     at,
-                    line,
-                    n(&code, "line_texting") == 1
+                    line
                 ],
             )?;
             db.exec(

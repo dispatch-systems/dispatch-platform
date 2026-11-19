@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { demo, fixture, until } from '../../../../../../core/shell/tests/support/support.js';
-import { dispatchPhone, hrLine, paired, texting, withHrLine } from '../support/line.js';
+import { dispatchPhone, hrLine, paired, withHrLine } from '../support/line.js';
 
-// HR Line's page reads and answers HR Line's texts alone, from its own phone, behind Use HR Line:
-// a number texting both lines has a conversation on each, and neither page lists, opens, answers,
-// names or blocks the other's.
+// HR Line's page reads, answers and texts first HR Line's texts alone, from its own phone, behind
+// Use HR Line: a number texting both lines has a conversation on each, and neither page lists,
+// opens, answers, names or blocks the other's.
 
 type Listed = { id: string; number: string | null; with: { name: string }; last: { text: string } };
 const JORDAN = '+14255550199';
@@ -14,9 +14,8 @@ test("HR Line's page has HR Line's texts alone, and Dispatch Phone's page none o
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
-  const north = await withHrLine(owner);
+  await withHrLine(owner);
   const hr = await paired(f, owner, hrLine, '(206) 555-0111');
-  texting(f, north.id, hr);
   const dispatch = await paired(f, owner, dispatchPhone, '(206) 555-0177');
   await hr.texted('4255550199', 'About my paycheck');
   await dispatch.texted('4255550199', 'Is this dispatch?');
@@ -61,6 +60,14 @@ test("HR Line's page has HR Line's texts alone, and Dispatch Phone's page none o
       assert.equal(refused.value.error, 'communications_conversation_not_found', path);
     }
   }
+
+  // Texting a number first opens HR Line's own conversation with it, which Dispatch Phone's page
+  // doesn't find.
+  const first = await owner.post(`${hrLine}/texts/conversations`, { number: '4255550199' });
+  assert.equal(first.value.id, mine.id, first.body);
+  const opened = await owner.post(`${hrLine}/texts/conversations`, { number: '4255550123' });
+  assert.equal(opened.status, 200, opened.body);
+  assert.equal((await owner.get(`${dispatchPhone}/conversations/${opened.value.id}`)).status, 404);
 
   // HR Line's answer goes from its own phone; the name it saves and the number it blocks are its
   // own.
