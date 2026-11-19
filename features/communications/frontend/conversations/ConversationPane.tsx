@@ -33,8 +33,7 @@ import { useLine } from '../line.js';
 
 // The conversation open: who it's with, the workspace it's in while there are several, the number
 // it texts, or a driver's route today and the work phone they hold, and, while it waits, how long
-// and Done, else Next waiting; what can be done with its number, or with a work phone nobody held,
-// Pick driver; their conversations of other kinds, as chips; its messages; and writing in it, by
+// and Done, else Next waiting; what can be done with its number, or a work phone nobody held's; their conversations of other kinds, as chips; its messages; and writing in it, by
 // text through the DSP's phones, or for a driver holding no work phone, their other conversations
 // instead; above the box, who else at the DSP is writing in it, and before sending, whether one of
 // them replied since the member started writing. On a phone it takes the page, with a way back to
@@ -99,8 +98,8 @@ export function ConversationPane({
   closed: () => void;
   /** Opens a group, as one a message went to. */
   openGroup: (id: string) => void;
-  /** Today's Routes as the page last read it, while it shows: today's drivers, whom a work phone
-   * nobody held can be picked for, and their routes today. */
+  /** Today's Routes as the page last read it, while it shows: today's drivers, listed first to add a
+   * number to, and their routes today. */
   todays?: TodaysRead;
   /** Opens another conversation, as whom it's with's of another kind, or starts it. */
   open: (target: Target) => void;

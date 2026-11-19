@@ -78,7 +78,6 @@ pub const FEATURE: Feature = Feature {
             "communications_blocked",
             "communications_line_contacts",
             "communications_line_blocked",
-            "communications_picked",
             "communications_refiling",
             "communications_live_days",
             "phones_devices",
@@ -254,6 +253,14 @@ pub const FEATURE: Feature = Feature {
                 id: 24,
                 name: "communications_lines",
                 apply: Code(backend::texts::storage::add_lines),
+            },
+            // The drivers picked for work phones, dropped with Pick driver.
+            Migration {
+                id: 25,
+                name: "communications_picked_dropped",
+                apply: Sql(include_str!(
+                    "migrations/dsp/0025_communications_picked_dropped.sql"
+                )),
             },
         ],
     }],

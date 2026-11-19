@@ -5,7 +5,7 @@ import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { SlackLogo } from '../../../slack/frontend/index.js';
 import { numberBeside, roleText } from '../shared/format.js';
 import { NumberActions } from '../texting/NumberActions.js';
-import { PickDriver } from '../todays-routes/PickDriver.js';
+import { SaveContact } from '../texting/SaveContact.js';
 import { Reach, RouteCode } from '../todays-routes/RouteFacts.js';
 import type { Party } from './party.js';
 
@@ -28,7 +28,7 @@ export type Open = {
   working: readonly CommunicationsWorkspace[];
   /** Whether the DSP texts. */
   texting: boolean;
-  /** Today's drivers, whom a work phone nobody held can be picked for. */
+  /** Today's drivers, listed first to add a number to. */
   drivers: readonly RouteDriver[];
   timeZone: string;
   /** Shows a conversation as the page's own writes left it. */
@@ -131,14 +131,9 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     number: ({ conversation }) => conversation.number,
     writable: ({ texting }) => texting,
     about: () => 'No driver',
-    actions: ({ conversation, drivers, timeZone, follow }) =>
-      drivers.length > 0 && (
-        <PickDriver
-          conversation={conversation}
-          drivers={drivers}
-          timeZone={timeZone}
-          picked={follow}
-        />
+    actions: ({ conversation, drivers, show }) =>
+      !conversation.with.code && (
+        <SaveContact conversation={conversation} drivers={drivers} show={show} />
       ),
     whom: named,
     workdays: false,

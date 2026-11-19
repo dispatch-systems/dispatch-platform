@@ -79,9 +79,12 @@ impl People {
     pub fn routed(&self, source: Source, id: &str) -> Correspondent {
         with(self.everyone.holding(source, id), id)
     }
-    /// A work phone nobody had, `number`, by the number.
-    pub fn work_phone(&self, number: &str) -> Correspondent {
-        with(None, &shown(number))
+    /// A work phone nobody had, `number`: the person it was added to, else by the name the DSP
+    /// saved for it, `contact`, else by the number. Unlike a number's, it isn't anyone's whom
+    /// Driver Match has it for otherwise, as a work phone passes from driver to driver.
+    pub fn work_phone(&self, number: &str, contact: Option<&str>) -> Correspondent {
+        let name = contact.map_or_else(|| shown(number), str::to_owned);
+        with(self.everyone.added(number), &name)
     }
     /// The person the DSP's member `user` is, by their email address, if any: their code and
     /// their photo's version.

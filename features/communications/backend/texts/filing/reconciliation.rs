@@ -194,7 +194,7 @@ pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
     Ok(())
 }
 /// Files every text of today, the DSP's day, again, where it belongs now: whether any moved.
-pub fn refiled(db: &Store, dsp: &str) -> Result<bool> {
+fn refiled(db: &Store, dsp: &str) -> Result<bool> {
     let moves = misfiled(db, dsp)?;
     Ok(!db.refile_communications_texts(dsp, &moves)?.is_empty())
 }

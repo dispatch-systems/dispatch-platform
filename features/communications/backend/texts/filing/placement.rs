@@ -10,7 +10,7 @@ use super::super::{
     live_day,
     model::{Filed, Unfiled},
     numbers::ten_digits,
-    storage::{PickStore, TextStore},
+    storage::TextStore,
     zone,
 };
 use super::failed;
@@ -121,8 +121,6 @@ pub(super) struct Filer<'a> {
     routes: Option<&'static dyn DriverRoutes>,
     /// Each day's work phones, or none for a day Routes can't read.
     days: HashMap<String, Option<Phones>>,
-    /// Each day's picks: the driver picked for each work phone, by its ten digits.
-    picked: HashMap<String, HashMap<String, Filed>>,
     /// Whether each number, by its ten digits, was ever a work phone.
     work_phones: HashMap<String, bool>,
     /// When the two hours after the day before each day stopped end, while they run into it.
@@ -162,14 +160,12 @@ impl<'a> Filer<'a> {
             live_day,
             routes: routes::for_dsp(db, dsp)?,
             days: HashMap::new(),
-            picked: HashMap::new(),
             work_phones: HashMap::new(),
             after_stop: HashMap::new(),
         })
     }
     /// Where a text with `number`, written at `at`, is filed: under the driver whose latest work
-    /// phone it is that day, else the driver picked for it that day; else under the work phone, or
-    /// the number, as itself. None while what would tell can't be read: that day's work phones, or
+    /// phone it is that day; else under the work phone, or the number, as itself. None while what would tell can't be read: that day's work phones, or
     /// whether the number was ever one, as Routes reads them. Routes being off isn't the number not
     /// being a work phone.
     pub(super) fn filed(&mut self, number: &str, at: i64) -> Result<Option<Filed>> {
@@ -180,23 +176,14 @@ impl<'a> Filer<'a> {
         let Some(phones) = self.phones(&day)? else {
             return Ok(None);
         };
-        let listed = match phones.drivers.get(&ten) {
-            Some(Some(driver)) => {
-                return Ok(Some(Filed::Driver {
-                    source: phones.source.clone(),
-                    id: driver.clone(),
-                }));
-            }
-            Some(None) => true,
-            None => false,
-        };
-        if let Some(picked) = self.picked(&day)?.get(&ten) {
-            return Ok(Some(picked.clone()));
+        match phones.drivers.get(&ten) {
+            Some(Some(driver)) => Ok(Some(Filed::Driver {
+                source: phones.source.clone(),
+                id: driver.clone(),
+            })),
+            Some(None) => Ok(Some(Filed::WorkPhone(number.to_owned()))),
+            None => self.own(number, &ten),
         }
-        if listed {
-            return Ok(Some(Filed::WorkPhone(number.to_owned())));
-        }
-        self.own(number, &ten)
     }
     /// Where a text new to Communications, with `number`, written at `at`, is placed: where it's
     /// filed, else, while that can't be told, under its number, the work phone's own while Routes
@@ -260,18 +247,6 @@ impl<'a> Filer<'a> {
             self.days.insert(day.to_owned(), phones);
         }
         Ok(self.days[day].as_ref())
-    }
-    /// The drivers picked for work phones on `day`, by their ten digits.
-    fn picked(&mut self, day: &str) -> Result<&HashMap<String, Filed>> {
-        if !self.picked.contains_key(day) {
-            let picked = self
-                .db
-                .communications_picked(self.dsp, day)?
-                .into_iter()
-                .collect();
-            self.picked.insert(day.to_owned(), picked);
-        }
-        Ok(&self.picked[day])
     }
     /// Whether the number with the ten digits `ten` was ever a work phone, as Routes knows it:
     /// none while it's off for the DSP.

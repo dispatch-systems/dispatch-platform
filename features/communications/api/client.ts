@@ -136,9 +136,6 @@ export const textDriver = (driverId: string) =>
 export const todaysRoutesUrl = `${communicationsUrl}/routes`;
 export const getTodaysRoutes = (signal?: AbortSignal) =>
   api<TodaysRoutes>(todaysRoutesUrl, undefined, signal);
-/** Files a work phone nobody held under one of today's drivers: their conversation. */
-export const pickDriver = (id: string, driverId: string) =>
-  api<Conversation>(`${communicationsUrl}/conversations/${id}/driver`, { driverId });
 /** The DSP's quick replies, in their order, as the composer offers them and Settings edits them. */
 export const quickRepliesUrl = `${communicationsUrl}/quick-replies`;
 export const useQuickReplies = () => useCachedData<QuickReplies>(quickRepliesUrl);

@@ -1,6 +1,6 @@
 //! What only a conversation by text has: Retry, a number's contact, person and block, texting a number or
-//! one of today's drivers first, whom the DSP can text, a text's pictures, Today's Routes and Pick
-//! driver. A Slack conversation's ID is refused for each. Retry, a number's contact and block,
+//! one of today's drivers first, whom the DSP can text, a text's pictures and Today's Routes. A
+//! Slack conversation's ID is refused for each. Retry, a number's contact and block,
 //! texting a number first, whom the DSP can text and a text's pictures are each of one line
 //! (`*_of`): Dispatch Phone's own here, another feature's from its own routes (`api::lines`); the
 //! rest are Dispatch Phone's own.
@@ -13,7 +13,7 @@ use crate::backend::{
 };
 use dispatch_core::{
     Result, State,
-    db::{Store, now},
+    db::Store,
     ensure,
     foundation::validate as v,
     server::http::{
@@ -287,20 +287,4 @@ pub async fn add_text_photo_of(
 pub(super) fn todays_routes(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
     Reply::of(&texts::todays_routes::read(db, c.state, c.dsp_id())?)
-}
-/// Files the work phone of a conversation, one nobody has, under one of today's drivers,
-/// `driverId`, for today.
-pub(super) fn pick_driver(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &["driverId"])?;
-    let conversation = texted(input)?;
-    let driver = v::text(&input.body, "driverId", 1, MOST_ID_LENGTH)?;
-    Reply::of(&texts::picking::pick(
-        db,
-        c.state,
-        c.dsp_id(),
-        &conversation,
-        driver,
-        c.actor(),
-        now(),
-    )?)
 }

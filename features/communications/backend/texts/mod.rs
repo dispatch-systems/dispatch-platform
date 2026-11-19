@@ -5,7 +5,6 @@ pub(crate) mod filing;
 pub(crate) mod live_day;
 pub(crate) mod model;
 pub(crate) mod numbers;
-pub(crate) mod picking;
 pub(crate) mod reading;
 pub(crate) mod reply;
 pub(crate) mod storage;

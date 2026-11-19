@@ -98,3 +98,68 @@ async fn every_number_a_driver_has_is_theirs_and_an_added_one_says_so() {
         (Some("AVERY1"), false)
     );
 }
+
+/// The conversation `id`, as the page reads it.
+async fn read(state: &Arc<State>, dsp: &str, id: &str) -> Conversation {
+    let (shared, dsp, id) = (state.clone(), dsp.to_owned(), id.to_owned());
+    state
+        .read(move |db| one(db, &shared, &dsp, None, &id))
+        .await
+        .unwrap()
+}
+
+/// A work phone nobody has today is named as the DSP saves it, never as whoever Driver Match has
+/// the number for otherwise, as a work phone passes from driver to driver; it isn't blocked, as only
+/// a number's own conversation is.
+#[tokio::test]
+async fn a_work_phone_nobody_has_is_named_as_saved_and_never_blocked() {
+    let (_root, state, dsp) = support::started();
+    let (zone, day) = today(&state, &dsp).await;
+    // 0103 was Casey's work phone yesterday and is nobody's today, and Driver Match has it as
+    // Casey's own number too.
+    let mut casey = support::driver("CASEY1", "Casey Diaz", "C1");
+    casey.phones = vec!["+12065550103".into()];
+    support::know(&state, &dsp, vec![casey], Vec::new(), Vec::new());
+    let yesterday = vec![support::saved(
+        day.yesterday().unwrap(),
+        &[("C1", "2065550103")],
+    )];
+    let blake = phones(&[("B1", "2065550102")]);
+    phoned(&state, &dsp, Some(&day.to_string()), blake, yesterday).await;
+    let asked = support::texted(
+        &state,
+        &dsp,
+        "+12065550103",
+        "Who has the charger?",
+        support::at(&zone, day, 9, 0),
+    )
+    .await;
+    let id = support::filed(&state, &dsp, &asked).await.id;
+    let phone = read(&state, &dsp, &id).await;
+    assert_eq!(
+        (
+            phone.kind,
+            phone.driver_id.as_deref(),
+            phone.with.name.as_str()
+        ),
+        (ConversationKind::Work, None, "(206) 555-0103")
+    );
+
+    let (shared, d, i) = (state.clone(), dsp.clone(), id.clone());
+    let named = state
+        .run(move |db| save_contact(db, &shared, &d, None, &i, "Spare phone", "me"))
+        .await
+        .unwrap();
+    assert_eq!(
+        (named.with.name.as_str(), named.contact),
+        ("Spare phone", true)
+    );
+    assert_eq!(read(&state, &dsp, &id).await.with.name, "Spare phone");
+
+    let (shared, d) = (state.clone(), dsp.clone());
+    let refused = state
+        .run(move |db| block(db, &shared, &d, None, &id, "me", true))
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, "invalid_input");
+}
