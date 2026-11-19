@@ -6,7 +6,8 @@
 //! the DSP's vans (`fleet`, `amazon_fleet` while `fleet` is on). Each answers what a test says of
 //! its DSP, with `know`, `phoned` and `routed`, and nothing else; Routes' fails to read a day while
 //! a test says it does (`failing`). A test starts with a platform with one DSP, every feature on
-//! for it, and its dispatch phone paired (`phone`), which `texted` and `reported` speak for; or
+//! for it, and its dispatch phone paired (`phone`), which `texted` and `reported` speak for, with
+//! another feature's line beside Dispatch Phone's own to pair a phone to (`phone::FRONT_DESK`); or
 //! with one of its fixture workspaces connected too, its members read: the workspace's admin has
 //! approved all the app asks for.
 mod budget;
@@ -262,6 +263,7 @@ pub fn install() {
             &routes::DRIVING,
             &live::LIVE,
             &fleet::FLEET,
+            &phone::FRONT_DESK,
         ],
     );
 }

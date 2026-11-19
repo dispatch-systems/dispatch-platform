@@ -3,8 +3,9 @@
 //! each line lists, counts, opens and answers only its own, from its own phones, and names and
 //! blocks a number on its own alone, logged as its own; a phone paired while its line's texts
 //! weren't filed has those it kept filed, and texts a number first, on its own line alone; another
-//! line's page, waiting or answering, is refused once Dispatch Phone is off; and what was kept
-//! before the lines were is Dispatch Phone's, left as it was.
+//! line's page, waiting or answering, goes on with Dispatch Phone off and is refused once its own
+//! line is; the minute's upkeep files and fails each line's texts only while its own line is on;
+//! and what was kept before the lines were is Dispatch Phone's, left as it was.
 use super::{
     contacts, filing,
     model::Filed,
@@ -17,8 +18,8 @@ use crate::backend::{
     inbox, live,
     model::ConversationKind,
     phone::{
-        model::Direction,
-        storage::{Line, Reported, TextStore as _},
+        model::{Direction, EXPIRY_MS, Outgoing, PHONE_OFFLINE},
+        storage::{DeviceStore, Line, Reported, TextStore as _},
     },
     push::storage::{Address, PushStore, Subscription},
     support::{self, filed, migrate, phoned, phones, started, texted, texted_on, today},
@@ -37,8 +38,8 @@ const DESK: Line = Line {
     id: "front_desk",
     name: "Front Desk",
 };
-/// What another line's page is behind: a permission of its own, which Dispatch Phone being off
-/// doesn't take away.
+/// What another line's page is behind in these tests: a permission that its own line being off
+/// doesn't take away, so its own switch alone refuses it.
 const MANAGE: Dsp = Dsp("connections.manage");
 /// The number that texts both lines.
 const JORDAN: &str = "+14255550199";
@@ -323,7 +324,7 @@ async fn names_and_blocks_are_each_lines_own_and_logged_as_its_own() {
 
 #[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test(start_paused = true)]
-async fn another_lines_page_waiting_or_answering_is_refused_once_dispatch_phone_is_off() {
+async fn another_lines_page_goes_on_with_dispatch_phone_off_and_is_refused_once_its_own_is() {
     let (_root, state, dsp) = started();
     let phone = desk(&state, &dsp).await;
     let theirs = texted_on(&state, &dsp, &phone, JORDAN, "About my paycheck", now()).await;
@@ -333,46 +334,80 @@ async fn another_lines_page_waiting_or_answering_is_refused_once_dispatch_phone_
         grant: MANAGE,
         line: Some(DESK.id),
     };
-    // Who is waiting, let in as each request of theirs would be, as things stand then; `read`
-    // hears each time they are.
-    let (auth, at) = (c.auth.clone(), dsp.clone());
-    let read = Arc::new(tokio::sync::Notify::new());
-    let again = {
-        let read = read.clone();
-        move |db: &Store| {
-            let c = db.context(&auth, &at, MANAGE.0)?;
-            read.notify_one();
-            Ok(c)
-        }
+    // Who is waiting, let in as each request of theirs would be, as things stand then.
+    let context = {
+        let (auth, at) = (c.auth.clone(), dsp.clone());
+        move |db: &Store| db.context(&auth, &at, MANAGE.0)
     };
-    let (shared, at, me) = (state.clone(), dsp.clone(), c.auth.user.id.clone());
-    let (now_at, _) = state
-        .read(move |db| inbox::updates(db, &shared, &at, DESK.id.into(), -1, &me))
-        .await
-        .unwrap();
+    // Its page as it waits on its changes from where they stand as it starts: the `Notify` handed
+    // back hears each time this wait alone lets it in.
+    let wait = || {
+        let (state, dsp, me, context) = (
+            state.clone(),
+            dsp.clone(),
+            c.auth.user.id.clone(),
+            context.clone(),
+        );
+        let read = Arc::new(tokio::sync::Notify::new());
+        let again = {
+            let read = read.clone();
+            move |db: &Store| {
+                let c = context(db)?;
+                read.notify_one();
+                Ok(c)
+            }
+        };
+        let waiting = tokio::spawn(async move {
+            let (shared, at) = (state.clone(), dsp.clone());
+            let (now_at, _) = state
+                .read(move |db| inbox::updates(db, &shared, &at, DESK.id.into(), -1, &me))
+                .await?;
+            let (after, seen) = (now_at.revision, now_at.typing.version as i64);
+            inbox::waited(&state, access, &dsp, again, after, seen).await
+        });
+        (waiting, read)
+    };
 
-    // Its page waits on its changes, with nothing new, let in while Dispatch Phone is on; then
-    // Dispatch Phone is switched off and its line changes. Read again, it's refused, not
-    // answered.
-    let waiting = tokio::spawn({
-        let (state, dsp, again) = (state.clone(), dsp.clone(), again.clone());
-        let (after, seen) = (now_at.revision, now_at.typing.version as i64);
-        async move { inbox::waited(&state, access, &dsp, again, after, seen).await }
-    });
+    // Its page waits on its changes, with nothing new; Dispatch Phone is switched off and its line
+    // changes. It goes on waiting, let in each time, and is answered as its wait ends.
+    let (waiting, read) = wait();
     read.notified().await;
     support::switch(&state, &dsp, crate::FEATURE.switch.id, false).await;
     live::changed_on(&state, &dsp, Some(DESK.id));
-    let refused = waiting.await.unwrap().map(drop).map_err(|error| error.code);
-    assert_eq!(refused, Err("not_found".to_owned()));
-
-    // Nor does an answer written now go, its access read again as it's queued.
-    let now_c = state.read(again).await.unwrap();
-    let refused = reply::send(
+    let answered = waiting.await.unwrap().map(drop).map_err(|error| error.code);
+    assert_eq!(answered, Ok(()));
+    // And an answer written now goes from its phone.
+    let now_c = state.read(context.clone()).await.unwrap();
+    let sent = reply::send(
         &state,
         &now_c,
         access,
         &theirs.id,
         "Payroll will call you",
+        (&[], None),
+    );
+    assert!(sent.await.is_ok());
+    let (at, from) = (dsp.clone(), phone.clone());
+    let outbox = state.read(move |db| db.phones_outbox(&at, &from)).await;
+    assert_eq!(outbox.unwrap().len(), 1);
+
+    // Its page waits again; its own line is switched off and it changes. Read again, it's
+    // refused, not answered.
+    let (waiting, read) = wait();
+    read.notified().await;
+    support::switch(&state, &dsp, DESK.id, false).await;
+    live::changed_on(&state, &dsp, Some(DESK.id));
+    let refused = waiting.await.unwrap().map(drop).map_err(|error| error.code);
+    assert_eq!(refused, Err("not_found".to_owned()));
+
+    // Nor does an answer written now go, its access read again as it's queued.
+    let now_c = state.read(context).await.unwrap();
+    let refused = reply::send(
+        &state,
+        &now_c,
+        access,
+        &theirs.id,
+        "Payroll will call you again",
         (&[], None),
     )
     .await
@@ -381,7 +416,126 @@ async fn another_lines_page_waiting_or_answering_is_refused_once_dispatch_phone_
     assert_eq!(refused, Err("not_found".to_owned()));
     let (at, from) = (dsp.clone(), phone.clone());
     let outbox = state.read(move |db| db.phones_outbox(&at, &from)).await;
-    assert!(outbox.unwrap().is_empty());
+    assert_eq!(outbox.unwrap().len(), 1);
+}
+
+/// Has the phone `from` report Jordan's text `body`, kept unfiled as one that couldn't be placed as
+/// it came: its ID.
+async fn unplaced(state: &Arc<State>, dsp: &str, from: &str, body: &'static str) -> String {
+    let (at, from) = (dsp.to_owned(), from.to_owned());
+    state
+        .run(move |db| {
+            let text = Reported {
+                client_id: body.into(),
+                direction: Direction::In,
+                number: JORDAN.into(),
+                body: body.into(),
+                at: now(),
+                files: Vec::new(),
+            };
+            Ok(db.phones_report(&at, &from, vec![text])?.remove(0).id)
+        })
+        .await
+        .unwrap()
+}
+/// An answer to Jordan queued on the line `line`, waiting on its phone: its ID.
+async fn queued(state: &Arc<State>, dsp: &str, line: Option<&str>) -> String {
+    let (at, line) = (dsp.to_owned(), line.map(str::to_owned));
+    state
+        .run(move |db| {
+            let answer = Outgoing {
+                to: JORDAN.into(),
+                body: "Payroll will call you".into(),
+                files: Vec::new(),
+                gif: None,
+                by: testing::a_user(db),
+                line,
+            };
+            Ok(db.phones_send(&at, &answer, now())?.id)
+        })
+        .await
+        .unwrap()
+}
+/// Of the texts `ids`, whether each is filed, and why each failed, if it did.
+async fn kept_as(state: &Arc<State>, dsp: &str, ids: &[&str]) -> Vec<(bool, Option<String>)> {
+    let (at, ids) = (
+        dsp.to_owned(),
+        ids.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+    );
+    state
+        .read(move |db| {
+            ids.iter()
+                .map(|id| {
+                    let filed = db.communications_text(&at, id)?.unwrap().conversation;
+                    let error = db.phones_text(&at, id)?.unwrap().error;
+                    Ok((filed.is_some(), error))
+                })
+                .collect()
+        })
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn the_minutes_upkeep_files_and_fails_each_lines_texts_only_while_its_own_line_is_on() {
+    let (_root, state, dsp) = started();
+    let desk = desk(&state, &dsp).await;
+    let at = dsp.clone();
+    let ours = state
+        .read(move |db| Ok(db.phones_devices(&at, None)?.remove(0).id))
+        .await
+        .unwrap();
+    let upkeep = || (filing::MAINTENANCE.run)(state.clone(), true);
+    // Past each answer's expiry, its phone offline by then.
+    let later = now() + 2 * EXPIRY_MS;
+    let failed = Some(PHONE_OFFLINE.to_owned());
+
+    // With Dispatch Phone off, its own line's text and answer wait, and the Front Desk's are filed,
+    // its answer as it fails.
+    let (our_answer, their_answer) = (
+        queued(&state, &dsp, None).await,
+        queued(&state, &dsp, Some(DESK.id)).await,
+    );
+    support::switch(&state, &dsp, crate::FEATURE.switch.id, false).await;
+    let (our_text, their_text) = (
+        unplaced(&state, &dsp, &ours, "Is this dispatch?").await,
+        unplaced(&state, &dsp, &desk, "About my paycheck").await,
+    );
+    upkeep().await;
+    filing::expire(&state, &dsp, later).await.unwrap();
+    assert_eq!(
+        kept_as(
+            &state,
+            &dsp,
+            &[&our_text, &our_answer, &their_text, &their_answer]
+        )
+        .await,
+        [
+            (false, None),
+            (false, None),
+            (true, None),
+            (true, failed.clone())
+        ]
+    );
+
+    // With Dispatch Phone on and the Front Desk off, the other way around.
+    support::switch(&state, &dsp, crate::FEATURE.switch.id, true).await;
+    support::switch(&state, &dsp, DESK.id, false).await;
+    let (their_next, their_last) = (
+        unplaced(&state, &dsp, &desk, "It's short this week").await,
+        queued(&state, &dsp, Some(DESK.id)).await,
+    );
+    upkeep().await;
+    filing::expire(&state, &dsp, later).await.unwrap();
+    assert_eq!(
+        kept_as(
+            &state,
+            &dsp,
+            &[&our_text, &our_answer, &their_next, &their_last]
+        )
+        .await,
+        [(true, None), (true, failed), (false, None), (false, None)]
+    );
 }
 
 #[tokio::test]

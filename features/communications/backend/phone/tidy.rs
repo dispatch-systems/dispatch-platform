@@ -1,6 +1,6 @@
 //! The phone side's upkeep: letting go, hourly, of pictures added for a text and never sent within
 //! a day, of bytes no file keeps or left arriving, and of pairing codes expired, each job on its
-//! own, in each DSP with Communications on.
+//! own, in each DSP with any line on (`lines::serving`).
 use super::{
     files,
     storage::{DeviceStore, FileStore},
@@ -37,7 +37,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
             return;
         }
         let dsps = state
-            .read(|db| crate::backend::switched_on(db, db.served_ids()?))
+            .read(|db| crate::backend::lines::serving(db, db.served_ids()?))
             .await;
         let dsps = match dsps {
             Ok(dsps) => dsps,

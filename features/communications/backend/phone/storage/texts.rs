@@ -7,13 +7,13 @@ use super::{
     files::{FileStore, ReportedFile},
     next_change,
 };
-use crate::backend::gifs;
 use crate::backend::origins::{self, Transport};
 use crate::backend::phone::{
     LIMITS,
     model::{Direction, EXPIRY_MS, Origin, Outgoing, PHONE_OFFLINE, PHONE_REMOVED, Status, Text},
     numbers::normal,
 };
+use crate::backend::{gifs, lines::On};
 use dispatch_core::{
     Error, Result,
     db::{Db, Store, n, s},
@@ -93,11 +93,11 @@ pub trait TextStore {
     /// Queues again the text `id`, one Dispatch sent that failed, as a new attempt from the phone
     /// a new text to its number would go from: refused as `phones_none` while none is paired.
     fn phones_retry(&self, dsp: &str, id: &str, at: i64) -> Result<Text>;
-    /// The texts Dispatch queued that wait past their expiry at `at` on a phone offline then: not
-    /// checked in within `ONLINE_MS`.
-    fn phones_expired(&self, dsp: &str, at: i64) -> Result<Vec<String>>;
+    /// The texts Dispatch queued that wait past their expiry at `at` on a phone of a line `on`,
+    /// offline then: not checked in within `ONLINE_MS`.
+    fn phones_expired(&self, dsp: &str, on: &On, at: i64) -> Result<Vec<String>>;
     /// Fails each of `phones_expired` as `PHONE_OFFLINE`: those it failed.
-    fn phones_expire(&self, dsp: &str, at: i64) -> Result<Vec<String>>;
+    fn phones_expire(&self, dsp: &str, on: &On, at: i64) -> Result<Vec<String>>;
     /// Has the demo's stand-in phone say the text it was given delivered, at once.
     fn phones_stand_in_delivered(&self, dsp: &str, id: &str, at: i64) -> Result<()>;
 }
@@ -320,19 +320,22 @@ impl TextStore for Store {
         self.phones_text(dsp, id)?
             .ok_or_else(|| Error::new("phones_text_not_found", 404))
     }
-    fn phones_expired(&self, dsp: &str, at: i64) -> Result<Vec<String>> {
+    fn phones_expired(&self, dsp: &str, on: &On, at: i64) -> Result<Vec<String>> {
         let expired: Vec<(String,)> = self.dsp(dsp)?.query_as(
-            "SELECT t.id FROM phones_devices d JOIN phones_texts t ON t.device_id=d.id \
-             WHERE t.status='waiting' AND t.origin='dispatch' AND t.status_at<=? \
-             AND coalesce(d.last_seen_at,0)<? ORDER BY t.at,t.id",
-            [at - EXPIRY_MS, at - ONLINE_MS],
+            &format!(
+                "SELECT t.id FROM phones_devices d JOIN phones_texts t ON t.device_id=d.id \
+                 WHERE t.status='waiting' AND t.origin='dispatch' AND t.status_at<=?1 \
+                 AND coalesce(d.last_seen_at,0)<?2 AND {} ORDER BY t.at,t.id",
+                On::includes("d.line", 3)
+            ),
+            params![at - EXPIRY_MS, at - ONLINE_MS, on.json()],
         )?;
         Ok(expired.into_iter().map(|(id,)| id).collect())
     }
-    fn phones_expire(&self, dsp: &str, at: i64) -> Result<Vec<String>> {
+    fn phones_expire(&self, dsp: &str, on: &On, at: i64) -> Result<Vec<String>> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            let expired = self.phones_expired(dsp, at)?;
+            let expired = self.phones_expired(dsp, on, at)?;
             for id in &expired {
                 let change = next_change(&db)?;
                 db.exec(

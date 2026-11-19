@@ -1,7 +1,8 @@
 //! The DSP's dispatch phone, as a test says: Dispatch, (206) 555-0100, paired to the DSP each test
 //! starts with. It receives a text and says how one Dispatch sent went, as its app does through
 //! the phones' address, each kept by the phone side and filed in the same write; and what Dispatch
-//! queued for it is read from its outbox, as its app reads it.
+//! queued for it is read from its outbox, as its app reads it. Another feature's line beside it,
+//! as a test pairs a phone to it, is the Front Desk's (`FRONT_DESK`).
 use crate::backend::{
     phone::{
         model::{Direction, Status},
@@ -13,12 +14,20 @@ use dispatch_core::{
     Error, Result, State,
     db::{Store, now},
     foundation::crypto,
+    manifest::{Feature, feature, optional},
     testing,
 };
 use std::sync::Arc;
 
 /// The DSP's phone's own number.
 pub const NUMBER: &str = "+12065550100";
+/// The stand-in for a feature whose line of the DSP's phones a test pairs beside Dispatch Phone's
+/// own, `front_desk`, by its own switch: on, as every feature is, until a test switches it off.
+pub(super) static FRONT_DESK: Feature = Feature {
+    switch: optional("front_desk", "Front Desk", &[]),
+    depends_on: &["communications"],
+    ..feature("front_desk")
+};
 
 /// Pairs the DSP's phone, as its app does with a code the DSP's owner made.
 pub(super) fn pair(db: &Store, dsp: &str) {

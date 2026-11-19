@@ -1,6 +1,7 @@
 //! Who is pushed what: each message new in what waits, to each browser of each member who may be
 //! told of it, once, opening where it was subscribed; each line's alone to the browsers told of
-//! it; a browser kept by someone else no longer told of any line for whoever had it; the browsers
+//! it, while that line is on, whatever Dispatch Phone's switch; a browser kept by someone else no
+//! longer told of any line for whoever had it; the browsers
 //! let go of once they can't be told, even as a push waits to be tried again;
 //! pushes going a few at once, however many batches go; and what a push says of a message, as the
 //! list does.
@@ -30,8 +31,8 @@ const DESK: Pushed = Pushed {
     display: &DISPLAY,
 };
 
-/// That line's pushes, told to those holding a permission of its own, which Dispatch Phone being off
-/// doesn't take away.
+/// That line's pushes, told to those holding a permission that its own line being off doesn't take
+/// away, so its own switch alone stops them.
 const MANAGED: Pushed = Pushed {
     permission: "connections.manage",
     ..DESK
@@ -371,11 +372,9 @@ async fn a_browser_kept_by_someone_else_is_no_longer_told_of_any_line_for_whoeve
     assert_eq!(kept().await, [(DESK.line, blake.to_owned(), Address::Dsp)]);
 }
 
-#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
-#[tokio::test(start_paused = true)]
-async fn another_lines_push_waiting_its_turn_goes_nowhere_once_dispatch_phone_is_off() {
-    let (_root, state, bot) = support::connected(TEAM).await;
-    let dsp = bot.dsp.clone();
+#[tokio::test]
+async fn another_lines_push_goes_with_dispatch_phone_off_and_nowhere_once_its_own_line_is_off() {
+    let (_root, state, dsp) = support::started();
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let owner = c.actor().to_owned();
     notifications(&state, &dsp, &owner, true, 0).await;
@@ -388,9 +387,13 @@ async fn another_lines_push_waiting_its_turn_goes_nowhere_once_dispatch_phone_is
     let turn = || turn(&state, &dsp, &MANAGED, &subscription);
     assert!(matches!(turn().await.unwrap(), Turn::Goes));
 
-    // Read again as its turn comes, it no longer goes: its line's page is refused while Dispatch
-    // Phone is off, however its member may still use the line.
+    // Read again as its turn comes with Dispatch Phone off, it still goes: its line answers to its
+    // own switch alone.
     support::switch(&state, &dsp, crate::FEATURE.switch.id, false).await;
+    assert!(matches!(turn().await.unwrap(), Turn::Goes));
+    // Once its own line is off, it no longer goes, however its member may still manage the DSP's
+    // connections.
+    support::switch(&state, &dsp, LINE.id, false).await;
     assert!(matches!(turn().await.unwrap(), Turn::Untold));
 }
 

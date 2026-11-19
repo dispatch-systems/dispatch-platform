@@ -360,7 +360,12 @@ decides ([Texts](#texts)).
   (`api::lines`). A code replaces only its own line's code not used yet. Another line's phones are
   named for it, its name, then its name and 2 and so on, and their log entries are its
   (`<line>.phones.paired`, `.renamed`, `.removed`), which it words. The phones' address is one for
-  every line: a phone is known by its key, whatever line it serves.
+  every line: a phone is known by its key, whatever line it serves. Each line answers to its own
+  switch alone (`backend::lines`), Dispatch Phone's own to Dispatch Phone's and another's to its
+  feature's, never to the other's, nor to whether the other is hidden or in beta: its page and
+  card, its phones' calls and the codes that pair them, the filing of its phones' texts and its
+  pushes. Every line is Dispatch Phone's own or a feature's that depends on it; the app the
+  phones run, and the upkeep all lines share, serve a DSP while any line is on there.
 - **The card:** Dispatch Phone, on Settings' DSP Connections, for those who manage the DSP's
   phones or all its connections (`connectionPieces`, `dsp`), while Dispatch Phone is on: its own
   line's phones, each by its number,
@@ -372,7 +377,9 @@ decides ([Texts](#texts)).
   many pictures it received that its texting app hasn't downloaded; Rename and Remove in its menu; a name changed and
   not saved asks "Save changes?", with only Save and Discard, before the dialog closes; closing
   the browser tab drops it silently. Its routes are refused (`not_found`) while
-  Dispatch Phone is off, though managing all the DSP's connections still lets a member in. With
+  Dispatch Phone is off or out of the member's sight, though managing all the DSP's connections
+  still lets a member in; another line's card's, likewise, while that line's own feature is, never
+  by Dispatch Phone's. With
   none, No phone. **Add phone** shows the code that pairs the next phone, as a QR code its app
   reads and as its eight letters, and how long it lasts; one expired, or replaced by a newer one
   as another session makes, gives way to a new one with New code; the dialog closes once its own
@@ -412,8 +419,9 @@ decides ([Texts](#texts)).
   offline fail as they expire ([Texts](#texts)). A phone calling an address no DSP has, as once its
   DSP is deleted, is refused as `phones_removed` too, and unpairs.
 - **Their address:** `/api/dispatch-phone/phone/…`, at the DSP's own address alone, never from a
-  browser (a request with a cookie is refused) but for the app, while the DSP is active and
-  Dispatch Phone is on there (`phones_off` otherwise): pairing by the code, and the app, public;
+  browser (a request with a cookie is refused) but for the app, while the DSP is active and a line
+  is on there (`phones_off` otherwise): the app while any line is, a code while the line it pairs
+  to is, and a phone while the line it serves is. Pairing by the code, and the app, public;
   every other call by `Authorization: Bearer <key>`, which the route checks itself, as Slack's
   signed events are checked (public to the server, which no session reaches). A phone waits on its
   outbox for what Dispatch has for it (woken by its own live channel, `phones`, apart from the
@@ -500,8 +508,8 @@ queues a text for a phone.
   once both are committed. A text that can't be placed as it comes, as reading where it belongs
   failed, is kept all the same, waiting to be filed (no conversation yet, and since when it
   couldn't be placed, logged as `communications_texts_failed` with its DSP and text), and every
-  minute's upkeep places those waiting, oldest first, each on its own, writing only while one
-  waits; one still waiting ten minutes after it first couldn't be is placed under its number, as
+  minute's upkeep places those waiting of a phone whose line is on, oldest first, each on its own,
+  writing only while one waits; one still waiting ten minutes after it first couldn't be is placed under its number, as
   on a day Routes can't read, and its day noted to be filed again (below), which moves it where it
   belongs once Routes can say. Where it's placed:
   - **A work phone's**, a driver's: a number `+1` and ten digits, as Routes' work phones are, is
@@ -579,7 +587,8 @@ queues a text for a phone.
   change of their access can't come between.
 - **Expiry:** a text queued, or tried again, goes only within ten minutes (`EXPIRY_MS`): the phone
   never starts it after, and says it failed (`expired`). One still waiting as it expires on a
-  phone offline then, not checked in for two minutes, fails, by every minute's upkeep, with
+  phone offline then, not checked in for two minutes, whose line is on, fails, by every minute's
+  upkeep, with
   `phones_offline` as its error, filed as it fails, so its conversation waits again and Retry
   sends it anew. Should the phone say that attempt was sent after all, it counts.
 - **Log:** in the audit log, under Settings, with the DSP: a name saved for a number, or changed,
@@ -848,8 +857,8 @@ not; and with it closed, or on a phone, as a push (**Pushed**, below).
   feature's, of its own line's texts alone, to the browsers kept for that line, of members holding
   the permission it names with the Notifications of the section it names, titled with its name
   before who wrote it and opening its own page, watched by an upkeep of its own
-  (`lines::pushing`) while it and Dispatch Phone are on, and each push going, as its turn comes,
-  only while Dispatch Phone still is. A browser told of two lines is kept for
+  (`lines::pushing`) while it is on, and each push going, as its turn comes, only while its member
+  may still use it, whether Dispatch Phone is on or not. A browser told of two lines is kept for
   each apart, and let go of for one alone, as the browser remembers each line keeping it. Each
   push names its line, and only that line's alerts in a window in front answer the worker for
   it. Another line's Display section has the same choices (`lines::DISPLAY_FIELDS`), on Settings'
@@ -1015,8 +1024,8 @@ Behind `communications.use`:
   asked of its phone again.
 - Each of those of the conversations by text, of whom the DSP can text, of a text's pictures and
   of pushes is of Dispatch Phone's own line here. Another feature mounts the same for its own line
-  (`api::lines`), under its own path and permission, refused (`not_found`) while Dispatch Phone is
-  off, checked again with the member's access after each wait, as each read of a page waiting on
+  (`api::lines`), under its own path and permission, refused (`not_found`) while its own feature is
+  off or out of the member's sight, never by Dispatch Phone's, checked again with the member's access after each wait, as each read of a page waiting on
   updates and each answer, Retry, picture or subscription kept after its wait (`access::Access`):
   its overview, waiting, updates, search and older pages, Messaging's alone; a conversation
   and its window, answering with `text` and `photos`, Retry, Done and typing; a number's name,
@@ -1148,19 +1157,21 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   those too late, filing texts waiting to be filed, those waiting ten minutes under their number,
   filing the days noted and today's again where they belong now, keeping when the live day ends,
   failing the texts still waiting on an offline phone as they expire, and letting go of the bytes
-  of videos their phone sent an hour before, every minute, each failure logged with its DSP; and
+  of videos their phone sent an hour before, every minute, in each DSP with any line on, each of
+  a phone whose line is on, and the days and the live day only while Dispatch Phone is, each
+  failure logged with its DSP; and
   hourly, in each DSP with Slack connected, letting go of
   photos added and never sent within a day, then of bytes no file keeps, as a failure once in
   place or a removal that failed leaves, and of bytes left arriving an hour, as a restart leaves,
   each on its own: one that fails, logged as `communications_tidy_failed` with its DSP and job,
   leaves the rest to go, and is tried again the next hour. And the phone side's, hourly, in each DSP with
-  Dispatch Phone on: letting go of pictures added and never sent within a day; of bytes no file
+  any line on: letting go of pictures added and never sent within a day; of bytes no file
   keeps, as bytes sent again in place of others and a removal that failed leave, and of bytes left
   arriving an hour, as a restart leaves, each on its own; and of codes expired. Each of these jobs
   runs on its own too: one that fails, logged as `phones_tidy_failed` with its DSP and job, leaves
   the rest to run, and is tried again the next hour. Either's letting go of bytes lets go of their
   cached copies and previews too, and of previews left being made an hour, as a restart leaves.
-  And hourly, with an object store, in each DSP with Dispatch Phone on, for each store of bytes
+  And hourly, with an object store, in each DSP with any line on, for each store of bytes
   (`copies`): letting go of what the object store keeps that no file does, once a day, as listing
   it is paid for by the page; then copying what waits in the DSP's data to it, a hundred at a
   time, keeping the cache within its limit after each hundred, and, once `R2_ONLY` is set, making
@@ -1271,8 +1282,9 @@ the whole write. A write that goes around these leaves the index not ready. A ch
 body, status or file changes no run or day: an origin's name, face, group's name and phone's label
 are read from whoever holds them now, as it's read.
 
-Upkeep builds it, every minute, in bookkeeping turns that check the DSP is active and
-Dispatch Phone on there, so no cached read of anything else is let go. A pass visits at most eight
+Upkeep builds it, every minute, in bookkeeping turns that check the DSP is active and, for Slack's
+conversations, Dispatch Phone on there, for texts', any line, as every line's are texts, so no
+cached read of anything else is let go. A pass visits at most eight
 conversations of each transport at a DSP, going on from where the last stopped, a place kept in the
 database, and reads one chunk of 256 rows' metadata at each. A build starts over once the DSP's
 timezone, the algorithm, or a source epoch it didn't count changes. One known insertion, or a

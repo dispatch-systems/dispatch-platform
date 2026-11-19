@@ -1,8 +1,8 @@
 //! Who may use one line's texting, as each route lets a member in and as it checks again after
-//! each wait outside the database: by the route's own access, and on another line only while
-//! Dispatch Phone is on for the DSP too, which that line's own permission doesn't say, as its
-//! phones' texts are Dispatch Phone's to keep.
-use super::phone::storage::Line;
+//! each wait outside the database: by the route's own access, while the line's own feature is on
+//! for the DSP and in their sight, which managing all its connections doesn't say. Another line
+//! never answers to Dispatch Phone's switch, nor Dispatch Phone's to another's.
+use super::{lines, phone::storage::Line};
 use dispatch_core::{
     Result,
     accounts::Context,
@@ -30,7 +30,7 @@ impl Access {
         }
     }
     /// The member `c`, as their access was just read, while they may use the line: refused, as
-    /// not found, on another line while Dispatch Phone is off.
+    /// not found, while its feature is off or out of their sight.
     pub fn admit(self, c: Context) -> Result<Context> {
         served(&c, self.line)?;
         Ok(c)
@@ -46,12 +46,9 @@ impl Access {
     }
 }
 
-/// Refuses the line `line`, as not found, to the member `c` while Dispatch Phone is off for the DSP
-/// and it's another line's: its own permission still lets them in.
+/// Refuses the line `line`, as not found, to the member `c` while its own feature, Dispatch Phone
+/// for its own, is off for the DSP or out of their sight: managing all the DSP's connections still
+/// lets them in.
 pub fn served(c: &Context, line: Option<&str>) -> Result<()> {
-    ensure(
-        line.is_none() || c.has(crate::FEATURE.switch.id),
-        "not_found",
-        404,
-    )
+    ensure(c.has(lines::switch(line)), "not_found", 404)
 }

@@ -6,10 +6,11 @@
 //! changes in them, each opened, answered, tried again or marked done, the names it saved and the
 //! numbers it blocked, texting a number first, its texts' pictures, and telling its members in a
 //! browser (`Pushed`). Each sees and changes only that line's: another line's conversation, or a
-//! Slack one, isn't found. Each is refused, as not found, while Dispatch Phone is off for the DSP:
-//! its phones' address is Dispatch Phone's. Its page's display is a section of its own on Settings'
-//! Display page, with Dispatch Phone's fields (`DISPLAY_FIELDS`, `DISPLAY_KEYWORDS`), and its
-//! writes change Dispatch Phone's data (`DOMAIN`).
+//! Slack one, isn't found. Each is refused, as not found, while the line's own feature is off for
+//! the DSP or out of the member's sight, whatever Dispatch Phone's switch says: each line answers
+//! to its own alone. Its page's display is a section of its own on Settings' Display page, with
+//! Dispatch Phone's fields (`DISPLAY_FIELDS`, `DISPLAY_KEYWORDS`), and its writes change Dispatch
+//! Phone's data (`DOMAIN`).
 pub use super::routes::{
     conversations::{
         conversation_of as conversation, done_of as done, send_of as send, typing_of as typing,

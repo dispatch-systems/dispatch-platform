@@ -7,10 +7,13 @@ use super::{
     source::{Topology, Transport},
     state,
 };
-use crate::backend::texts;
+use crate::backend::{
+    lines::{self, On},
+    texts,
+};
 use dispatch_core::{
     Error, Result, State,
-    db::{Db, FromRow, Row},
+    db::{Db, FromRow, Row, Store},
     ensure,
     foundation::{crypto, observability},
     manifest::{Maintenance, Upkeep},
@@ -313,9 +316,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         if !due {
             return;
         }
-        let dsps = state
-            .read(|db| crate::backend::switched_on(db, db.served_ids()?))
-            .await;
+        let dsps = state.read(|db| lines::serving(db, db.served_ids()?)).await;
         let dsps = match dsps {
             Ok(dsps) => dsps,
             Err(error) => {
@@ -329,7 +330,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
                 let work = state
                     .run_bookkeeping(move |db| {
                         db.ensure_dsp_active(&asked)?;
-                        if !db.feature_enabled(&asked, crate::FEATURE.switch.id)? {
+                        if !built(db, &asked, transport)? {
                             return Ok(Vec::new());
                         }
                         let connection = db.dsp(&asked)?;
@@ -348,7 +349,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
                     let result = state
                         .run_bookkeeping(move |db| {
                             db.ensure_dsp_active(&asked)?;
-                            if !db.feature_enabled(&asked, crate::FEATURE.switch.id)? {
+                            if !built(db, &asked, transport)? {
                                 return Ok(false);
                             }
                             let zone = texts::zone(db, &asked)?;
@@ -362,6 +363,15 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
                 }
             }
         }
+    })
+}
+/// Whether the DSP's conversations of `transport` are built now: Slack's, Dispatch Phone's own,
+/// while it's on; texts', of every line, while any line is.
+fn built(db: &Store, dsp: &str, transport: Transport) -> Result<bool> {
+    let on = On::of(db, dsp)?;
+    Ok(match transport {
+        Transport::Slack => on.has(None),
+        Transport::Text => on.any(),
     })
 }
 fn failed(dsp: Option<&str>, error: &Error) {

@@ -12,6 +12,7 @@ use crate::backend::{
 use dispatch_core::{
     Error, Result, State,
     db::{self, Store},
+    ensure,
     foundation::{crypto, validate as v},
     server::http::{
         input::{Input, Reply},
@@ -64,8 +65,9 @@ impl PairedLine {
     }
 }
 /// Pairs a phone by the code someone at the DSP showed: its own number, model and the app's
-/// version, then its key. What it sends is checked before the database is asked for, and the code
-/// by a read (`pairing::opens`), so only a right one takes the write.
+/// version, then its key, while the line the code pairs to is on: refused as `phones_off`
+/// otherwise. What it sends is checked before the database is asked for, and the code by a read
+/// (`pairing::opens`), so only a right one takes the write.
 pub(super) async fn pair(state: Arc<State>, input: Input, access: Public) -> Result<Reply> {
     v::fields(&input.body, &["code", "number", "model", "version"])?;
     let code = pairing::kept(v::text(&input.body, "code", pairing::LENGTH, TYPED_MOST)?)
@@ -76,20 +78,24 @@ pub(super) async fn pair(state: Arc<State>, input: Input, access: Public) -> Res
     let asked = input.clone();
     let at = move |db: &Store| {
         access.authorize(db, &asked)?;
-        site_dsp(db, &asked)
+        site_dsp(db, &asked).map(|(dsp, _)| dsp)
     };
     let dsp = pairing::opens(&state, &input.ip, at, code.clone()).await?;
     let key = pairing::new_key()?;
     let (asked, kept) = (input.clone(), crypto::sha(&key));
     let device = state
         .run_scoped(dsp.id.clone(), DOMAIN, move |db| {
-            let dsp = site_dsp(db, &asked)?;
+            let (dsp, on) = site_dsp(db, &asked)?;
             let pairing = Pairing {
                 number: &number,
                 model: &model,
                 app_version: &version,
             };
-            let device = db.phones_pair(&dsp.id, &code, &kept, &pairing, db::now())?;
+            let device = db.dsp(&dsp.id)?.transaction(|| {
+                let device = db.phones_pair(&dsp.id, &code, &kept, &pairing, db::now())?;
+                ensure(on.has(device.line.as_deref()), "phones_off", 403)?;
+                Ok(device)
+            })?;
             let by = db.phones_paired_by(&dsp.id, &device.id)?;
             db.audit(
                 by.as_deref(),

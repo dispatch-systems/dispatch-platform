@@ -11,6 +11,7 @@ use super::contacts::BLOCKED;
 use crate::backend::origins::{self, Transport};
 use crate::backend::{
     changes::changed_conversation,
+    lines::On,
     model::{ConversationState, TEXT_PREFIX},
     phone::storage::FileStore,
     texts::model::{Filed, Text, TextConversation, Unfiled},
@@ -95,11 +96,12 @@ pub trait TextStore {
     /// Every text filed in a conversation of Dispatch Phone's own line that was written from `from`
     /// until `to`, oldest first: only its own are filed by route data.
     fn communications_texts_between(&self, dsp: &str, from: i64, to: i64) -> Result<Vec<Text>>;
-    /// The texts waiting to be filed after `after`, when written and the ID, the oldest `most`,
-    /// oldest first: each when written and its ID.
+    /// The texts waiting to be filed of a phone of a line `on`, after `after`, when written and
+    /// the ID, the oldest `most`, oldest first: each when written and its ID.
     fn unfiled_communications_texts(
         &self,
         dsp: &str,
+        on: &On,
         after: Option<(i64, &str)>,
         most: usize,
     ) -> Result<Vec<(i64, String)>>;
@@ -109,11 +111,12 @@ pub trait TextStore {
     /// Keeps that each of the texts `ids`, waiting to be filed, couldn't be placed at `at`: one
     /// that couldn't before keeps since when.
     fn unplaced_communications_texts(&self, dsp: &str, ids: &[String], at: i64) -> Result<()>;
-    /// The texts waiting to be filed that couldn't be placed since `since` or before, the oldest
-    /// `most`, oldest first.
+    /// The texts waiting to be filed of a phone of a line `on` that couldn't be placed since
+    /// `since` or before, the oldest `most`, oldest first.
     fn overdue_communications_texts(
         &self,
         dsp: &str,
+        on: &On,
         since: i64,
         most: usize,
     ) -> Result<Vec<Unfiled>>;
@@ -419,14 +422,19 @@ impl TextStore for Store {
     fn unfiled_communications_texts(
         &self,
         dsp: &str,
+        on: &On,
         after: Option<(i64, &str)>,
         most: usize,
     ) -> Result<Vec<(i64, String)>> {
         let (at, id) = after.unwrap_or(START);
         self.dsp(dsp)?.query_as(
-            "SELECT at,id FROM phones_texts WHERE conversation_id IS NULL \
-             AND (at>?1 OR (at=?1 AND id>?2)) ORDER BY at,id LIMIT ?3",
-            params![at, id, most as i64],
+            &format!(
+                "SELECT t.at,t.id FROM phones_texts t JOIN phones_devices d ON d.id=t.device_id \
+                 WHERE t.conversation_id IS NULL AND (t.at>?1 OR (t.at=?1 AND t.id>?2)) AND {} \
+                 ORDER BY t.at,t.id LIMIT ?3",
+                On::includes("d.line", 4)
+            ),
+            params![at, id, most as i64, on.json()],
         )
     }
     fn queued_communications_text(&self, dsp: &str, id: &str, conversation: &str) -> Result<()> {
@@ -447,12 +455,16 @@ impl TextStore for Store {
     fn overdue_communications_texts(
         &self,
         dsp: &str,
+        on: &On,
         since: i64,
         most: usize,
     ) -> Result<Vec<Unfiled>> {
         self.dsp(dsp)?.query_as(
-            &format!("SELECT {UNFILED} AND t.unfiled_since<=?1 ORDER BY t.at,t.id LIMIT ?2"),
-            params![since, most as i64],
+            &format!(
+                "SELECT {UNFILED} AND t.unfiled_since<=?1 AND {} ORDER BY t.at,t.id LIMIT ?2",
+                On::includes("d.line", 3)
+            ),
+            params![since, most as i64, on.json()],
         )
     }
     fn place_communications_text(

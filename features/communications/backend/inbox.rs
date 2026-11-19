@@ -141,8 +141,8 @@ pub fn updates(
 /// is answered with, as `updates` reads it: once it, or who is writing, differs from what the page
 /// has (`seen`, the version of that), or twenty seconds pass; woken by that line's changes alone,
 /// or as the next of those writing stops. Who is waiting is let in again for each read, as `again`
-/// reads their access then and `access` admits them: it may have ended, or Dispatch Phone been
-/// switched off for another line, while it waited.
+/// reads their access then and `access` admits them: it may have ended, or the line's own feature
+/// been switched off, while it waited.
 pub async fn waited(
     state: &Arc<State>,
     access: Access,

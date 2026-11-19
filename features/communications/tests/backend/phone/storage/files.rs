@@ -1,10 +1,13 @@
 //! The texts' pictures, against a real store in a temporary directory: those added and never sent
 //! are let go, and those sent stay; and a video its phone keeps comes only once someone plays it.
 use super::*;
-use crate::backend::phone::{
-    model::FETCH_WAIT_MS,
-    storage::{DeviceStore, TextStore, devices::ONLINE_MS},
-    support::{outgoing, paired, reported, store},
+use crate::backend::{
+    lines::On,
+    phone::{
+        model::FETCH_WAIT_MS,
+        storage::{DeviceStore, TextStore, devices::ONLINE_MS},
+        support::{outgoing, paired, reported, store},
+    },
 };
 use dispatch_core::testing;
 
@@ -106,14 +109,19 @@ fn a_video_kept_on_its_phone_comes_only_while_someone_plays_it() {
         Some(Wanting::Kept)
     );
     // Let go of once they came before the time given, the text changing as they go.
-    assert!(!db.phones_fetched_before(&dsp, 11_000).unwrap());
+    let on = On::of(&db, &dsp).unwrap();
+    assert!(!db.phones_fetched_before(&dsp, &on, 11_000).unwrap());
     let before = db
         .phones_text(&dsp, &file(&db).text_id.unwrap())
         .unwrap()
         .unwrap();
-    assert!(db.phones_let_go_fetched(&dsp, 11_000).unwrap().is_empty());
+    assert!(
+        db.phones_let_go_fetched(&dsp, &on, 11_000)
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(
-        db.phones_let_go_fetched(&dsp, 11_001).unwrap(),
+        db.phones_let_go_fetched(&dsp, &on, 11_001).unwrap(),
         [before.id.as_str()]
     );
     let after = db.phones_text(&dsp, &before.id).unwrap().unwrap();

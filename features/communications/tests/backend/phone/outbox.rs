@@ -2,6 +2,7 @@
 //! past what one carries is refused before it's queued.
 use super::*;
 use crate::backend::{
+    lines::On,
     phone::{
         LIMITS,
         model::Status,
@@ -33,7 +34,8 @@ async fn a_text_sent_from_the_demos_stand_in_phone_is_delivered_at_once() {
     assert_eq!(paired.len(), 1);
     assert!(paired[0].online);
     // The three texts it received, kept, wait for the next upkeep to file them.
-    let received = db.unfiled_communications_texts(&dsp, None, MOST_TEXTS);
+    let on = On::of(&db, &dsp).unwrap();
+    let received = db.unfiled_communications_texts(&dsp, &on, None, MOST_TEXTS);
     assert_eq!(received.unwrap().len(), 3);
     let sent = send(
         &db,

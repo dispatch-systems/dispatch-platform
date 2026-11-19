@@ -4,7 +4,10 @@
 //! its bytes sent only once someone plays it, and kept an hour (`FETCHED_MS`). The bytes
 //! themselves are `phone::files`'.
 use super::{devices::ONLINE_MS, next_change};
-use crate::backend::phone::model::{FETCH_WAIT_MS, File};
+use crate::backend::{
+    lines::On,
+    phone::model::{FETCH_WAIT_MS, File},
+};
 use dispatch_core::{
     Error, Result,
     db::{Db, Store, migrations::add_column, n, s},
@@ -98,11 +101,12 @@ pub trait FileStore {
     fn phones_wanted(&self, dsp: &str, device: &str, since: i64) -> Result<Vec<String>>;
     /// Notes the phone was told of the videos `ids` at `at`.
     fn phones_handed(&self, dsp: &str, ids: &[String], at: i64) -> Result<()>;
-    /// Whether the bytes of any video kept on its phone came before `before`.
-    fn phones_fetched_before(&self, dsp: &str, before: i64) -> Result<bool>;
-    /// Lets go of the bytes of the videos kept on their phone that came before `before`, which
-    /// upkeep then lets go of once no file keeps them. Answers the texts they're of.
-    fn phones_let_go_fetched(&self, dsp: &str, before: i64) -> Result<Vec<String>>;
+    /// Whether the bytes of any video kept on its phone, of a line `on`, came before `before`.
+    fn phones_fetched_before(&self, dsp: &str, on: &On, before: i64) -> Result<bool>;
+    /// Lets go of the bytes of the videos kept on their phone, of a line `on`, that came before
+    /// `before`, which upkeep then lets go of once no file keeps them. Answers the texts they're
+    /// of.
+    fn phones_let_go_fetched(&self, dsp: &str, on: &On, before: i64) -> Result<Vec<String>>;
     /// Keeps a picture someone added for a text not sent yet.
     fn phones_add_file(
         &self,
@@ -236,20 +240,23 @@ impl FileStore for Store {
         )?;
         Ok(())
     }
-    fn phones_fetched_before(&self, dsp: &str, before: i64) -> Result<bool> {
+    fn phones_fetched_before(&self, dsp: &str, on: &On, before: i64) -> Result<bool> {
         Ok(self.dsp(dsp)?.count(
-            "SELECT count(*) FROM phones_files WHERE on_phone=1 AND fetched_at<?",
-            [before],
+            &format!("SELECT count(*) FROM phones_files WHERE {}", fetched()),
+            params![before, on.json()],
         )? > 0)
     }
-    fn phones_let_go_fetched(&self, dsp: &str, before: i64) -> Result<Vec<String>> {
+    fn phones_let_go_fetched(&self, dsp: &str, on: &On, before: i64) -> Result<Vec<String>> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let texts: Vec<String> = db
                 .all(
-                    "UPDATE phones_files SET sha256=NULL, fetched_at=NULL \
-                     WHERE on_phone=1 AND fetched_at<? RETURNING text_id",
-                    [before],
+                    &format!(
+                        "UPDATE phones_files SET sha256=NULL, fetched_at=NULL WHERE {} \
+                         RETURNING text_id",
+                        fetched()
+                    ),
+                    params![before, on.json()],
                 )?
                 .iter()
                 .map(|row| s(row, "text_id").to_owned())
@@ -359,6 +366,15 @@ impl FileStore for Store {
     }
 }
 
+/// SQL that holds for a video kept on its phone whose bytes came before `?1`, of a phone of a line
+/// `On::json` binds as `?2`.
+fn fetched() -> String {
+    format!(
+        "on_phone=1 AND fetched_at<?1 AND text_id IN (SELECT t.id FROM phones_texts t \
+         JOIN phones_devices d ON d.id=t.device_id WHERE {})",
+        On::includes("d.line", 2)
+    )
+}
 /// A file from its row.
 fn file_of(row: &Value) -> File {
     File {
