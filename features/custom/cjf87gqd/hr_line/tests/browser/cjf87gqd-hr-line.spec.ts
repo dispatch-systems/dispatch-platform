@@ -94,10 +94,10 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
     (response) =>
       response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
   );
-  await page.getByRole('radio', { name: 'Centred' }).check();
+  await page.getByRole('radiogroup', { name: 'Layout' }).getByText('Full width').click();
   await chosen;
-  await page.getByRole('link', { name: /^HR Line/ }).click();
-  await expect(page.locator('.communications')).toHaveAttribute('style', /--column-width: \d+px/);
+  await page.goto(`${origin}/#dsp/${north.id}/cjf87gqd-hr-line`);
+  await expect(page.locator('.communications')).toHaveAttribute('style', /--column-width: 100%/);
 
   // With Dispatch Phone off, the page has HR Line's section, previewing its own page without
   // Dispatch Phone's quick replies.
