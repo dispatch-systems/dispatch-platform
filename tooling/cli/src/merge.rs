@@ -2,7 +2,7 @@
 //! check passed on the pushed head, where its repository has one, the body on GitHub is the
 //! one written, and its review is done at that head, or at one that head only merges `main`
 //! into, or says why it had none. Then it prints what to tell the user.
-use crate::{Result, Runner, change::Repository, github, pr, require, review, workspace};
+use crate::{Result, Runner, change::Repository, github, pr, preview, require, review, workspace};
 use serde_json::Value;
 use std::path::Path;
 
@@ -173,6 +173,8 @@ pub fn run(root: &Path, runner: &dyn Runner) -> Result<()> {
     )?;
     let written = std::fs::read_to_string(pr::body_path(root)?)?;
     let (title, body) = pr::titled(&written);
+    let shown = pr::shown(body, &preview::approval(root, runner)?)?;
+    let body = shown.as_str();
     require(
         title == Some(pull.title.as_str()) && body.trim() == pull.body.trim(),
         "The PR's title or body on GitHub isn't the one in pr-body.md: `dispatchdev pr` updates it.",

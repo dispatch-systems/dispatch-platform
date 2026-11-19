@@ -1234,12 +1234,18 @@ fn a_change_approved_as_showing_nothing_new_says_why_in_its_pr() {
         preview::approval(root, &Native).unwrap(),
         Approval::Unchanged(why.to_owned())
     );
+    let body = fixture.scratch.join("pr-body.md");
+    let written = fs::read_to_string(&body).unwrap();
+    fs::write(&body, written.replace("Not reviewed: yet", pr::PENDING)).unwrap();
     let verification = || {
         pr::publish(root, false, &Environment::default(), github).unwrap();
         let (_, body) = github.edited.lock().unwrap().clone().unwrap();
         pr::section(&body, "Verification").unwrap().to_owned()
     };
     assert_eq!(verification(), format!("UI unchanged: {why}\n\nx"));
+    // Merge finds the PR as `pr` published it, and stops only for what is still to come.
+    let waits = error(crate::merge::run(root, github));
+    assert!(waits.contains("It isn't reviewed"), "{waits}");
     // Shown and approved since, it claims so no longer.
     preview::approve(root, None, &Native).unwrap();
     assert_eq!(
