@@ -77,7 +77,12 @@ pub(crate) fn sections(
     let mut seen: Vec<(Declared, OnPage)> = declared
         .into_iter()
         .filter(|(feature, section)| visible(c, *feature, section))
-        .map(|(feature, section)| ((feature, section), declared::page(registry(), feature, section)))
+        .map(|(feature, section)| {
+            (
+                (feature, section),
+                declared::page(registry(), feature, section),
+            )
+        })
         .collect();
     seen.sort_by(
         |((_, a), (page_a, _, group_a, at_a)), ((_, b), (page_b, _, group_b, at_b))| {

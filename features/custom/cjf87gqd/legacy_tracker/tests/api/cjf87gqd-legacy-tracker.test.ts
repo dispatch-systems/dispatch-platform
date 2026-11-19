@@ -4,7 +4,7 @@ import { fixture } from '../../../../../../core/shell/tests/support/support.js';
 
 const route = '/api/dsp/cjf87gqd-legacy-tracker';
 
-test('Legacy Tracker answers the address any member set on Conduct\'s page, only at that DSP', async (t) => {
+test("Legacy Tracker answers the address any member set on Conduct's page, only at that DSP", async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
