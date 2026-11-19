@@ -67,8 +67,7 @@ test('HR Line works with Dispatch Phone off, and only while its own switch is on
   };
   const unpaired = await f.request('/api/dispatch-phone/phone/pair', phone, at);
   assert.equal(unpaired.value.error, 'phones_off');
-  const awake = await f.request('/api/dispatch-phone/phone/outbox', undefined, dispatch.key);
-  assert.equal(awake.status, 200, awake.body);
+  await dispatch.texted('4255550123', 'Is this dispatch?');
 
   // With neither on, the address hands out nothing.
   await turn('communications', false);
