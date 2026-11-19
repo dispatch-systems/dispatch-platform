@@ -108,3 +108,51 @@ test('Those who use HR Line have it while Dispatch Phone is in beta and they tes
   assert.equal((await owner.get(hrLine)).status, 200);
   assert.equal((await owner.get(`${hrLine}/phones`)).status, 200);
 });
+
+test("A member's Display choices are both lines', made in either with the other's switch off", async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const north = await withHrLine(owner);
+  const turn = async (feature: string, enabled: boolean) => {
+    const turned = await owner.post(`/api/platform/dsps/${north.id}/features`, {
+      feature,
+      enabled,
+    });
+    assert.equal(turned.status, 200, turned.body);
+    await owner.select(north.id);
+  };
+  type Held = { id: string; values: Record<string, unknown>; revision: number };
+  const held = async (id: string) =>
+    ((await owner.read('/api/dsp/settings')).sections as Held[]).find((each) => each.id === id);
+  const choose = async (id: string, values: Record<string, unknown>) => {
+    const saved = await owner.post(`/api/dsp/settings/${id}`, {
+      values,
+      revision: (await held(id))!.revision,
+    });
+    assert.equal(saved.status, 200, saved.body);
+  };
+  const dispatch = 'communications.display';
+  const hr = 'cjf87gqd_hr_line.display';
+
+  // With Dispatch Phone off, HR Line's choices are made, and are Dispatch Phone's once it's on.
+  await turn('communications', false);
+  assert.equal(await held(dispatch), undefined);
+  await choose(hr, { text_size: 17, notifications: true });
+  await turn('communications', true);
+  assert.deepEqual((await held(dispatch))!.values, (await held(hr))!.values);
+  assert.equal((await held(dispatch))!.values.text_size, 17);
+
+  // With HR Line off, Dispatch Phone's are made, and are HR Line's once it's on, the next save of
+  // either on the revision both hold.
+  await turn('cjf87gqd_hr_line', false);
+  assert.equal(await held(hr), undefined);
+  await choose(dispatch, { text_size: 13, notifications: false });
+  await turn('cjf87gqd_hr_line', true);
+  const [mine, theirs] = [(await held(dispatch))!, (await held(hr))!];
+  assert.deepEqual(theirs.values, mine.values);
+  assert.equal(theirs.values.text_size, 13);
+  assert.equal(theirs.revision, mine.revision);
+  await choose(hr, { layout: 'centred' });
+  assert.equal((await held(dispatch))!.values.layout, 'centred');
+});

@@ -30,12 +30,13 @@ does HR Line see or change Dispatch Phone's own. Someone who texts both has a co
   number's person, else by the name HR Line saved, else by the number. Without Slack, Today's
   Routes, groups, a profile, conversations elsewhere, quick replies or GIFs, which are Dispatch
   Phone's own. Its phones offline show in its heading.
-- **Display:** `cjf87gqd_hr_line.display` (HR Line), each member's own, on Settings' Display page
-  beside Dispatch Phone's Message display, with the same choices but the profile's, and its own
-  preview by text: how its page looks to them, and how a new text alerts them. With both on the
-  page, each is headed with its line's name.
+- **Display:** `cjf87gqd_hr_line.display` (HR Line), each member's own, on Settings' Display page:
+  how its page looks to them, and how a new text alerts them. It shares the record of Dispatch
+  Phone's Message display, so a member's choices are both lines', made in either. With both on
+  the page, Dispatch Phone's shows alone; with Dispatch Phone off, HR Line's, with the same
+  choices but the profile's, and its own preview by text.
 - **On every page:** `cjf87gqd_hr_line.alerts`, alerting those who use it of its new texts, by its
-  own Display section's Sound and Notifications, each titled "HR Line · " and who wrote, opening
+  Display section's Sound and Notifications, Dispatch Phone's too, each titled "HR Line · " and who wrote, opening
   its conversation on HR Line's page, and of its phones as each goes down; and
   `cjf87gqd_hr_line.phones`, a banner atop every page while one of its phones is down (HR Line
   phone offline for 25 min, or while it has several, by its name, after HR Line's unless it says

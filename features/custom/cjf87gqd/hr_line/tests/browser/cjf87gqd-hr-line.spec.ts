@@ -82,11 +82,31 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   await expect(page.getByText('Payroll will call you')).toHaveCount(0);
   await expect(page.getByText('Jordan Ellis')).toHaveCount(0);
 
-  // HR Line's Display section previews its own page, without Dispatch Phone's quick replies.
+  // The Display page has one section for both lines, Dispatch Phone's, with no line's name over
+  // it; what's chosen there is HR Line's page's too.
   await page.goto(`${origin}/#dsp/${north.id}/settings?tab=display`);
-  const replies = (section: string) =>
-    page.locator(`[data-settings-section="${section}"] .quick-replies-button`);
+  const section = (id: string) => page.locator(`[data-settings-section="${id}"]`);
+  const replies = (id: string) => section(id).locator('.quick-replies-button');
   await expect(replies('communications.display')).toHaveCount(1);
+  await expect(section('cjf87gqd_hr_line.display')).toBeEmpty();
+  await expect(page.getByRole('heading', { name: 'Dispatch Phone', level: 2 })).toHaveCount(0);
+  const chosen = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
+  );
+  await page.getByRole('radio', { name: 'Centred' }).check();
+  await chosen;
+  await page.getByRole('link', { name: /^HR Line/ }).click();
+  await expect(page.locator('.communications')).toHaveAttribute('style', /--column-width: \d+px/);
+
+  // With Dispatch Phone off, the page has HR Line's section, previewing its own page without
+  // Dispatch Phone's quick replies.
+  const switches = `/api/platform/dsps/${north.id}/features`;
+  const off = await owner.post(switches, { feature: 'communications', enabled: false });
+  expect(off.status, off.body).toBe(200);
+  await page.goto(`${origin}/#dsp/${north.id}/settings?tab=display`);
+  await page.reload();
+  await expect(section('cjf87gqd_hr_line.display').locator('.message-display')).toBeVisible();
   await expect(replies('cjf87gqd_hr_line.display')).toHaveCount(0);
 });
 

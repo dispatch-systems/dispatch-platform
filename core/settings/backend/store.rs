@@ -49,6 +49,7 @@ impl Records {
     }
     /// The record of `section`, the DSP's or the member's own as its scope says.
     pub(crate) fn of(&self, section: &Section, member: Option<&str>) -> Result<&Value> {
+        let section = section.record();
         let applicable = aliases::in_scope(section.id, self.owner.as_deref());
         let keys = record_keys(
             section,
@@ -73,6 +74,7 @@ pub(crate) fn record(
     section: &Section,
     member: Option<&str>,
 ) -> Result<Value> {
+    let section = section.record();
     let aliases = aliases::applicable(db, dsp, section.id, section.aliases)?;
     let data = db.dsp(dsp)?;
     match aliases::record(&data, &record_keys(section, member, aliases))? {
@@ -126,6 +128,7 @@ pub(crate) fn write(
     if section.kept.is_none() {
         record["values"] = values.clone();
     }
+    let section = section.record();
     let aliases = aliases::applicable(db, dsp, section.id, section.aliases)?;
     let people = db.dsp(dsp)?;
     people.transaction(|| {
@@ -141,6 +144,7 @@ pub(crate) fn normalize(
     section: &Section,
     member: Option<&str>,
 ) -> Result<()> {
+    let section = section.record();
     let aliases = aliases::applicable(db, dsp, section.id, section.aliases)?;
     let data = db.dsp(dsp)?;
     data.transaction(|| aliases::normalize(&data, &record_keys(section, member, aliases)))
@@ -157,7 +161,8 @@ pub(crate) fn forget_member(people: &Db, member: &str) -> Result<()> {
     Ok(())
 }
 
-/// Where a section's record is kept: `section:<id>`, or a member's own `section:<id>:<user>`.
+/// Where a section's record is kept: `section:<id>`, or a member's own `section:<id>:<user>`; a
+/// section that shares another's keeps that one's.
 fn key(id: &str, member: Option<&str>) -> String {
     match member {
         Some(member) => format!("section:{id}:{member}"),

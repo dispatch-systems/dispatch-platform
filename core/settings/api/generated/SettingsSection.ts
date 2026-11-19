@@ -7,6 +7,11 @@ import type { SettingsScope } from "./SettingsScope";
  */
 export type SettingsSection = { id: string,
 /**
+ * The section whose record it keeps: its own id, or another's it shares, whose values and
+ * revision it has, as a save of either changes both.
+ */
+record: string,
+/**
  * The page it's on, by id.
  */
 page: string, label: string, order: number, scope: SettingsScope,

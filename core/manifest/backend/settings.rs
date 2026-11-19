@@ -70,6 +70,9 @@ pub struct Section {
     /// What else a save does, in the same write, as retiming schedules after a timezone
     /// changes.
     pub saved: Option<OnSave>,
+    /// Another section whose record it keeps as its own, so a save of either is a save of both:
+    /// each member's own, with the same fields, of a feature its own depends on.
+    pub shares: Option<&'static Section>,
     /// The part of its feature (`x.what`) it goes with: off or hidden with it.
     pub part: Option<&'static str>,
     /// The collection of its feature's it goes with, by its schedule name: drawn with it on
@@ -103,6 +106,7 @@ pub const fn section(
         kept: None,
         warn: None,
         saved: None,
+        shares: None,
         part: None,
         collection: None,
         reader: None,
@@ -170,6 +174,17 @@ impl Section {
             saved: Some(saved),
             ..self
         }
+    }
+    /// Keeping `section`'s record as its own, rather than one of its own.
+    pub const fn shares(self, section: &'static Section) -> Self {
+        Self {
+            shares: Some(section),
+            ..self
+        }
+    }
+    /// The section whose record it keeps: its own, or the one it shares.
+    pub fn record(&self) -> &Section {
+        self.shares.unwrap_or(self)
     }
     pub const fn part(self, part: &'static str) -> Self {
         Self {
@@ -711,6 +726,30 @@ fn check_feature(registry: &Registry, feature: &Feature, section: &Section) {
                 && registry.features.iter().any(|other| other.name == page),
             "{}'s section {id} is on {page}'s page, a feature it doesn't depend on",
             feature.name
+        );
+    }
+    if let Some(shared) = section.shares {
+        let keeper = registry.features.iter().find(|other| {
+            feature.depends_on.contains(&other.name)
+                && other.settings.iter().any(|each| each.id == shared.id)
+        });
+        let fields = |section: &Section| {
+            section
+                .fields
+                .iter()
+                .map(|field| field.id)
+                .collect::<Vec<_>>()
+        };
+        assert!(
+            keeper.is_some()
+                && section.scope == Scope::Member
+                && shared.scope == Scope::Member
+                && shared.shares.is_none()
+                && section.aliases.is_empty()
+                && fields(section) == fields(shared),
+            "{}'s section {id} shares {}, which isn't each member's own with its fields, of a feature it depends on",
+            feature.name,
+            shared.id
         );
     }
     if section.page == Page::Own {
