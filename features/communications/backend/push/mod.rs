@@ -308,9 +308,8 @@ pub async fn turn(
 }
 
 /// Whether the member whose browser `subscription` names is told of the DSP's new messages of
-/// `pushed`'s line: with its Notifications on, as one who may use that line there now, signed in
-/// where they subscribed it, which holds only while the line's own feature is on there and in
-/// their sight.
+/// `pushed`'s line: while that line is on there, whatever another's switch says, with its
+/// Notifications on, as one who may use that line there now, signed in where they subscribed it.
 fn tells(
     db: &Store,
     dsp: &str,
@@ -323,6 +322,9 @@ fn tells(
         (Address::Dsp, Some(code)) => Site::Dsp(code.to_owned()),
         (Address::Dsp, None) => return Ok(false),
     };
+    if !lines::on(db, dsp, pushed.line)? {
+        return Ok(false);
+    }
     let user = &subscription.user;
     Ok(db.may(user, &site, dsp, pushed.permission)?
         && settings::read_member::<MessageDisplay>(db, dsp, user, pushed.display)?.notifications)
