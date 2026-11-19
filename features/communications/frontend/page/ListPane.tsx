@@ -63,7 +63,7 @@ export function ListPane({
   olderFailed: boolean;
   /** Whether Recents shows the days before today. */
   previousDays: boolean;
-  showPreviousDays: (shown: boolean) => void;
+  showPreviousDays?: (shown: boolean) => void;
   /** Opens the conversation with a contact, or starts one. */
   reach: (target: Target) => Promise<void>;
   /** Shows a conversation as the page's own writes left it. */

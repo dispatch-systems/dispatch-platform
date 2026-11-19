@@ -71,7 +71,8 @@ export function ConversationList({
   olderFailed: boolean;
   /** Whether Recents shows the days before today. */
   previousDays: boolean;
-  showPreviousDays: (shown: boolean) => void;
+  /** Shows or hides them as Previous days is pressed: without it, there's no Previous days. */
+  showPreviousDays?: (shown: boolean) => void;
 }) {
   const { texting } = useLine();
   const model = sectionNamed(section);
@@ -171,7 +172,7 @@ export function ConversationList({
           list([pinned])
         ))}
       {headings(current)}
-      {any && (
+      {any && showPreviousDays && (
         <button
           className="previous-days"
           aria-expanded={previousDays}

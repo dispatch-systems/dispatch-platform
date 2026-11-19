@@ -10,11 +10,12 @@ type Client = Awaited<ReturnType<Fixture['client']>>;
 export const hrLine = '/api/dsp/cjf87gqd-hr-line';
 export const dispatchPhone = '/api/dsp/dispatch-phone';
 
-/** A phone of the line at `base`, paired at Northline's address: texted as `number` texts it. */
+/** A phone of the line at `base`, paired at Northline's address: texted as `number` texts it, at
+ * `at`, else now. */
 export type Phone = {
   id: string;
   key: Record<string, string>;
-  texted: (number: string, body: string) => Promise<void>;
+  texted: (number: string, body: string, at?: number) => Promise<void>;
 };
 
 /** Gives Northline HR Line's custom ID and switches HR Line on, as the owner, who then opens it. */
@@ -46,13 +47,13 @@ export async function paired(f: Fixture, owner: Client, base: string, number: st
   return {
     id: pair.value.phone.id as string,
     key,
-    texted: async (from: string, body: string) => {
+    texted: async (from: string, body: string, at = Date.now()) => {
       const text = {
         clientId: `sms-${++sent}`,
         direction: 'in',
         number: from,
         body,
-        at: Date.now(),
+        at,
       };
       const reported = await f.request('/api/dispatch-phone/phone/texts', { texts: [text] }, key);
       assert.equal(reported.status, 200, reported.body);
