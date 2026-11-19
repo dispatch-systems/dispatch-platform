@@ -90,16 +90,32 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   await expect(replies('cjf87gqd_hr_line.display')).toHaveCount(0);
 });
 
+/** When `now` was, in milliseconds, in `timeZone`'s day before it: between a day before it, as long
+ * before pairing as a phone's texts are kept as written, and that day's end. */
+function yesterday(now: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const part = (type: string) => Number(parts.find((each) => each.type === type)!.value);
+  const today =
+    now - (part('hour') * 3600 + part('minute') * 60 + part('second')) * 1000 - (now % 1000);
+  return Math.floor((today + now - 24 * 60 * 60 * 1000) / 2);
+}
+
 test("HR Line's page lists every day's conversations, with no Previous days", async ({
   page,
   dispatch,
 }) => {
   const owner = await dispatch.client();
-  await withHrLine(owner);
+  const north = (await withHrLine(owner)) as { id: string; timezone: string };
   const phone = await paired(dispatch, owner, hrLine, '(206) 555-0111');
-  // Texted three days ago and marked done, as a conversation Dispatch Phone keeps under Previous
-  // days; and one waiting today.
-  await phone.texted('4255550199', 'About my paycheck', Date.now() - 3 * 24 * 60 * 60 * 1000);
+  // Texted yesterday and marked done, as a conversation Dispatch Phone keeps under Previous days;
+  // and one waiting today.
+  await phone.texted('4255550199', 'About my paycheck', yesterday(Date.now(), north.timezone));
   const listed = async () =>
     ((await owner.read(hrLine)).conversations as { id: string }[]).map((each) => each.id);
   await expect.poll(listed).toHaveLength(1);
@@ -112,6 +128,7 @@ test("HR Line's page lists every day's conversations, with no Previous days", as
   await page.getByRole('link', { name: /^HR Line/ }).click();
   const list = page.getByRole('region', { name: 'Conversations' });
   await expect(list.getByRole('button', { name: /Can I swap Friday\?/ })).toBeVisible();
+  await expect(list.getByRole('heading', { name: 'Yesterday' })).toBeVisible();
   await expect(list.getByRole('button', { name: /About my paycheck/ })).toBeVisible();
-  await expect(list.getByRole('button', { name: /previous days/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /previous days/i })).toHaveCount(0);
 });
