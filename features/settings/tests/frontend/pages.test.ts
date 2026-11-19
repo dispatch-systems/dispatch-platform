@@ -25,6 +25,7 @@ test('Settings lists each page with a section it draws, and opens on the one nam
   ]);
   const section = (id: string, page: string, custom: boolean): SettingsSection => ({
     id,
+    record: id,
     page,
     label: id,
     order: 10,
@@ -70,6 +71,7 @@ test('a section that goes with a collection is left to the Collectors page to dr
   ]);
   const section = (id: string, custom: boolean, collection: string | null): SettingsSection => ({
     id,
+    record: id,
     page: 'collectors',
     label: id,
     order: 0,
@@ -122,6 +124,7 @@ test("Settings' sidebar lists a page a feature puts under it among Features, in 
   ]);
   const declared = (id: string, on: string): SettingsSection => ({
     id,
+    record: id,
     page: on,
     label: id,
     order: 10,

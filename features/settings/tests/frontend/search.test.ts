@@ -25,6 +25,7 @@ const section = (
   more: Partial<SettingsSection> = {},
 ): SettingsSection => ({
   id,
+  record: id,
   page: on,
   label,
   order: 10,
