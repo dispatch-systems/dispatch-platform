@@ -89,3 +89,29 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   await expect(replies('communications.display')).toHaveCount(1);
   await expect(replies('cjf87gqd_hr_line.display')).toHaveCount(0);
 });
+
+test("HR Line's page lists every day's conversations, with no Previous days", async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  await withHrLine(owner);
+  const phone = await paired(dispatch, owner, hrLine, '(206) 555-0111');
+  // Texted three days ago and marked done, as a conversation Dispatch Phone keeps under Previous
+  // days; and one waiting today.
+  await phone.texted('4255550199', 'About my paycheck', Date.now() - 3 * 24 * 60 * 60 * 1000);
+  const listed = async () =>
+    ((await owner.read(hrLine)).conversations as { id: string }[]).map((each) => each.id);
+  await expect.poll(listed).toHaveLength(1);
+  const [id] = await listed();
+  const done = await owner.post(`${hrLine}/conversations/${id}/done`, {});
+  expect(done.status).toBe(200);
+  await phone.texted('4255550123', 'Can I swap Friday?');
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: /^HR Line/ }).click();
+  const list = page.getByRole('region', { name: 'Conversations' });
+  await expect(list.getByRole('button', { name: /Can I swap Friday\?/ })).toBeVisible();
+  await expect(list.getByRole('button', { name: /About my paycheck/ })).toBeVisible();
+  await expect(list.getByRole('button', { name: /previous days/i })).toHaveCount(0);
+});

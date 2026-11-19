@@ -172,6 +172,9 @@ function LinePage({ view, user }: { view: DspView; user: string }) {
   const drafts = useMemo(() => draftsOf(view.dsp.id, user), [view.dsp.id, user]);
   const now = useNow();
   const today = dayOf(now, timeZone);
+  // Whether Recents shows the days before today: another line's shows every day, with no Previous
+  // days.
+  const previousDays = !own(line) || previousOn === today;
   // Choosing the board leaves what's open for it.
   const chooseRoutesView = (next: RoutesView) => {
     chooseView(next);
@@ -190,7 +193,7 @@ function LinePage({ view, user }: { view: DspView; user: string }) {
   // is chosen, and as the page widens to show both, but none Previous days hides; on the board,
   // nothing.
   const firstShown =
-    model.everything && previousOn !== today
+    model.everything && !previousDays
       ? shownRows.find((each) => !beforeToday(each.row, { timeZone, now }))
       : shownRows[0];
   const first = shows.first ? shows.first(routeList) : firstShown?.row;
@@ -324,8 +327,10 @@ function LinePage({ view, user }: { view: DspView; user: string }) {
                 current={current}
                 readOlder={readOlder}
                 olderFailed={olderFailed}
-                previousDays={previousOn === today}
-                showPreviousDays={(shown) => showPreviousOn(shown ? today : undefined)}
+                previousDays={previousDays}
+                showPreviousDays={
+                  own(line) ? (shown) => showPreviousOn(shown ? today : undefined) : undefined
+                }
                 reach={reach}
                 show={show}
                 open={open ?? group}
