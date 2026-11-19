@@ -144,6 +144,13 @@ pub fn with_review_line(body: &str, line: &str) -> Result<String> {
 pub fn unchanged_line(why: &str) -> String {
     format!("UI unchanged: {why}")
 }
+/// `body` as its PR shows it, with what the preview's `approval` claims.
+pub fn shown(body: &str, approval: &preview::Approval) -> Result<String> {
+    match approval {
+        preview::Approval::Unchanged(why) => with_line(body, "Verification", &unchanged_line(why)),
+        _ => Ok(body.to_owned()),
+    }
+}
 /// `body` with its section `name` opening with `line`, unless the section holds it already.
 pub fn with_line(body: &str, name: &str, line: &str) -> Result<String> {
     if section(body, name).is_some_and(|text| text.lines().any(|each| each.trim() == line)) {
@@ -394,10 +401,7 @@ pub fn publish(
             }
         }
     }
-    let text = match &approval {
-        preview::Approval::Unchanged(why) => with_line(text, "Verification", &unchanged_line(why))?,
-        _ => text.to_owned(),
-    };
+    let text = shown(text, &approval)?;
     let text = text.as_str();
     if only_check {
         println!(

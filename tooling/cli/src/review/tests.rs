@@ -1240,6 +1240,9 @@ fn a_change_approved_as_showing_nothing_new_says_why_in_its_pr() {
         pr::section(&body, "Verification").unwrap().to_owned()
     };
     assert_eq!(verification(), format!("UI unchanged: {why}\n\nx"));
+    // Merge finds the PR as `pr` published it, and stops only for what is still to come.
+    let waits = error(crate::merge::run(root, github));
+    assert!(waits.contains("It isn't reviewed"), "{waits}");
     // Shown and approved since, it claims so no longer.
     preview::approve(root, None, &Native).unwrap();
     assert_eq!(
