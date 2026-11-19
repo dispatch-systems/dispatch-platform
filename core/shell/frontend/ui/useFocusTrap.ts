@@ -1,4 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react';
+import { lockScroll } from './scrollLock.js';
 
 const focusable =
   'a[href],button:not(:disabled),input:not(:disabled):not([type=hidden]),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]';
@@ -24,8 +25,7 @@ export function useFocusTrap(
     if (!element) return;
     open.push(element);
     const before = document.activeElement as HTMLElement | null;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlock = lockScroll();
     const visible = (selector: string) =>
       Array.from(element.querySelectorAll<HTMLElement>(selector)).filter(
         (candidate) => candidate.getClientRects().length > 0,
@@ -56,7 +56,7 @@ export function useFocusTrap(
     return () => {
       const index = open.lastIndexOf(element);
       if (index >= 0) open.splice(index, 1);
-      document.body.style.overflow = overflow;
+      unlock();
       document.removeEventListener('keydown', key);
       before?.focus();
     };
