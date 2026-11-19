@@ -20,7 +20,6 @@ const TEAM: &str = "T0FIXTURE2";
 const LINE: Line = Line {
     id: "front_desk",
     name: "Front Desk",
-    texting: true,
 };
 /// That line's pushes, as its feature tells of them.
 const DESK: Pushed = Pushed {

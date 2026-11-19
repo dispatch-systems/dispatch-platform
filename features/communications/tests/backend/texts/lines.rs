@@ -1,9 +1,10 @@
 //! Each line's texting its own: a number texting Dispatch Phone's phone and another line's has a
 //! conversation on each, every one of another line's a number's, however Routes files the number;
 //! each line lists, counts, opens and answers only its own, from its own phones, and names and
-//! blocks a number on its own alone, logged as its own; a line whose texts aren't filed yet keeps
-//! them as its phones' alone; another line's page, waiting or answering, is refused once Dispatch
-//! Phone is off; and what was kept before the lines were is Dispatch Phone's, left as it was.
+//! blocks a number on its own alone, logged as its own; a phone paired while its line's texts
+//! weren't filed has those it kept filed, and texts a number first, on its own line alone; another
+//! line's page, waiting or answering, is refused once Dispatch Phone is off; and what was kept
+//! before the lines were is Dispatch Phone's, left as it was.
 use super::{
     contacts, filing,
     model::Filed,
@@ -35,13 +36,6 @@ use std::sync::Arc;
 const DESK: Line = Line {
     id: "front_desk",
     name: "Front Desk",
-    texting: true,
-};
-/// Another feature's line whose texts aren't filed yet.
-const NIGHT: Line = Line {
-    id: "night_desk",
-    name: "Night Desk",
-    texting: false,
 };
 /// What another line's page is behind: a permission of its own, which Dispatch Phone being off
 /// doesn't take away.
@@ -180,8 +174,8 @@ async fn another_lines_texts_are_its_numbers_even_a_drivers_work_phone_and_those
     let ours = texted(&state, &dsp, "+12065550101", "Running late", now()).await;
     assert!(filed(&state, &dsp, &ours).await.driver.is_some());
 
-    // It texts the Front Desk too, kept by the phone side before its line's texts were filed: the
-    // next upkeep files it under the number, on its own line, and filing the day again leaves it.
+    // It texts the Front Desk too, kept by the phone side before it was filed: the next upkeep
+    // files it under the number, on its own line, and filing the day again leaves it.
     let (at, from) = (dsp.clone(), phone.clone());
     let theirs = state
         .run(move |db| {
@@ -391,46 +385,70 @@ async fn another_lines_page_waiting_or_answering_is_refused_once_dispatch_phone_
 }
 
 #[tokio::test]
-async fn a_line_whose_texts_arent_filed_yet_keeps_them_as_its_phones_and_has_no_conversation() {
+async fn a_phone_paired_while_its_lines_texts_werent_filed_has_them_filed_and_texts_first_on_its_line()
+ {
     let (_root, state, dsp) = started();
-    let at = dsp.clone();
-    let phone = state
-        .run(move |db| Ok(support::pair_to(db, &at, NIGHT, "+12065550122")))
-        .await
-        .unwrap();
-    let text = texted_on(&state, &dsp, &phone, JORDAN, "About my paycheck", now()).await;
+    let phone = desk(&state, &dsp).await;
+    let ours = texted(&state, &dsp, JORDAN, "Is this dispatch?", now()).await;
+    let ours = filed(&state, &dsp, &ours).await;
 
-    // Kept by the phone side, filed neither as it came nor by upkeep, however long it waits.
-    filing::unfiled(&state, &dsp).await.unwrap();
-    filing::overdue(&state, &dsp, now() + 24 * 60 * 60 * 1000)
-        .await
-        .unwrap();
-    let at = dsp.clone();
-    let (kept, conversations) = state
-        .read(move |db| {
-            let kept = db.communications_text(&at, &text)?;
-            let conversations = (db.dsp(&at)?)
-                .count("SELECT count(*) FROM communications_text_conversations", [])?;
-            Ok((kept, conversations))
+    // Paired as the release that kept another line's texts unfiled paired it, which kept one: the
+    // next upkeep files it on its own line, and what it relays from then on is filed as it comes.
+    let (at, from) = (dsp.clone(), phone.clone());
+    let kept = state
+        .run(move |db| {
+            (db.dsp(&at)?).exec("UPDATE phones_devices SET texting=0 WHERE id=?", [&from])?;
+            let text = Reported {
+                client_id: "night-1".into(),
+                direction: Direction::In,
+                number: JORDAN.into(),
+                body: "About my paycheck".into(),
+                at: now(),
+                files: Vec::new(),
+            };
+            Ok(db.phones_report(&at, &from, vec![text])?.remove(0).id)
         })
         .await
         .unwrap();
+    filing::unfiled(&state, &dsp).await.unwrap();
+    let theirs = filed(&state, &dsp, &kept).await;
     assert_eq!(
-        kept.map(|kept| (kept.body, kept.conversation)),
-        Some(("About my paycheck".to_owned(), None))
+        (theirs.line.as_deref(), theirs.kind, &theirs.number),
+        (
+            Some(DESK.id),
+            ConversationKind::Number,
+            &Some(JORDAN.to_owned())
+        )
     );
-    assert_eq!(conversations, 0);
+    let more = texted_on(&state, &dsp, &phone, JORDAN, "It's short this week", now()).await;
+    assert_eq!(filed(&state, &dsp, &more).await.id, theirs.id);
 
-    // Its page answers as a line with nothing yet, and texts no number first.
-    let night = listed(&state, &dsp, Some(NIGHT.id)).await;
-    assert_eq!((night.waiting, night.conversations.len()), (0, 0));
-    let (shared, at) = (state.clone(), dsp.clone());
-    let opened = state
-        .run(move |db| contacts::open(db, &shared, &at, Some(NIGHT), JORDAN))
-        .await;
+    // Its line lists them; Dispatch Phone's lists its own alone.
+    let front = listed(&state, &dsp, Some(DESK.id)).await;
     assert_eq!(
-        opened.map(drop).map_err(|error| error.code),
-        Err("not_found".to_owned())
+        (front.waiting, shown(&front)),
+        (1, vec!["It's short this week"])
+    );
+    let dispatch = listed(&state, &dsp, None).await;
+    assert_eq!(
+        (dispatch.waiting, shown(&dispatch)),
+        (1, vec!["Is this dispatch?"])
+    );
+
+    // Texting the number first opens its conversation on each line, each its own line's alone.
+    let open = |line: Option<Line<'static>>| {
+        let (shared, at) = (state.clone(), dsp.clone());
+        state.run(move |db| contacts::open(db, &shared, &at, line, JORDAN))
+    };
+    let (front, dispatch) = (open(Some(DESK)).await.unwrap(), open(None).await.unwrap());
+    assert_eq!(
+        (front.id, dispatch.id),
+        (theirs.id.clone(), ours.id.clone())
+    );
+    let missing = Err("communications_conversation_not_found".to_owned());
+    assert_eq!(
+        one(&state, &dsp, None, &theirs.id).await.map(|_| ()),
+        missing
     );
 }
 

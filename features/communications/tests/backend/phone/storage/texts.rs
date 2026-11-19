@@ -156,7 +156,6 @@ fn a_text_goes_and_is_tried_again_only_from_a_phone_of_its_own_line() {
     let desk = Line {
         id: "front_desk",
         name: "Front Desk",
-        texting: true,
     };
     let on_desk = |to: &str| Outgoing {
         line: Some("front_desk".into()),

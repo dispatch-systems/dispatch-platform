@@ -176,7 +176,6 @@ async fn a_picture_is_its_adders_alone_until_it_goes_and_its_bytes_are_kept_once
     let desk = Line {
         id: "front_desk",
         name: "Front Desk",
-        texting: true,
     };
     pair_to(&db, &dsp, desk, "+12065550111");
     let config = db.config.clone();

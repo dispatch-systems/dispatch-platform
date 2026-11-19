@@ -90,14 +90,13 @@ pub trait TextStore {
     ) -> Result<crate::backend::windows::Rows<Text>>;
     /// The text `id`, filed or waiting to be.
     fn communications_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
-    /// Of the texts `ids`, those waiting to be filed, in no order: of phones whose texts are filed
-    /// alone (`FILED_PHONES`).
+    /// Of the texts `ids`, those waiting to be filed, in no order.
     fn unfiled_communications_texts_of(&self, dsp: &str, ids: &[String]) -> Result<Vec<Unfiled>>;
     /// Every text filed in a conversation of Dispatch Phone's own line that was written from `from`
     /// until `to`, oldest first: only its own are filed by route data.
     fn communications_texts_between(&self, dsp: &str, from: i64, to: i64) -> Result<Vec<Text>>;
     /// The texts waiting to be filed after `after`, when written and the ID, the oldest `most`,
-    /// oldest first: each when written and its ID, of phones whose texts are filed alone.
+    /// oldest first: each when written and its ID.
     fn unfiled_communications_texts(
         &self,
         dsp: &str,
@@ -111,7 +110,7 @@ pub trait TextStore {
     /// that couldn't before keeps since when.
     fn unplaced_communications_texts(&self, dsp: &str, ids: &[String], at: i64) -> Result<()>;
     /// The texts waiting to be filed that couldn't be placed since `since` or before, the oldest
-    /// `most`, oldest first, of phones whose texts are filed alone.
+    /// `most`, oldest first.
     fn overdue_communications_texts(
         &self,
         dsp: &str,
@@ -239,16 +238,10 @@ macro_rules! waiting_since {
 fn listed() -> String {
     format!("kind='number' AND line IS ?1 AND number NOT IN {BLOCKED}")
 }
-/// The phones whose texts are filed: Dispatch Phone's own line's, and another line's that texts,
-/// as its line said as it paired (`texting`, `Line::texting`). Another line's that doesn't keeps
-/// its texts as the phone side's alone, in no conversation, so the release before the lines, which
-/// reads every conversation as Dispatch Phone's, never shows one.
-const FILED_PHONES: &str = "SELECT id FROM phones_devices WHERE line IS NULL OR texting=1";
-/// A text waiting to be filed, of a phone whose texts are, as `Unfiled` reads it, with the line of
-/// its phone, from `t`.
+/// A text waiting to be filed, as `Unfiled` reads it, with the line of its phone, from `t`.
 const UNFILED: &str = "t.id,t.number,t.at,t.sent_by,d.line FROM phones_texts t \
                        JOIN phones_devices d ON d.id=t.device_id \
-                       WHERE (d.line IS NULL OR d.texting=1)";
+                       WHERE t.conversation_id IS NULL";
 /// Where a first page starts, as `before`: after every conversation and text.
 const END: (i64, &str) = (i64::MAX, "\u{10FFFF}");
 /// Where a first page of texts oldest first starts, as `after`: before every text.
@@ -409,10 +402,7 @@ impl TextStore for Store {
     }
     fn unfiled_communications_texts_of(&self, dsp: &str, ids: &[String]) -> Result<Vec<Unfiled>> {
         self.dsp(dsp)?.query_as(
-            &format!(
-                "SELECT {UNFILED} AND t.id IN (SELECT value FROM json_each(?)) \
-                 AND t.conversation_id IS NULL"
-            ),
+            &format!("SELECT {UNFILED} AND t.id IN (SELECT value FROM json_each(?))"),
             [serde_json::to_string(ids)?],
         )
     }
@@ -434,11 +424,8 @@ impl TextStore for Store {
     ) -> Result<Vec<(i64, String)>> {
         let (at, id) = after.unwrap_or(START);
         self.dsp(dsp)?.query_as(
-            &format!(
-                "SELECT at,id FROM phones_texts WHERE conversation_id IS NULL \
-                 AND device_id IN ({FILED_PHONES}) AND (at>?1 OR (at=?1 AND id>?2)) \
-                 ORDER BY at,id LIMIT ?3"
-            ),
+            "SELECT at,id FROM phones_texts WHERE conversation_id IS NULL \
+             AND (at>?1 OR (at=?1 AND id>?2)) ORDER BY at,id LIMIT ?3",
             params![at, id, most as i64],
         )
     }
@@ -464,10 +451,7 @@ impl TextStore for Store {
         most: usize,
     ) -> Result<Vec<Unfiled>> {
         self.dsp(dsp)?.query_as(
-            &format!(
-                "SELECT {UNFILED} AND t.conversation_id IS NULL AND t.unfiled_since<=?1 \
-                 ORDER BY t.at,t.id LIMIT ?2"
-            ),
+            &format!("SELECT {UNFILED} AND t.unfiled_since<=?1 ORDER BY t.at,t.id LIMIT ?2"),
             params![since, most as i64],
         )
     }

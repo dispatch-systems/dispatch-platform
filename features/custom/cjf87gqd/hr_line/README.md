@@ -64,8 +64,8 @@ does HR Line see or change Dispatch Phone's own. Someone who texts both has a co
   `cjf87gqd_hr_line.contact_saved`, `cjf87gqd_hr_line.number_blocked` and
   `cjf87gqd_hr_line.number_unblocked`, under Settings, as Dispatch Phone's own are, by who it's
   with and the number, never what a text says.
-- **Texting:** off (`LINE.texting`): its phones' texts are kept, not filed, until the next
-  release turns it on ([Filed once a line texts](../../../communications/README.md#texts)); till
-  then its page has no conversations.
+- **Filed:** its phones' texts are filed on HR Line as they come, and those of a phone paired
+  while HR Line's texts weren't yet, by the minute's upkeep
+  ([Every line's texts filed](../../../communications/README.md#texts)).
 - **Stores:** nothing of its own: its phones, texts, saved names, blocks and the browsers told of
   it are kept by Dispatch Phone, by their line; each member's Display choices by Settings.

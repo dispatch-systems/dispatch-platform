@@ -4,11 +4,10 @@ import {
   login,
   openDsp,
 } from '../../../../../../core/shell/tests/support/fixtures.js';
-import { hrLine, paired, texting, withHrLine } from '../support/line.js';
+import { hrLine, paired, withHrLine } from '../support/line.js';
 
-// Northline, given HR Line's custom ID with HR Line on and a phone paired to it, its texts filed;
-// its demo's stand-in phone, (206) 555-0100, is Dispatch Phone's, which (425) 555-0199 texted
-// already.
+// Northline, given HR Line's custom ID with HR Line on and a phone paired to it; its demo's
+// stand-in phone, (206) 555-0100, is Dispatch Phone's, which (425) 555-0199 texted already.
 
 /** A picture of a single pixel, as a PNG. */
 const PIXEL = Buffer.from(
@@ -23,7 +22,6 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   const owner = await dispatch.client();
   const north = await withHrLine(owner);
   const phone = await paired(dispatch, owner, hrLine, '(206) 555-0111');
-  texting(dispatch, north.id, phone);
   await phone.texted('4255550199', 'About my paycheck');
   // Dispatch Phone's quick replies, which HR Line's page and its Display section's preview lack.
   const saved = await owner.post('/api/dsp/dispatch-phone/quick-replies', {

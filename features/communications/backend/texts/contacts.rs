@@ -111,8 +111,7 @@ pub fn contacts(
 /// The conversation on the line `line` a text to the number `raw` written now belongs in, as
 /// filing would place it, opened with no text if it's new, for someone at the DSP to text first: a
 /// driver's latest work phone today is their conversation on Dispatch Phone's own; another line's
-/// is always the number's. Refused as not found on another line whose texts aren't filed yet
-/// (`Line::texting`), which keeps no conversation.
+/// is always the number's.
 pub fn open(
     db: &Store,
     state: &State,
@@ -120,7 +119,6 @@ pub fn open(
     line: Option<Line>,
     raw: &str,
 ) -> Result<Conversation> {
-    ensure(line.is_none_or(|line| line.texting), "not_found", 404)?;
     let line = line.map(|line| line.id);
     let number = normal(raw).ok_or_else(|| Error::new("invalid_input", 400))?;
     let filed = match line {
