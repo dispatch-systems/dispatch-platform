@@ -86,14 +86,23 @@ test('every feature has its crate, manifest and README, and a backend, an API or
 });
 
 // Its screens and routes check permissions; a feature that can be switched on with none
-// would have nothing to check them against. Every DSP has a mandatory one, switched or not.
-test('an optional feature declares a permission', () => {
-  const unchecked = features().flatMap((owner) => {
-    const manifest = featureManifest(owner);
-    return manifest?.switch && !manifest.mandatory && !manifest.permissions.length
-      ? [`${owner.dir} is optional and has no permission`]
-      : [];
-  });
+// would have nothing to check them against, unless it depends on a feature that declares one,
+// whose permissions it checks. Every DSP has a mandatory one, switched or not.
+test('an optional feature declares a permission, or depends on a feature that does', () => {
+  const manifests = features().flatMap((owner) => featureManifest(owner) ?? []);
+  const guarded = new Set(
+    manifests.filter((manifest) => manifest.permissions.length).map((manifest) => manifest.name),
+  );
+  const unchecked = manifests.flatMap((manifest) =>
+    manifest.switch &&
+    !manifest.mandatory &&
+    !manifest.permissions.length &&
+    !manifest.dependsOn.some((dependency) => guarded.has(dependency))
+      ? [
+          `${manifest.owner.dir} is optional and has no permission, nor depends on a feature with one`,
+        ]
+      : [],
+  );
   holds('anatomy', 'switch without permission', unchecked);
 });
 

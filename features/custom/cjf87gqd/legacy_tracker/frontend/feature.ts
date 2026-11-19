@@ -1,4 +1,3 @@
-import { ExternalLink } from 'lucide-react';
 import type { FrontendFeature } from '../../../../../core/shell/frontend/runtime/slots.js';
 import { useDspCjf87gqdLegacyTrackerSummary } from '../api/client.js';
 
@@ -6,8 +5,6 @@ import { useDspCjf87gqdLegacyTrackerSummary } from '../api/client.js';
 
 export const feature: FrontendFeature = {
   name: 'cjf87gqd_legacy_tracker',
-  // The icon its page of Settings shows.
-  icon: ExternalLink,
   pageTabs: [
     {
       page: 'conduct',

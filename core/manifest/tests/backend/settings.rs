@@ -47,6 +47,17 @@ fn a_section_under_another_features_permission_is_refused() {
 }
 
 #[test]
+#[should_panic(expected = "x's section x.policy is on y's page, a feature it doesn't depend on")]
+fn a_section_on_the_page_of_a_feature_its_feature_does_not_depend_on_is_refused() {
+    static X: Feature = Feature {
+        switch: optional("x", "X", &[]),
+        settings: &[section("x.policy", "Policy", "access", FIELDS).on_page_of("y")],
+        ..feature("x")
+    };
+    checked(&X);
+}
+
+#[test]
 #[should_panic(expected = "x's section policy isn't named <feature>.<what>")]
 fn a_section_not_named_under_its_feature_is_refused() {
     static X: Feature = Feature {

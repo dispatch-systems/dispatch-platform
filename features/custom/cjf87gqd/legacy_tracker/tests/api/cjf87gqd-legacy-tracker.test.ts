@@ -4,7 +4,7 @@ import { fixture } from '../../../../../../core/shell/tests/support/support.js';
 
 const route = '/api/dsp/cjf87gqd-legacy-tracker';
 
-test('Legacy Tracker answers the address its DSP set, and only at that DSP', async (t) => {
+test("Legacy Tracker answers the address any member set on Conduct's page, only at that DSP", async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -26,8 +26,17 @@ test('Legacy Tracker answers the address its DSP set, and only at that DSP', asy
   const unset = await owner.get(route);
   assert.equal(unset.status, 200, unset.body);
   assert.equal(unset.value.link, null);
+  // A member whose role holds no permission sets it, on Conduct's page of Settings.
+  const member = await f.client('member@dispatch.test');
+  await member.select(north.id);
+  const settings = await member.read('/api/dsp/settings');
+  const section = settings.sections.find(
+    (each: { id: string }) => each.id === 'cjf87gqd_legacy_tracker.general',
+  );
+  assert.equal(section?.page, 'conduct');
+  assert.ok(!settings.pages.some((page: { id: string }) => page.id === 'cjf87gqd-legacy-tracker'));
   const link = 'https://tracker.example.com/sheet';
-  const saved = await owner.post('/api/dsp/settings/cjf87gqd_legacy_tracker.general', {
+  const saved = await member.post('/api/dsp/settings/cjf87gqd_legacy_tracker.general', {
     values: { link },
     revision: 0,
   });
