@@ -143,7 +143,8 @@ function Quiet({
       <WidgetZero label="short" />
       {summary && (
         <ol className="dvic-latest-days" data-across={across || undefined}>
-          {days.map((day) => {
+          {/* Across, the latest first: the stack fills from it up, and the oldest go first. */}
+          {(across ? [...days].reverse() : days).map((day) => {
             const count = isCollected(covered, day) ? (counts.get(day) ?? 0) : undefined;
             const height = { '--height': `${((count ?? 0) / most) * 100}%` } as CSSProperties;
             return (

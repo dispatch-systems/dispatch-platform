@@ -44,6 +44,7 @@ export const test = base.extend<{
   },
 });
 export { demo, expect };
+export { expectEverySize } from './widget-sizes.js';
 
 /** Fill and submit the sign-in form the page already shows. */
 export async function signIn(page: Page, email = demo.email) {

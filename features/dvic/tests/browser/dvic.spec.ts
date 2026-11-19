@@ -1,6 +1,7 @@
 import {
   test,
   expect,
+  expectEverySize,
   login,
   openDsp,
   demo,
@@ -169,6 +170,30 @@ test('the latest collected day opens first even when nobody was short; Today lea
   await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Latest' }).click();
   await expect(latest).toBeVisible();
+});
+
+test('Latest DVIC fits every size, with drivers short and on a day nobody was', async ({
+  page,
+  dispatch,
+}) => {
+  const { dsp } = await seedDvic(dispatch);
+  await login(page);
+  await openDsp(page, dsp.name);
+  // Each size shows the day's short drivers: a count, or a list of them.
+  await expectEverySize(page, dsp.id, 'dvic.latest', (grid) =>
+    expect(grid.locator('.widget:not(:has(.widget-count, .widget-list))')).toHaveCount(0),
+  );
+  dispatch.database(`dsps/${dsp.id}/data/dvic/dvic.sqlite`, (db) => {
+    db.prepare('DELETE FROM dvic_inspections WHERE start_date=?').run('2026-09-26');
+    db.prepare('UPDATE dvic_reports SET max_date=?').run('2026-09-25');
+  });
+  // Each shows the day's 0, with the days before it where it has room for them.
+  await expectEverySize(page, dsp.id, 'dvic.latest', async (grid) => {
+    await expect(grid.locator('.widget:not(:has(.dvic-latest-quiet))')).toHaveCount(0);
+    await expect(
+      grid.locator('.dvic-latest-quiet[data-days]:not(:has(.dvic-latest-days))'),
+    ).toHaveCount(0);
+  });
 });
 
 test('a large week opens without downloading every inspection and never shows a failed summary as zero', async ({
