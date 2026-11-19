@@ -28,6 +28,7 @@ test("Legacy Tracker answers the address any member set on Conduct's page, only 
   assert.equal(unset.value.link, null);
   // A member whose role holds no permission sets it, on Conduct's page of Settings.
   const member = await f.client('member@dispatch.test');
+  await member.select(north.id);
   const settings = await member.read('/api/dsp/settings');
   const section = settings.sections.find(
     (each: { id: string }) => each.id === 'cjf87gqd_legacy_tracker.general',
