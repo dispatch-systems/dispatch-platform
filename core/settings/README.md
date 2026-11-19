@@ -44,7 +44,11 @@ let policy: Policy = dispatch_core::settings::read(db, dsp, &POLICY)?;
 - **What else:** `.custom()` for one its owner's own component draws (the frontend's
   `settingsSections`), `.warn(..)` for words to confirm before a save that loses something,
   `.saved(..)` for what else a save does in the same write, `.kept(..)` for values kept in the
-  feature's own tables. Each of these is handed only the DSP being read or saved.
+  feature's own tables. Each of these is handed only the DSP being read or saved. `.shares(..)`
+  keeps another section's record as its own, so a save of either is a save of both, whichever
+  feature is off: each member's own, with the same fields, of a feature its own depends on, as
+  HR Line's Display section shares Dispatch Phone's. Settings answers each with that record's id
+  (`record`), and a save puts what it saved in each section with it.
 - `Registry::check` refuses, at startup, a section not named `<feature>.<what>` with its
   `what` snake_case (a `:` would read as a member's own record), under a permission its
   feature doesn't declare, on a page or with a part that doesn't exist, with no fields unless

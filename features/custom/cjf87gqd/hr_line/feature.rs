@@ -46,8 +46,9 @@ pub const LINE: Line<'static> = Line {
 };
 
 /// Its page's section of Settings' Display page, each member's own: how HR Line's page looks to
-/// them and how a new text to its phones alerts them, with Dispatch Phone's choices, apart from
-/// Dispatch Phone's own Message display, after it on the page.
+/// them and how a new text to its phones alerts them. It shares Dispatch Phone's Message display's
+/// record, so a member's choices are both lines', made in either; with both on, the page shows
+/// Dispatch Phone's alone, and with Dispatch Phone off, HR Line's.
 pub const DISPLAY: Section = section(
     "cjf87gqd_hr_line.display",
     "HR Line",
@@ -58,6 +59,7 @@ pub const DISPLAY: Section = section(
 .member()
 .custom()
 .keywords(lines::DISPLAY_KEYWORDS)
+.shares(&lines::DISPLAY)
 .order(1);
 
 /// Its pushes: each new text to its phones, to each browser kept for HR Line of a member who may

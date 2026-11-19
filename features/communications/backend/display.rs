@@ -65,7 +65,7 @@ const LIST_PREVIEW: Options = &[
 ];
 
 /// Dispatch Phone's own line's, under the name it shipped with. Another line's has the same
-/// fields and words (`lines`), under its own id, name and permission.
+/// fields and words (`lines`), under its own id, name and permission, and shares its record.
 pub const DISPLAY: Section = section(
     "communications.display",
     "Message display",

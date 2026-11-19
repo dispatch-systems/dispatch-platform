@@ -100,6 +100,7 @@ const chose = (notifications: boolean): SettingsAnswer => ({
   sections: [
     {
       id: 'communications.display',
+      record: 'communications.display',
       page: 'display',
       label: 'Message display',
       order: 0,

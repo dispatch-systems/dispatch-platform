@@ -9,8 +9,9 @@
 //! Slack one, isn't found. Each is refused, as not found, while the line's own feature is off for
 //! the DSP or out of the member's sight, whatever Dispatch Phone's switch says: each line answers
 //! to its own alone. Its page's display is a section of its own on Settings' Display page, with
-//! Dispatch Phone's fields (`DISPLAY_FIELDS`, `DISPLAY_KEYWORDS`), and its writes change Dispatch
-//! Phone's data (`DOMAIN`).
+//! Dispatch Phone's fields (`DISPLAY_FIELDS`, `DISPLAY_KEYWORDS`), sharing its record (`DISPLAY`):
+//! each member's choices are both lines', whichever is off. Its writes change Dispatch Phone's
+//! data (`DOMAIN`).
 pub use super::routes::{
     conversations::{
         conversation_of as conversation, done_of as done, send_of as send, typing_of as typing,
@@ -32,7 +33,7 @@ pub use super::routes::{
     },
 };
 pub use crate::backend::{
-    display::{FIELDS as DISPLAY_FIELDS, KEYWORDS as DISPLAY_KEYWORDS},
+    display::{DISPLAY, FIELDS as DISPLAY_FIELDS, KEYWORDS as DISPLAY_KEYWORDS},
     phone::storage::Line,
     push::{Pushed, pushing},
     storage::DOMAIN,

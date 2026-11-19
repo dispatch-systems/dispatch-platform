@@ -49,6 +49,9 @@ pub enum SettingsScope {
 #[cfg_attr(feature = "ts", ts(export_to = "core/settings/api/generated/"))]
 pub struct SettingsSection {
     pub id: String,
+    /// The section whose record it keeps: its own id, or another's it shares, whose values and
+    /// revision it has, as a save of either changes both.
+    pub record: String,
     /// The page it's on, by id.
     pub page: String,
     pub label: String,

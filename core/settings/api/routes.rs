@@ -216,6 +216,7 @@ fn view(
         .collect::<Result<_>>()?;
     Ok(SettingsSection {
         id: section.id.to_owned(),
+        record: section.record().id.to_owned(),
         page,
         label: section.label.to_owned(),
         order: section.order,

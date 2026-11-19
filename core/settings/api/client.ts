@@ -25,13 +25,20 @@ export async function saveSettings(section: string, save: SettingsSave) {
   const session = dataCache.session;
   const answer = await api<SettingsSaved>(`${settingsRead}/${encodeURIComponent(section)}`, save);
   const current = readSettings();
-  if ('section' in answer && current && dataCache.session === session)
+  // A section sharing the saved one's record holds what it does now.
+  if ('section' in answer && current && dataCache.session === session) {
+    const { values, revision, record } = answer.section;
     dataCache.put(settingsRead, {
       ...current,
       sections: current.sections.map((each) =>
-        each.id === answer.section.id ? answer.section : each,
+        each.id === answer.section.id
+          ? answer.section
+          : each.record === record
+            ? { ...each, values, revision }
+            : each,
       ),
     });
+  }
   if ('section' in answer && answer.reopen)
     window.dispatchEvent(new Event('dispatch-view-expired'));
   return answer;

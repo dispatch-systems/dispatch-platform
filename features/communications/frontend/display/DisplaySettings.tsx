@@ -29,28 +29,31 @@ import './display.css';
 // of the page with them, which changes as they choose. A phone has the choices that apply on one.
 // What they choose is shown at once and saved a moment later, their own; Reset takes the screen
 // back to its defaults. Then how a new message alerts them, on any screen. Dispatch Phone's own
-// line has the profile's choices too. While the page holds two lines' sections, each is headed
-// with its line's name, one under the other.
+// line has the profile's choices too. Lines whose sections share one record, as another line's
+// shares Dispatch Phone's, show one section, the first's, whose choices are each of theirs; while
+// the page holds two that don't, each is headed with its line's name, one under the other.
 // The preview shows the screen chosen at its actual size, or a desktop's whole page, as big as
 // it is in this window, made to fit, as it starts (`frame`).
 
 // The choices scroll beside the preview while both fit in the window (display.css).
 const fillsWindow = '(width > 1240px) and (height >= 600px)';
 
-export function DisplaySettings({
-  view,
-  refresh,
-  line = DISPATCH_PHONE,
-}: {
-  view: DspView;
-  refresh: () => void;
-  line?: TextingLine;
-}) {
-  // The Display page's sections drawn by their owners are lines'.
-  const lines = useSettings().data?.sections.filter(
-    (each) => each.page === 'display' && each.custom,
-  ).length;
-  const several = (lines ?? 0) > 1;
+type Props = { view: DspView; refresh: () => void; line?: TextingLine };
+
+export function DisplaySettings({ line = DISPATCH_PHONE, ...props }: Props) {
+  // The Display page's sections drawn by their owners are lines', first to last.
+  const lines = useSettings()
+    .data?.sections.filter((each) => each.page === 'display' && each.custom)
+    .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+  const record = lines?.find((each) => each.id === line.display)?.record;
+  // A later line sharing the record shows nothing: the first's section is its own too.
+  const first = lines?.find((each) => each.record === record);
+  if (!lines || first?.id !== line.display) return null;
+  const several = new Set(lines.map((each) => each.record)).size > 1;
+  return <LineDisplay {...props} line={line} several={several} />;
+}
+
+function LineDisplay({ view, refresh, line, several }: Required<Props> & { several: boolean }) {
   useFillsWindow(several ? 'not all' : fillsWindow);
   const choices = useDisplayChoices(line.display, refresh);
   const [screen, setScreen] = useState<Screen>(thisScreen);
