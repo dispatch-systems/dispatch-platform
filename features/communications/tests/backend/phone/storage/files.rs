@@ -115,7 +115,11 @@ fn a_video_kept_on_its_phone_comes_only_while_someone_plays_it() {
         .phones_text(&dsp, &file(&db).text_id.unwrap())
         .unwrap()
         .unwrap();
-    assert!(db.phones_let_go_fetched(&dsp, &on, 11_000).unwrap().is_empty());
+    assert!(
+        db.phones_let_go_fetched(&dsp, &on, 11_000)
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(
         db.phones_let_go_fetched(&dsp, &on, 11_001).unwrap(),
         [before.id.as_str()]

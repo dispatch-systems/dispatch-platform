@@ -43,7 +43,7 @@ impl On {
     }
     /// Whether `line` is.
     pub fn has(&self, line: Option<&str>) -> bool {
-        self.0.iter().any(|on| *on == line)
+        self.0.contains(&line)
     }
     /// The lines as a query binds them: JSON, Dispatch Phone's own as `null`, for `includes`.
     pub fn json(&self) -> String {

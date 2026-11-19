@@ -316,9 +316,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         if !due {
             return;
         }
-        let dsps = state
-            .read(|db| lines::serving(db, db.served_ids()?))
-            .await;
+        let dsps = state.read(|db| lines::serving(db, db.served_ids()?)).await;
         let dsps = match dsps {
             Ok(dsps) => dsps,
             Err(error) => {

@@ -80,9 +80,7 @@ pub fn refile(state: Arc<State>, dsp: String, changed: RouteDataChanged) -> Upke
 
 fn pass(state: Arc<State>, _: bool) -> Upkeep {
     Box::pin(async move {
-        let on = state
-            .read(|db| lines::serving(db, db.served_ids()?))
-            .await;
+        let on = state.read(|db| lines::serving(db, db.served_ids()?)).await;
         match on {
             Ok(dsps) => {
                 for dsp in dsps {
