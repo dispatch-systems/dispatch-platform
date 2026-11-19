@@ -220,13 +220,6 @@ pub fn routes() -> Vec<Route> {
         )
         .changes(DOMAIN)
         .also_at("/api/dsp/communications/quick-replies"),
-        write(
-            "/api/dsp/dispatch-phone/conversations/{id}/driver",
-            USE,
-            texts::pick_driver,
-        )
-        .changes(DOMAIN)
-        .also_at("/api/dsp/communications/conversations/{id}/driver"),
         read(
             "/api/dsp/dispatch-phone/contacts",
             USE,

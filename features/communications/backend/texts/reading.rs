@@ -77,13 +77,18 @@ pub fn conversations(
             let number_or_none = number.as_deref().unwrap_or_default();
             let with = match (&conversation.driver, conversation.kind) {
                 (Some((source, id)), _) => people.driver(source, id, id),
-                (None, ConversationKind::Work) => people.work_phone(number_or_none),
+                (None, ConversationKind::Work) => {
+                    people.work_phone(number_or_none, numbers.contact(number_or_none))
+                }
                 (None, _) => people.texting(number_or_none, numbers.contact(number_or_none)),
             };
-            // A number's own conversation is saved as a contact, or blocked, as its number is.
+            // A number's own conversation, or a work phone's nobody had, is saved as a contact as its
+            // number is; a number's alone is blocked.
             let own = number
                 .as_deref()
-                .filter(|_| conversation.kind == ConversationKind::Number);
+                .filter(|_| contactable(conversation.kind, conversation.driver.is_some()));
+            let blocked = conversation.kind == ConversationKind::Number
+                && own.is_some_and(|number| numbers.blocked(number));
             Conversation {
                 id: conversation.id,
                 kind: conversation.kind,
@@ -91,7 +96,7 @@ pub fn conversations(
                 team_id: None,
                 contact: own.is_some_and(|number| numbers.contact(number).is_some()),
                 added: own.is_some_and(|number| people.everyone().added(number).is_some()),
-                blocked: own.is_some_and(|number| numbers.blocked(number)),
+                blocked,
                 number,
                 with,
                 state: conversation.state,
@@ -269,7 +274,7 @@ pub fn search(
         }
         let named = match (&conversation.driver, kind) {
             (Some((source, id)), _) => people.driver(source, id, id),
-            (None, ConversationKind::Work) => people.work_phone(&number),
+            (None, ConversationKind::Work) => people.work_phone(&number, numbers.contact(&number)),
             (None, _) => people.texting(&number, numbers.contact(&number)),
         };
         let with = texted_with
@@ -558,12 +563,31 @@ pub(crate) fn found(
         .ok_or_else(|| Error::new("communications_conversation_not_found", 404))
 }
 /// The number of the DSP's conversation by text `id` of the line `line`, which someone at the DSP
-/// texts, names or blocks: refused for any but a number's.
+/// blocks: refused for any but a number's.
 pub fn numbered(db: &Store, dsp: &str, line: Option<&str>, id: &str) -> Result<String> {
     let conversation = found(db, dsp, line, id)?;
     match (conversation.kind, conversation.number) {
         (ConversationKind::Number, Some(number)) => Ok(number),
         _ => Err(Error::new("invalid_input", 400)),
+    }
+}
+/// The number of the DSP's conversation by text `id` of the line `line`, which someone at the DSP
+/// saves a contact for or adds to someone: refused for any but a number's or a work phone's nobody
+/// had.
+pub fn contact_number(db: &Store, dsp: &str, line: Option<&str>, id: &str) -> Result<String> {
+    let conversation = found(db, dsp, line, id)?;
+    match conversation.number {
+        Some(number) if contactable(conversation.kind, conversation.driver.is_some()) => Ok(number),
+        _ => Err(Error::new("invalid_input", 400)),
+    }
+}
+/// Whether a conversation of `kind`, a driver's or not, is saved as a contact as its number is: a
+/// number's, or a work phone's nobody had.
+fn contactable(kind: ConversationKind, driver: bool) -> bool {
+    match kind {
+        ConversationKind::Number => true,
+        ConversationKind::Work => !driver,
+        ConversationKind::Slack => false,
     }
 }
 

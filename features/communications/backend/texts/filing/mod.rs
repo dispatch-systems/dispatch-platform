@@ -8,7 +8,7 @@ mod reconciliation;
 
 pub use maintenance::{expire, let_go_fetched, overdue, unfiled, watch_live_day};
 pub use placement::belongs;
-pub use reconciliation::{reconcile, refile_day, refiled};
+pub use reconciliation::{reconcile, refile_day};
 
 use super::storage::TextStore;
 use crate::backend::{lines, live, phone::model::FETCHED_MS, storage::DOMAIN};

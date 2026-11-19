@@ -3,8 +3,7 @@
 //! last texted that number, else the one seen last, one online before any offline; and is filed as
 //! it's queued, with how it went, under the full name of whoever wrote it, as a Slack answer is
 //! (`sent_by`). A number's conversation, and a work phone's nobody had, answer their number; a
-//! driver's, the work phone they have now, as live route data says or Pick driver picked them for
-//! (`LiveDay::phones`), or for the two hours after the stop the one they had then
+//! driver's, the work phone they have now, as live route data says (`LiveDay::phones`), or for the two hours after the stop the one they had then
 //! (`Stopped::phones`), and none while they have none. Its pictures are kept by the phone side as
 //! they're added, its adder's alone until they go with it, and none of one kept should the adder's
 //! access end while its bytes come. One that failed is sent again with Retry, from the phone a new

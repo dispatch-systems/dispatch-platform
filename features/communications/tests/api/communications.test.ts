@@ -463,17 +463,13 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
   ]);
   assert.deepEqual([...new Uint8Array(await previewed.arrayBuffer())], png);
 
-  // Today's Routes lists nobody until live route data reads today, and a number's conversation
-  // has no driver to pick.
+  // Today's Routes lists nobody until live route data reads today.
   assert.deepEqual(await owner.read(`${route}/routes`), { day: null, drivers: [], phones: [] });
-  const driver = { driverId: 'driver-1' };
-  assert.equal((await owner.post(`${route}/conversations/${asked.id}/driver`, driver)).status, 400);
 
   // Another DSP has none of it.
   await owner.select(summit.id);
   assert.equal((await owner.get(`${route}/conversations/${asked.id}`)).status, 404);
   assert.equal((await owner.post(`${route}/conversations/${asked.id}/block`)).status, 404);
-  assert.equal((await owner.post(`${route}/conversations/${asked.id}/driver`, driver)).status, 404);
   assert.equal((await owner.get(`${route}/texts/files/${picture}`)).status, 404);
   assert.equal((await owner.get(`${route}/texts/files/${picture}?v=${version}`)).status, 404);
   assert.equal((await owner.get(`${route}/texts/files/${picture}/preview`)).status, 404);
@@ -494,7 +490,6 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
     await member.post(`${route}/conversations/${asked.id}/block`),
     await member.post(`${route}/texts/conversations`, { number: '4255550123' }),
     await member.get(`${route}/routes`),
-    await member.post(`${route}/conversations/${asked.id}/driver`, driver),
     await upload(member.headers),
   ];
   assert.deepEqual(

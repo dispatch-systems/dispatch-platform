@@ -12,7 +12,7 @@ use super::{
     live_day::LiveDay,
     model::Filed,
     numbers::{Numbers, shown},
-    reading::{like, numbered, one},
+    reading::{contact_number, like, numbered, one},
     storage::{ContactStore, TextStore},
 };
 use crate::{
@@ -161,7 +161,7 @@ pub fn save_contact(
     name: &str,
     by: &str,
 ) -> Result<Conversation> {
-    let number = numbered(db, dsp, line, id)?;
+    let number = contact_number(db, dsp, line, id)?;
     let saved = together(db, dsp, || {
         let Some(before) = db.save_communications_contact(dsp, line, &number, name, by)? else {
             return Ok(false);
@@ -206,7 +206,7 @@ pub fn add_to_person(
     added: bool,
 ) -> Result<Conversation> {
     let dsp = c.dsp.id.as_str();
-    let number = numbered(db, dsp, None, id)?;
+    let number = contact_number(db, dsp, None, id)?;
     if added {
         add_phone(db, c, code, &number)?;
     } else {

@@ -81,7 +81,6 @@ POST /api/dsp/communications/conversations Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/block Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/communications/conversations/{id}/contact Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/communications/conversations/{id}/done Dsp("communications.use") Scoped(DataDomain("communications"))
-POST /api/dsp/communications/conversations/{id}/driver Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/communications/conversations/{id}/messages Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/messages/{message}/retry Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/person Dsp("communications.use") Write
@@ -105,7 +104,6 @@ POST /api/dsp/dispatch-phone/conversations Dsp("communications.use") Async
 POST /api/dsp/dispatch-phone/conversations/{id}/block Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/dispatch-phone/conversations/{id}/contact Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/dispatch-phone/conversations/{id}/done Dsp("communications.use") Scoped(DataDomain("communications"))
-POST /api/dsp/dispatch-phone/conversations/{id}/driver Dsp("communications.use") Scoped(DataDomain("communications"))
 POST /api/dsp/dispatch-phone/conversations/{id}/messages Dsp("communications.use") Async
 POST /api/dsp/dispatch-phone/conversations/{id}/messages/{message}/retry Dsp("communications.use") Async
 POST /api/dsp/dispatch-phone/conversations/{id}/person Dsp("communications.use") Write

@@ -8,8 +8,8 @@
 //! waits as its messages say, whichever day.
 use super::{
     began, date,
-    model::{Filed, LiveKept, TextConversation},
-    storage::{DayStore, PickStore, TextStore},
+    model::{LiveKept, TextConversation},
+    storage::{DayStore, TextStore},
     zone,
 };
 use crate::backend::{
@@ -27,7 +27,7 @@ use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use std::{
     cmp::Reverse,
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap},
 };
 
 /// Two hours, in milliseconds: how long after the live day ends, at the stop, work conversations
@@ -61,18 +61,11 @@ impl LiveDay {
             from,
         }))
     }
-    /// The work phone each driver has now, by their ID, as its ten digits: the one they were last
-    /// picked for today that's no one driver's latest, as its texts are filed under them
-    /// (`picking`); else their latest of today, as live route data reads it, but one that's another
-    /// driver's latest too, which is no one driver's, so neither has it to be texted at.
+    /// The work phone each driver has now, by their ID, as its ten digits: their latest of today,
+    /// as live route data reads it, but one that's another driver's latest too, which is no one
+    /// driver's, so neither has it to be texted at.
     pub fn phones(&self, db: &Store, dsp: &str) -> Result<HashMap<String, String>> {
-        held(
-            db,
-            dsp,
-            &self.day,
-            &self.source,
-            self.reader.day_phones(db, dsp)?,
-        )
+        Ok(held(self.reader.day_phones(db, dsp)?))
     }
     /// The route today of each of `ids` with the most stops, by their ID (`today::busiest`), as live
     /// route data last read it: every one of them, as many at a time as one read of their routes
@@ -149,8 +142,7 @@ impl Stopped {
     /// The work phone each driver had at the stop, by their ID, as `LiveDay::phones` has them that
     /// day: as historical route data reads it; none while it can't.
     pub fn phones(&self, db: &Store, dsp: &str) -> Result<HashMap<String, String>> {
-        let read = self.reader.day_phones(db, dsp, &self.day)?;
-        held(db, dsp, &self.day, &self.source, read)
+        Ok(held(self.reader.day_phones(db, dsp, &self.day)?))
     }
 }
 
@@ -170,39 +162,16 @@ pub fn phones_now(db: &Store, dsp: &str, source: &str) -> Result<HashMap<String,
     }
 }
 
-/// The work phone each driver of `source` has on `day`, by their ID, from `read`, its drivers'
-/// latest: the one they were last picked for that day that's no one driver's latest, as its texts
-/// are filed under them (`picking`); else their latest, but one that's another driver's latest too,
-/// which is no one driver's, so neither has it to be texted at.
-fn held(
-    db: &Store,
-    dsp: &str,
-    day: &str,
-    source: &str,
-    read: DayPhones,
-) -> Result<HashMap<String, String>> {
+/// The work phone each driver has, by their ID, from `read`, its drivers' latest: but one that's
+/// another driver's latest too, which is no one driver's, so neither has it to be texted at.
+fn held(read: DayPhones) -> HashMap<String, String> {
     let DayPhones::Read(read) = read else {
-        return Ok(HashMap::new());
+        return HashMap::new();
     };
-    let latest: HashMap<String, String> = read
-        .into_iter()
+    read.into_iter()
         .filter(|each| !each.shared)
         .map(|each| (each.driver_id, each.phone))
-        .collect();
-    let named: HashSet<&String> = latest.values().collect();
-    let mut phones = HashMap::new();
-    for (phone, picked) in db.communications_picked(dsp, day)? {
-        if let Filed::Driver { source: of, id } = picked
-            && of == source
-            && !named.contains(&phone)
-        {
-            phones.insert(id, phone);
-        }
-    }
-    for (driver, phone) in latest {
-        phones.entry(driver).or_insert(phone);
-    }
-    Ok(phones)
+        .collect()
 }
 
 /// `kept` as of the DSP's live day: a work conversation waiting by its texts waits only on those

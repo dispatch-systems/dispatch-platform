@@ -108,6 +108,7 @@
       ["communications", 22, "communications_origins", "0632ef4d6ba8579b"],
       ["communications", 23, "phones_lines", "code"],
       ["communications", 24, "communications_lines", "code"],
+      ["communications", 25, "communications_picked_dropped", "be9a490899e9c216"],
       ["slack", 1, "slack", "8ca8fd50f814a724"],
       ["slack", 2, "slack_new_connections", "code"],
       ["slack", 3, "slack_members", "a3cacf7486f2ded9"],
