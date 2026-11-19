@@ -1,8 +1,9 @@
 //! Upkeep of where the pictures and files of both kinds are kept, hourly, in two tasks of their
-//! own, so copying can't hold up the cache's limit. Copying (`MAINTENANCE`): in each DSP with
-//! Communications on, for the phones' and Slack's stores of bytes each, what the object store has
-//! that no file keeps let go of (`Folder::release`, once a day), then what waits in the DSP's data
-//! copied to it (`Folder::copy`), `BATCH` at a time, the cache kept within its limit after each.
+//! own, so copying can't hold up the cache's limit. Copying (`MAINTENANCE`): in each DSP with any
+//! line on (`lines::serving`), for the phones' and Slack's stores of bytes each, what the object
+//! store has that no file keeps let go of (`Folder::release`, once a day), then what waits in the
+//! DSP's data copied to it (`Folder::copy`), `BATCH` at a time, the cache kept within its limit
+//! after each.
 //! The cache (`CACHE`): the server's cached copies kept within its limit (`bytes::bound`),
 //! `PICTURE_CACHE_MB` megabytes, 10 GB unless the environment says. Each on its own, so one that
 //! fails is reported and tried again the next hour, and the rest still go.
@@ -49,7 +50,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
             return;
         }
         let dsps = state
-            .read(|db| crate::backend::switched_on(db, db.kept_dsps()?))
+            .read(|db| crate::backend::lines::serving(db, db.kept_dsps()?))
             .await;
         match dsps {
             Ok(dsps) => {

@@ -9,9 +9,11 @@ conversations, counts, banners, alerts or pushes, nor does Dispatch Phone answer
 does HR Line see or change Dispatch Phone's own. Someone who texts both has a conversation on each.
 
 - **Switch:** `cjf87gqd_hr_line`, its DSP's alone (`custom`), off until the platform owner switches it
-  on. Its code depends on Dispatch Phone (`depends_on: ["communications"]`), and it works only
-  while Dispatch Phone is on for the DSP: its routes are refused (`not_found`) while it's off.
-  Switched off, its phones keep relaying and its texts are kept.
+  on. Its code runs on Dispatch Phone's (`depends_on: ["communications"]`), but it answers to its
+  own switch alone, never to Dispatch Phone's: it works, its phones relay and its texts are filed,
+  answered and pushed whether Dispatch Phone is on, off, hidden or in beta. The Relay app is all
+  the two share. Switched off, its routes are refused, its phones and the codes that pair them are
+  refused (`phones_off`), and its texts are kept.
 - **Permissions:** `cjf87gqd_hr_line.use` (Use HR Line), for its page: reading its conversations and
   answering them, its contacts, and being told of its new texts. `cjf87gqd_hr_line.phones` (Manage
   HR Line Phones), for its card: pairing, renaming and removing its phones, as core's

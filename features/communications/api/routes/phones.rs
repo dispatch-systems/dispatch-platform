@@ -1,10 +1,11 @@
 //! Managing the DSP's dispatch phones, as its card on Settings' DSP Connections does: listing them,
 //! the code that pairs the next, renaming one and removing it. Each behind `phones.manage` (Manage
-//! Phones) or core's `connections.manage` (Manage DSP Connections), and refused while
-//! Communications is off for the DSP, which managing all its connections still lets a member in.
-//! Each is of one line of phones (`*_of`): Dispatch Phone's own here, another feature's from its
-//! own card's routes (`api::lines`), which see and change only that line's phones and codes.
-use super::id;
+//! Phones) or core's `connections.manage` (Manage DSP Connections). Each is of one line of phones
+//! (`*_of`): Dispatch Phone's own here, another feature's from its own card's routes
+//! (`api::lines`), which see and change only that line's phones and codes; and each is refused
+//! while that line's own feature is off for the DSP or out of the member's sight
+//! (`access::served`), which managing all its connections still lets a member in.
+use super::{id, served};
 use crate::{
     api::{
         phone::DOWNLOAD,
@@ -22,9 +23,7 @@ use crate::{
 };
 use dispatch_core::{
     Error, Result, State,
-    accounts::Context,
     db::{self, Store},
-    ensure,
     foundation::validate as v,
     server::http::{
         input::{Input, Reply},
@@ -38,11 +37,6 @@ pub(crate) const MANAGE: Dsp = Dsp("connections.manage|phones.manage");
 /// The most characters a phone's name may be.
 const NAME_MOST: usize = 60;
 
-/// Refuses while Communications is off for the DSP, as managing all its connections still lets a
-/// member in.
-fn on(c: &Context) -> Result<()> {
-    ensure(c.has(crate::FEATURE.switch.id), "not_found", 404)
-}
 /// The phone as the card shows it, at `now`, while the server hands out the app of `latest`.
 fn row(device: &Device, now: i64, latest: Option<u32>) -> PhoneRow {
     PhoneRow {
@@ -76,14 +70,15 @@ pub(super) fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 /// The phones of `line`, and the app they install.
 pub fn listed_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
-    on(c)?;
+    let line = line.map(|line| line.id);
+    served(c, line)?;
     v::fields(&input.query, &[])?;
     let now = db::now();
     let latest = app::latest(&db.config);
     let code = latest.as_ref().map(|app| app.version_code);
     Reply::of(&Phones {
         phones: db
-            .phones_devices(c.dsp_id(), line.map(|line| line.id))?
+            .phones_devices(c.dsp_id(), line)?
             .iter()
             .map(|device| row(device, now, code))
             .collect(),
@@ -111,7 +106,7 @@ pub(super) fn new_pairing(db: &Store, c: &Member, input: &Input) -> Result<Reply
 }
 /// A new code to pair the next phone to `line`, in place of any of that line's shown before.
 pub fn new_pairing_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
-    on(c)?;
+    served(c, line.map(|line| line.id))?;
     v::fields(&input.body, &[])?;
     let site = c
         .dsp
@@ -142,10 +137,10 @@ pub fn pairing_status_of(
     input: &Input,
     line: Option<Line>,
 ) -> Result<Reply> {
-    on(c)?;
+    let line = line.map(|line| line.id);
+    served(c, line)?;
     v::fields(&input.query, &[])?;
     let id = id(input.param("id"), "pairing")?;
-    let line = line.map(|line| line.id);
     Reply::of(&PhonePairingStatus {
         status: db.phones_pairing(c.dsp_id(), line, &id, db::now())?,
     })
@@ -156,11 +151,11 @@ pub(super) fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 /// Gives the phone of `line` a new name: another line's is refused as not found.
 pub fn rename_of(db: &Store, c: &Member, input: &Input, line: Option<Line>) -> Result<Reply> {
-    on(c)?;
+    let line = line.map(|line| line.id);
+    served(c, line)?;
     v::fields(&input.body, &["name"])?;
     let id = id(input.param("id"), "phone")?;
     let name = v::name(&input.body, "name", NAME_MOST)?;
-    let line = line.map(|line| line.id);
     let before = db
         .phones_device(c.dsp_id(), &id)?
         .filter(|device| device.line.as_deref() == line)
@@ -191,13 +186,13 @@ pub async fn remove_of(
     let line = line.map(|line| line.id);
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    on(&c)?;
+    served(&c, line)?;
     v::fields(&input.body, &[])?;
     let id = id(input.param("id"), "phone")?;
     let dsp = c.dsp.id.clone();
     filing::changing(&state, &dsp, move |db| {
         let c = access.revalidate(db, &c)?;
-        on(&c)?;
+        served(&c, line)?;
         let (device, failed) = db.phones_remove(&c.dsp.id, line, &id, db::now())?;
         c.audit(db, &device.action("removed"), &device.logged())?;
         Ok(((), failed))

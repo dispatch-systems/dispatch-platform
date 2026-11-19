@@ -14,7 +14,9 @@ with `{"error": "<code>", "message": "…"}`: the app acts on the code, never th
 
 - **Where:** at the DSP's own address alone, while the DSP is active. Anywhere else, or carrying
   a cookie (as a browser would) to any call but the app's, a call is refused `sign_in_required`
-  (401). While Dispatch Phone is off for the DSP, every call is refused `phones_off` (403).
+  (401). While no line is on for the DSP, every call is refused `phones_off` (403); a phone's
+  calls, and pairing by a code, are refused so while the line it serves, or the code pairs to,
+  is off, each line by its own switch alone.
 - **Pairing** takes the code someone at the DSP showed (`POST /api/communications/phone/pair`),
   and answers the phone's key: 64 hexadecimal letters (`KEY_BYTES` in hexadecimal), given once,
   which the app keeps.

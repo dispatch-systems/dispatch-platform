@@ -11,7 +11,7 @@ pub use placement::belongs;
 pub use reconciliation::{reconcile, refile_day, refiled};
 
 use super::storage::TextStore;
-use crate::backend::{live, phone::model::FETCHED_MS, storage::DOMAIN};
+use crate::backend::{lines, live, phone::model::FETCHED_MS, storage::DOMAIN};
 use dispatch_core::{
     Error, Result, State,
     db::{Store, now},
@@ -28,10 +28,11 @@ use std::{collections::BTreeSet, sync::Arc, time::Duration};
 /// before it's placed under its number (`overdue`).
 pub const UNFILED_MS: i64 = 10 * 60 * 1000;
 
-/// Every minute, each DSP's texts waiting to be filed, those waiting too long under their number,
-/// the days whose filing again failed and today's filed again where they belong now; the live
-/// day's end kept; its answers still waiting on an offline phone failed once they expire; and the
-/// bytes of videos their phone sent an hour before let go of.
+/// Every minute, in each DSP with any line on, the texts waiting to be filed, those waiting too
+/// long under their number, its answers still waiting on an offline phone failed once they expire,
+/// and the bytes of videos their phone sent an hour before let go of, each of a phone whose line
+/// is on; and, while Dispatch Phone is, the days whose filing again failed and today's filed again
+/// where they belong now, and the live day's end kept.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
     run: pass,
@@ -80,7 +81,7 @@ pub fn refile(state: Arc<State>, dsp: String, changed: RouteDataChanged) -> Upke
 fn pass(state: Arc<State>, _: bool) -> Upkeep {
     Box::pin(async move {
         let on = state
-            .read(|db| crate::backend::switched_on(db, db.served_ids()?))
+            .read(|db| lines::serving(db, db.served_ids()?))
             .await;
         match on {
             Ok(dsps) => {
@@ -92,14 +93,22 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
                     if let Err(error) = overdue(&state, &dsp, now()).await {
                         failed("communications_texts_failed", &error, of());
                     }
-                    if let Err(error) = noted(&state, &dsp).await {
-                        failed("communications_texts_refile_failed", &error, of());
-                    }
-                    if let Err(error) = reconcile(&state, &dsp).await {
-                        failed("communications_texts_refile_failed", &error, of());
-                    }
-                    if let Err(error) = watch_live_day(&state, &dsp, now()).await {
-                        failed("communications_texts_live_day_failed", &error, of());
+                    // Only Dispatch Phone's own line is filed by route data, by its live day.
+                    let asked = dsp.clone();
+                    match state.read(move |db| lines::on(db, &asked, None)).await {
+                        Ok(true) => {
+                            if let Err(error) = noted(&state, &dsp).await {
+                                failed("communications_texts_refile_failed", &error, of());
+                            }
+                            if let Err(error) = reconcile(&state, &dsp).await {
+                                failed("communications_texts_refile_failed", &error, of());
+                            }
+                            if let Err(error) = watch_live_day(&state, &dsp, now()).await {
+                                failed("communications_texts_live_day_failed", &error, of());
+                            }
+                        }
+                        Ok(false) => {}
+                        Err(error) => failed("communications_texts_refile_failed", &error, of()),
                     }
                     if let Err(error) = expire(&state, &dsp, now()).await {
                         failed("communications_texts_expire_failed", &error, of());

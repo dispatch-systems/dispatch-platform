@@ -12,6 +12,7 @@ use super::{
     placement::{sender_name, unread},
 };
 use crate::backend::{
+    lines::On,
     live,
     phone::storage::{FileStore as _, MOST_TEXTS, TextStore as _},
     storage::DOMAIN,
@@ -19,24 +20,27 @@ use crate::backend::{
 use dispatch_core::{Result, State, foundation::clock};
 use std::{collections::HashMap, sync::Arc};
 
-/// Files the DSP's texts waiting to be, oldest first, a page in each write, then wakes the pages
-/// waiting on what changed: one that can't be placed yet waits for the next pass, after the rest.
-/// Written only once one waits.
+/// Files the DSP's texts waiting to be, of its phones whose line is on, oldest first, a page in
+/// each write, then wakes the pages waiting on what changed: one that can't be placed yet waits for
+/// the next pass, after the rest. Written only once one waits.
 pub async fn unfiled(state: &Arc<State>, dsp: &str) -> Result<()> {
     let asked = dsp.to_owned();
-    if state
-        .read(move |db| db.unfiled_communications_texts(&asked, None, 1))
-        .await?
-        .is_empty()
-    {
+    let (on, waiting) = state
+        .read(move |db| {
+            let on = On::of(db, &asked)?;
+            let waiting = db.unfiled_communications_texts(&asked, &on, None, 1)?;
+            Ok((on, waiting))
+        })
+        .await?;
+    if waiting.is_empty() {
         return Ok(());
     }
     let mut after: Option<(i64, String)> = None;
     loop {
-        let (at, from) = (dsp.to_owned(), after.take());
+        let (at, on, from) = (dsp.to_owned(), on.clone(), after.take());
         let (last, more) = changing(state, dsp, move |db| {
             let from = from.as_ref().map(|(at, id)| (*at, id.as_str()));
-            let page = db.unfiled_communications_texts(&at, from, MOST_TEXTS)?;
+            let page = db.unfiled_communications_texts(&at, &on, from, MOST_TEXTS)?;
             let last = page.last().cloned();
             let ids = page.into_iter().map(|(_, id)| id).collect::<Vec<_>>();
             Ok(((last, ids.len() == MOST_TEXTS), ids))
@@ -49,22 +53,26 @@ pub async fn unfiled(state: &Arc<State>, dsp: &str) -> Result<()> {
     }
 }
 
-/// Places the DSP's texts that couldn't be placed for `UNFILED_MS` by `at` under their number,
-/// as a day Routes can't read does (`unread`), the oldest page of them, noting each one's day to
-/// be filed again, which moves it where it belongs once Routes can say; another line's, under its
-/// number on that line, with nothing to file again: written only once one has waited so long.
+/// Places the DSP's texts that couldn't be placed for `UNFILED_MS` by `at`, of its phones whose
+/// line is on, under their number, as a day Routes can't read does (`unread`), the oldest page of
+/// them, noting each one's day to be filed again, which moves it where it belongs once Routes can
+/// say; another line's, under its number on that line, with nothing to file again: written only
+/// once one has waited so long.
 pub async fn overdue(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
     let (asked, since) = (dsp.to_owned(), at - UNFILED_MS);
-    if state
-        .read(move |db| db.overdue_communications_texts(&asked, since, 1))
-        .await?
-        .is_empty()
-    {
+    let (on, waiting) = state
+        .read(move |db| {
+            let on = On::of(db, &asked)?;
+            let waiting = db.overdue_communications_texts(&asked, &on, since, 1)?;
+            Ok((on, waiting))
+        })
+        .await?;
+    if waiting.is_empty() {
         return Ok(());
     }
     let at_dsp = dsp.to_owned();
     changing(state, dsp, move |db| {
-        let texts = db.overdue_communications_texts(&at_dsp, since, MOST_TEXTS)?;
+        let texts = db.overdue_communications_texts(&at_dsp, &on, since, MOST_TEXTS)?;
         // The day each is of, to be filed again, while the DSP's timezone can be read.
         let zone = zone(db, &at_dsp).ok();
         let mut senders = HashMap::new();
@@ -114,39 +122,46 @@ pub async fn watch_live_day(state: &Arc<State>, dsp: &str, at: i64) -> Result<()
     Ok(())
 }
 
-/// Fails the answers waiting past their expiry at `at` on a phone offline then, as
-/// `phones_offline`, each filed as it fails, so its conversation waits again: written only once
+/// Fails the answers waiting past their expiry at `at` on a phone offline then, whose line is on,
+/// as `phones_offline`, each filed as it fails, so its conversation waits again: written only once
 /// one has expired.
 pub async fn expire(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
     let asked = dsp.to_owned();
-    if state
-        .read(move |db| db.phones_expired(&asked, at))
-        .await?
-        .is_empty()
-    {
+    let (on, expired) = state
+        .read(move |db| {
+            let on = On::of(db, &asked)?;
+            let expired = db.phones_expired(&asked, &on, at)?;
+            Ok((on, expired))
+        })
+        .await?;
+    if expired.is_empty() {
         return Ok(());
     }
     let at_dsp = dsp.to_owned();
     changing(state, dsp, move |db| {
-        Ok(((), db.phones_expire(&at_dsp, at)?))
+        Ok(((), db.phones_expire(&at_dsp, &on, at)?))
     })
     .await
 }
 
-/// Lets go of the bytes of the videos kept on their phone that came before `before`, each text
-/// filed as its video goes back to its phone, so the pages showing it hear: written only once one
-/// has.
+/// Lets go of the bytes of the videos kept on their phone, whose line is on, that came before
+/// `before`, each text filed as its video goes back to its phone, so the pages showing it hear:
+/// written only once one has.
 pub async fn let_go_fetched(state: &Arc<State>, dsp: &str, before: i64) -> Result<()> {
     let asked = dsp.to_owned();
-    if !state
-        .read(move |db| db.phones_fetched_before(&asked, before))
-        .await?
-    {
+    let (on, fetched) = state
+        .read(move |db| {
+            let on = On::of(db, &asked)?;
+            let fetched = db.phones_fetched_before(&asked, &on, before)?;
+            Ok((on, fetched))
+        })
+        .await?;
+    if !fetched {
         return Ok(());
     }
     let at = dsp.to_owned();
     changing(state, dsp, move |db| {
-        Ok(((), db.phones_let_go_fetched(&at, before)?))
+        Ok(((), db.phones_let_go_fetched(&at, &on, before)?))
     })
     .await
 }

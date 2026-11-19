@@ -11,10 +11,13 @@
 //! that can't be used keep the object store's bytes from being read, nor what its cache has that
 //! no file keeps from going. Without one, bytes stay in the DSP's data.
 use super::*;
-use crate::backend::phone::{
-    files::{BYTES, answer, preview, shown},
-    storage::{FileStore, ReportedFile, TextStore},
-    support::{kept, paired, reported, store},
+use crate::backend::{
+    lines::On,
+    phone::{
+        files::{BYTES, answer, preview, shown},
+        storage::{FileStore, ReportedFile, TextStore},
+        support::{kept, paired, reported, store},
+    },
 };
 use axum::response::IntoResponse;
 use dispatch_core::{
@@ -316,7 +319,7 @@ async fn a_videos_first_frame_and_bytes_played_come_back_from_the_object_store_u
     let at = dsp.clone();
     state
         .run(move |db| {
-            db.phones_let_go_fetched(&at, 11_001)?;
+            db.phones_let_go_fetched(&at, &On::of(db, &at)?, 11_001)?;
             BYTES.reconcile(db, &at)
         })
         .await

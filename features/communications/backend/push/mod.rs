@@ -25,7 +25,7 @@ pub(crate) mod sending;
 pub(crate) mod storage;
 pub(crate) mod webpush;
 
-use super::{changes::ChangeStore, display::DISPLAY, inbox, live};
+use super::{changes::ChangeStore, display::DISPLAY, inbox, lines, live};
 use crate::api::{display::MessageDisplay, types::WaitingMessage};
 use dispatch_core::{
     Result, State,
@@ -82,8 +82,8 @@ fn failed(dsp: &str, error: &dispatch_core::Error) {
     );
 }
 
-/// Watches each DSP with a browser kept for `pushed`'s line, as after a restart: while Dispatch
-/// Phone is on there, and another line's feature too.
+/// Watches each DSP with a browser kept for `pushed`'s line, as after a restart: while that line is
+/// on there.
 pub fn pushing(state: Arc<State>, pushed: &'static Pushed) -> Upkeep {
     Box::pin(async move {
         if webpush::vapid(&state.config).is_none() {
@@ -92,12 +92,10 @@ pub fn pushing(state: Arc<State>, pushed: &'static Pushed) -> Upkeep {
         let pushing = state
             .read(move |db| {
                 let mut pushing = Vec::new();
-                for dsp in crate::backend::switched_on(db, db.kept_dsps()?)? {
-                    let on = match pushed.line {
-                        None => true,
-                        Some(line) => db.feature_enabled(&dsp, line)?,
-                    };
-                    if on && db.communications_pushing(&dsp, pushed.line)? {
+                for dsp in db.kept_dsps()? {
+                    if lines::on(db, &dsp, pushed.line)?
+                        && db.communications_pushing(&dsp, pushed.line)?
+                    {
                         pushing.push(dsp);
                     }
                 }
@@ -311,8 +309,8 @@ pub async fn turn(
 
 /// Whether the member whose browser `subscription` names is told of the DSP's new messages of
 /// `pushed`'s line: with its Notifications on, as one who may use that line there now, signed in
-/// where they subscribed it; another line's only while Dispatch Phone is on there too, which its
-/// own permission doesn't say, as its routes refuse while it's off.
+/// where they subscribed it, which holds only while the line's own feature is on there and in
+/// their sight.
 fn tells(
     db: &Store,
     dsp: &str,
@@ -325,9 +323,6 @@ fn tells(
         (Address::Dsp, Some(code)) => Site::Dsp(code.to_owned()),
         (Address::Dsp, None) => return Ok(false),
     };
-    if pushed.line.is_some() && !db.feature_enabled(dsp, crate::FEATURE.switch.id)? {
-        return Ok(false);
-    }
     let user = &subscription.user;
     Ok(db.may(user, &site, dsp, pushed.permission)?
         && settings::read_member::<MessageDisplay>(db, dsp, user, pushed.display)?.notifications)

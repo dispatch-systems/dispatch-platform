@@ -1,10 +1,13 @@
 //! The texts the DSP's phones relay, against a real store in a temporary directory: the texts a
 //! phone reports, each kept once, and how Dispatch's texts go.
 use super::*;
-use crate::backend::phone::{
-    model::{Direction, EXPIRY_MS, Origin, Outgoing, PHONE_OFFLINE, Status},
-    storage::{DeviceStore, FileStore, Line, Pairing, ReportedFile},
-    support::{outgoing, paired, reported, store},
+use crate::backend::{
+    lines::On,
+    phone::{
+        model::{Direction, EXPIRY_MS, Origin, Outgoing, PHONE_OFFLINE, Status},
+        storage::{DeviceStore, FileStore, Line, Pairing, ReportedFile},
+        support::{outgoing, paired, reported, store},
+    },
 };
 use dispatch_core::testing;
 
@@ -323,12 +326,13 @@ fn a_text_still_waiting_on_an_offline_phone_fails_as_it_expires_and_counts_if_it
         .phones_send(&dsp, &outgoing("4255550199", vec![], &owner), queued)
         .unwrap();
     let attempt = db.phones_outbox(&dsp, &phone.id).unwrap()[0].1;
-    let expired = |at| db.phones_expired(&dsp, at).unwrap();
+    let on = On::of(&db, &dsp).unwrap();
+    let expired = |at| db.phones_expired(&dsp, &on, at).unwrap();
 
     // The phone never checks in: once it expires, it fails as offline, and leaves the outbox.
     assert!(expired(queued + EXPIRY_MS - 1).is_empty());
     assert_eq!(
-        db.phones_expire(&dsp, queued + EXPIRY_MS).unwrap(),
+        db.phones_expire(&dsp, &on, queued + EXPIRY_MS).unwrap(),
         std::slice::from_ref(&text.id)
     );
     let failed = db.phones_text(&dsp, &text.id).unwrap().unwrap();
