@@ -479,8 +479,8 @@ async fn the_minutes_upkeep_files_and_fails_each_lines_texts_only_while_its_own_
     let later = now() + 2 * EXPIRY_MS;
     let failed = Some(PHONE_OFFLINE.to_owned());
 
-    // With Dispatch Phone off, its own line's text and answer wait, and the Front Desk's are filed
-    // and fail.
+    // With Dispatch Phone off, its own line's text and answer wait, and the Front Desk's are filed,
+    // its answer as it fails.
     let (our_answer, their_answer) = (
         queued(&state, &dsp, None).await,
         queued(&state, &dsp, Some(DESK.id)).await,
@@ -503,7 +503,7 @@ async fn the_minutes_upkeep_files_and_fails_each_lines_texts_only_while_its_own_
             (false, None),
             (false, None),
             (true, None),
-            (false, failed.clone())
+            (true, failed.clone())
         ]
     );
 
@@ -523,7 +523,7 @@ async fn the_minutes_upkeep_files_and_fails_each_lines_texts_only_while_its_own_
             &[&our_text, &our_answer, &their_next, &their_last]
         )
         .await,
-        [(true, None), (false, failed), (false, None), (false, None)]
+        [(true, None), (true, failed), (false, None), (false, None)]
     );
 }
 
