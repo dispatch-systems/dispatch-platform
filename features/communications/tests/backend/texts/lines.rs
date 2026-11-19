@@ -334,39 +334,50 @@ async fn another_lines_page_goes_on_with_dispatch_phone_off_and_is_refused_once_
         grant: MANAGE,
         line: Some(DESK.id),
     };
-    // Who is waiting, let in as each request of theirs would be, as things stand then; `read`
-    // hears each time they are.
-    let (auth, at) = (c.auth.clone(), dsp.clone());
-    let read = Arc::new(tokio::sync::Notify::new());
-    let again = {
-        let read = read.clone();
-        move |db: &Store| {
-            let c = db.context(&auth, &at, MANAGE.0)?;
-            read.notify_one();
-            Ok(c)
-        }
+    // Who is waiting, let in as each request of theirs would be, as things stand then.
+    let context = {
+        let (auth, at) = (c.auth.clone(), dsp.clone());
+        move |db: &Store| db.context(&auth, &at, MANAGE.0)
     };
-    let (shared, at, me) = (state.clone(), dsp.clone(), c.auth.user.id.clone());
-    let (now_at, _) = state
-        .read(move |db| inbox::updates(db, &shared, &at, DESK.id.into(), -1, &me))
-        .await
-        .unwrap();
+    // Its page as it waits on its changes from where they stand as it starts: the `Notify` handed
+    // back hears each time this wait alone lets it in.
     let wait = || {
-        let (state, dsp, again) = (state.clone(), dsp.clone(), again.clone());
-        let (after, seen) = (now_at.revision, now_at.typing.version as i64);
-        tokio::spawn(async move { inbox::waited(&state, access, &dsp, again, after, seen).await })
+        let (state, dsp, me, context) = (
+            state.clone(),
+            dsp.clone(),
+            c.auth.user.id.clone(),
+            context.clone(),
+        );
+        let read = Arc::new(tokio::sync::Notify::new());
+        let again = {
+            let read = read.clone();
+            move |db: &Store| {
+                let c = context(db)?;
+                read.notify_one();
+                Ok(c)
+            }
+        };
+        let waiting = tokio::spawn(async move {
+            let (shared, at) = (state.clone(), dsp.clone());
+            let (now_at, _) = state
+                .read(move |db| inbox::updates(db, &shared, &at, DESK.id.into(), -1, &me))
+                .await?;
+            let (after, seen) = (now_at.revision, now_at.typing.version as i64);
+            inbox::waited(&state, access, &dsp, again, after, seen).await
+        });
+        (waiting, read)
     };
 
     // Its page waits on its changes, with nothing new; Dispatch Phone is switched off and its line
     // changes. It goes on waiting, let in each time, and is answered as its wait ends.
-    let waiting = wait();
+    let (waiting, read) = wait();
     read.notified().await;
     support::switch(&state, &dsp, crate::FEATURE.switch.id, false).await;
     live::changed_on(&state, &dsp, Some(DESK.id));
     let answered = waiting.await.unwrap().map(drop).map_err(|error| error.code);
     assert_eq!(answered, Ok(()));
     // And an answer written now goes from its phone.
-    let now_c = state.read(again.clone()).await.unwrap();
+    let now_c = state.read(context.clone()).await.unwrap();
     let sent = reply::send(
         &state,
         &now_c,
@@ -382,7 +393,7 @@ async fn another_lines_page_goes_on_with_dispatch_phone_off_and_is_refused_once_
 
     // Its page waits again; its own line is switched off and it changes. Read again, it's
     // refused, not answered.
-    let waiting = wait();
+    let (waiting, read) = wait();
     read.notified().await;
     support::switch(&state, &dsp, DESK.id, false).await;
     live::changed_on(&state, &dsp, Some(DESK.id));
@@ -390,7 +401,7 @@ async fn another_lines_page_goes_on_with_dispatch_phone_off_and_is_refused_once_
     assert_eq!(refused, Err("not_found".to_owned()));
 
     // Nor does an answer written now go, its access read again as it's queued.
-    let now_c = state.read(again).await.unwrap();
+    let now_c = state.read(context).await.unwrap();
     let refused = reply::send(
         &state,
         &now_c,
