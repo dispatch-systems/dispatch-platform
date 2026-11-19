@@ -174,8 +174,8 @@ async fn another_lines_texts_are_its_numbers_even_a_drivers_work_phone_and_those
     let ours = texted(&state, &dsp, "+12065550101", "Running late", now()).await;
     assert!(filed(&state, &dsp, &ours).await.driver.is_some());
 
-    // It texts the Front Desk too, kept by the phone side before its line's texts were filed: the
-    // next upkeep files it under the number, on its own line, and filing the day again leaves it.
+    // It texts the Front Desk too, kept by the phone side before it was filed: the next upkeep
+    // files it under the number, on its own line, and filing the day again leaves it.
     let (at, from) = (dsp.clone(), phone.clone());
     let theirs = state
         .run(move |db| {
