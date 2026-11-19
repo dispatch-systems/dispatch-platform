@@ -83,9 +83,7 @@
     "frontend": true,
     "keeps": [],
     "migrations": {},
-    "permissions": [
-      "cjf87gqd_legacy_tracker.manage"
-    ],
+    "permissions": [],
     "slots": {
       "audit": {
         "areas": [],

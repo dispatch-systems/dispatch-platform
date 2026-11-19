@@ -44,7 +44,8 @@ pub struct Section {
     /// Equivalent section identities accepted on reads and saves. Only `id` is emitted.
     pub aliases: &'static [&'static str],
     pub label: &'static str,
-    /// The page it's on: its feature's own (`Page::Own`), or one of the shared pages.
+    /// The page it's on: its feature's own (`Page::Own`), one its feature depends on
+    /// (`Page::Of`), or one of the shared pages.
     pub page: Page,
     /// Who sees and changes it: a permission its feature declares (core's own for core's),
     /// or `roles::ACCESS` for every member.
@@ -119,6 +120,13 @@ impl Section {
     pub const fn on(self, page: &'static str) -> Self {
         Self {
             page: Page::Shared(page),
+            ..self
+        }
+    }
+    /// On the own page of `feature`, one its feature depends on, rather than its feature's own.
+    pub const fn on_page_of(self, feature: &'static str) -> Self {
+        Self {
+            page: Page::Of(feature),
             ..self
         }
     }
@@ -207,6 +215,8 @@ impl StoredKey {
 pub enum Page {
     /// Its feature's own, in Features: its switch's id with `-` for `_`, and its label.
     Own,
+    /// The own page of a feature its feature depends on, by that feature's name.
+    Of(&'static str),
     /// One of `SHARED_PAGES`, by id.
     Shared(&'static str),
 }
@@ -496,22 +506,37 @@ impl Registry {
         core.chain(features)
     }
 }
-/// The page `section` is on, with its label, group and place: `feature` is the section's,
-/// none for core's.
-pub fn page(feature: Option<&Feature>, section: &Section) -> (String, &'static str, Group, u16) {
+/// The page `section` is on, in `registry`, with its label, group and place: `feature` is the
+/// section's, none for core's.
+pub fn page(
+    registry: &Registry,
+    feature: Option<&Feature>,
+    section: &Section,
+) -> (String, &'static str, Group, u16) {
     match (section.page, feature) {
         (Page::Shared(id), _) => {
             let page = shared_page(id).expect("a shared page, as the registry makes sure");
             (page.id.to_owned(), page.label, page.group, page.order)
         }
-        (Page::Own, Some(feature)) => (
-            own_page(feature),
-            feature.switch.label,
-            Group::Features,
-            feature.place,
+        (Page::Own, Some(feature)) => feature_page(feature),
+        (Page::Of(name), Some(_)) => feature_page(
+            registry
+                .features
+                .iter()
+                .find(|feature| feature.name == name)
+                .expect("a feature it depends on, as the registry makes sure"),
         ),
-        (Page::Own, None) => unreachable!("core's sections are on shared pages"),
+        (Page::Own | Page::Of(_), None) => unreachable!("core's sections are on shared pages"),
     }
+}
+/// `feature`'s own page, with its label, group and place.
+fn feature_page(feature: &Feature) -> (String, &'static str, Group, u16) {
+    (
+        own_page(feature),
+        feature.switch.label,
+        Group::Features,
+        feature.place,
+    )
 }
 /// A feature's own page: its switch's id, with `-` for `_`.
 fn own_page(feature: &Feature) -> String {
@@ -647,7 +672,7 @@ fn snake_case(name: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 /// A feature's section: named under it, under its own permission, with one of its parts, on
-/// a page of its own whose id no shared page takes; with a collection, one its feature keeps,
+/// a page of its own whose id no shared page takes, or on that of a feature it depends on; with a collection, one its feature keeps,
 /// under the permission that sets when it runs; with a live reader, one its feature declares,
 /// in a section of the DSP's that Settings draws.
 fn check_feature(registry: &Registry, feature: &Feature, section: &Section) {
@@ -677,6 +702,14 @@ fn check_feature(registry: &Registry, feature: &Feature, section: &Section) {
         assert!(
             parts.clone().any(|sub| sub.id == part),
             "{}'s section {id} goes with {part}, which is none of its parts",
+            feature.name
+        );
+    }
+    if let Page::Of(page) = section.page {
+        assert!(
+            feature.depends_on.contains(&page)
+                && registry.features.iter().any(|other| other.name == page),
+            "{}'s section {id} is on {page}'s page, a feature it doesn't depend on",
             feature.name
         );
     }
@@ -743,7 +776,7 @@ fn check_core(registry: &Registry, section: &Section) {
         section.permission
     );
     assert!(
-        section.page != Page::Own
+        matches!(section.page, Page::Shared(_))
             && section.part.is_none()
             && section.collection.is_none()
             && section.reader.is_none(),

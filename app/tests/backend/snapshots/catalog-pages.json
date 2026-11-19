@@ -155,7 +155,7 @@
     {
       "id": "cjf87gqd_legacy_tracker",
       "label": "Legacy Tracker",
-      "permissions": ["cjf87gqd_legacy_tracker.manage"],
+      "permissions": [],
       "requires": [],
       "default": false,
       "mandatory": false

@@ -1,23 +1,26 @@
-//! Legacy Tracker's settings, on its own page of a DSP's Settings, which draws them from this
+//! Legacy Tracker's settings, on Conduct's page of a DSP's Settings, which draws them from this
 //! declaration alone.
 use dispatch_core::{
     Result,
     db::Store,
     manifest::{Section, section, text},
+    tenancy::roles,
 };
 use serde::Deserialize;
 
 /// The longest address kept.
 const MAX_LINK: usize = 2000;
 
-/// The tracker's address, for those holding `cjf87gqd_legacy_tracker.manage`. Its id and its
-/// field's are permanent once shipped: each DSP's values are kept under them.
+/// The tracker's address, for every member, above Conduct's categories, whose list is long. Its
+/// id and its field's are permanent once shipped: each DSP's values are kept under them.
 pub const GENERAL: Section = section(
     "cjf87gqd_legacy_tracker.general",
-    "General",
-    "cjf87gqd_legacy_tracker.manage",
+    "Legacy Tracker",
+    roles::ACCESS,
     &[text("link", "Link", 0, MAX_LINK, "")],
-);
+)
+.on_page_of("conduct")
+.order(5);
 
 /// `GENERAL`'s values, each field by its id: its default until the DSP saves one.
 #[derive(Deserialize)]

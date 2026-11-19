@@ -7,8 +7,8 @@ none set, or anything else typed, no link is drawn.
 
 - **Switch:** `cjf87gqd_legacy_tracker`, off for every DSP until the platform owner switches it on.
 - **Uses:** Conduct (`depends_on`), whose page its link is on.
-- **Permissions:** `cjf87gqd_legacy_tracker.manage`, to set the address. Only owners hold it until a role grants it. The link itself is for those holding Conduct's `conduct.use`.
+- **Permissions:** none of its own. Every member may set the address once the feature is on; the link itself is for those holding Conduct's `conduct.use`.
 - **API:** `GET /api/dsp/cjf87gqd-legacy-tracker`, behind `conduct.use`: the address the link opens, or none.
 - **Tab:** Legacy Tracker, a link after the tabs of Conduct's page (`useLink` in `frontend/feature.ts`).
-- **Settings:** `cjf87gqd_legacy_tracker.general`, "General", on its own page of Settings (`?tab=cjf87gqd-legacy-tracker`), behind `cjf87gqd_legacy_tracker.manage` (`backend/settings.rs`). Its one field, `link`, is the address, empty until the DSP sets one. Core keeps it in the DSP's settings and records each change as `settings.changed`.
+- **Settings:** `cjf87gqd_legacy_tracker.general`, "Legacy Tracker", on Conduct's page of Settings (`?tab=conduct`) above its categories, for every member (`roles::ACCESS`, `backend/settings.rs`). Its one field, `link`, is the address, empty until the DSP sets one. Core keeps it in the DSP's settings and records each change as `settings.changed`.
 - **Data:** none of its own.
