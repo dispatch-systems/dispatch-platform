@@ -1,7 +1,8 @@
 //! The stand-in for Driver Match's `directory`, always on: who people are, as a test says.
 use super::Known;
 use dispatch_core::{
-    Result,
+    Error, Result,
+    accounts::Context,
     db::Store,
     manifest::{
         Feature, feature, mandatory,
@@ -37,5 +38,17 @@ impl Directory for Naming {
     }
     fn photo(&self, _: &Store, _: &str, _: &str) -> Result<Option<Photo>> {
         Ok(None)
+    }
+    /// Adds `number` to the person `code`, as Driver Match does: the latest added their default.
+    fn add_phone(&self, _: &Store, c: &Context, code: &str, number: &str) -> Result<()> {
+        PEOPLE.of(&c.dsp.id, |known| {
+            let person = known
+                .iter_mut()
+                .find(|person| person.code == code)
+                .ok_or_else(|| Error::new("not_found", 404))?;
+            person.phones.insert(0, number.to_owned());
+            person.added_phones.insert(0, number.to_owned());
+            Ok(())
+        })
     }
 }

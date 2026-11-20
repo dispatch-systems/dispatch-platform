@@ -13,7 +13,8 @@ use super::{
     model::Filed,
     numbers::{Numbers, shown},
     reading::{contact_number, like, numbered, one},
-    storage::{ContactStore, TextStore},
+    storage::{ContactStore, DayStore, TextStore},
+    zone,
 };
 use crate::{
     api::types::{Conversation, TextContact, TextContacts, TextPeople},
@@ -27,12 +28,12 @@ use crate::{
 use dispatch_core::{
     Error, Result, State,
     accounts::Context,
-    db::Store,
+    db::{Store, now},
     ensure,
-    foundation::names,
+    foundation::{clock, names},
     manifest::people::{add_phone, remove_phone},
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// How many are listed with nothing typed, at most.
 const LISTED: usize = 2000;
@@ -213,6 +214,17 @@ pub fn add_to_person(
         remove_phone(db, c, code, &number)?;
     }
     db.communications_number_changed(dsp, &number)?;
+    // Whose the number is decides where its texts are filed (`filing`): each day it texted, to be
+    // filed again.
+    let zone = zone(db, dsp)?;
+    let days: BTreeSet<String> = db
+        .communications_texted_at(dsp, &number)?
+        .into_iter()
+        .map(|at| clock::day(&zone, at).to_string())
+        .collect();
+    for day in days {
+        db.note_communications_refiling(dsp, &day, now())?;
+    }
     live::changed(state, dsp);
     one(db, state, dsp, None, id)
 }

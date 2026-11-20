@@ -96,6 +96,8 @@ pub trait TextStore {
     /// Every text filed in a conversation of Dispatch Phone's own line that was written from `from`
     /// until `to`, oldest first: only its own are filed by route data.
     fn communications_texts_between(&self, dsp: &str, from: i64, to: i64) -> Result<Vec<Text>>;
+    /// When each text with `number` filed on Dispatch Phone's own line was written.
+    fn communications_texted_at(&self, dsp: &str, number: &str) -> Result<Vec<i64>>;
     /// The texts waiting to be filed of a phone of a line `on`, after `after`, when written and
     /// the ID, the oldest `most`, oldest first: each when written and its ID.
     fn unfiled_communications_texts(
@@ -418,6 +420,15 @@ impl TextStore for Store {
              WHERE c.line IS NULL AND t.at>=?1 AND t.at<?2 ORDER BY t.at,t.id",
             [from, to],
         )
+    }
+    fn communications_texted_at(&self, dsp: &str, number: &str) -> Result<Vec<i64>> {
+        let at: Vec<(i64,)> = self.dsp(dsp)?.query_as(
+            "SELECT t.at FROM phones_texts t \
+             JOIN communications_text_conversations c ON c.id=t.conversation_id \
+             WHERE c.line IS NULL AND t.number=?",
+            [number],
+        )?;
+        Ok(at.into_iter().map(|(at,)| at).collect())
     }
     fn unfiled_communications_texts(
         &self,

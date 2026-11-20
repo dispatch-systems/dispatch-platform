@@ -214,7 +214,9 @@ fn refiled_by(db: &Store, dsp: &str, filer: &mut Filer, day: Date) -> Result<BTr
     db.refile_communications_texts(dsp, &moves)
 }
 /// Each text of `day`, from when it began until the next day did, filed elsewhere than `filer`
-/// says it belongs now, with where it does. One whose place can't be told yet stays where it is.
+/// says it belongs now, with where it does. One whose place can't be told yet stays where it is,
+/// but under a work phone nobody had while someone in Driver Match has the number: it's theirs,
+/// whoever's work phone it was that day.
 fn elsewhere(db: &Store, dsp: &str, filer: &mut Filer, day: Date) -> Result<Vec<(String, Filed)>> {
     let next = day
         .tomorrow()
@@ -222,16 +224,25 @@ fn elsewhere(db: &Store, dsp: &str, filer: &mut Filer, day: Date) -> Result<Vec<
         .ok_or_else(|| Error::new("invalid_date", 400))?;
     let (from, to) = (began(&filer.zone, day)?, began(&filer.zone, next)?);
     let mut conversations: HashMap<Filed, Option<String>> = HashMap::new();
-    let mut moves = Vec::new();
-    for text in db.communications_texts_between(dsp, from, to)? {
-        let Some(filed) = filer.filed(&text.number, text.at)? else {
-            continue;
-        };
-        if !conversations.contains_key(&filed) {
-            let found = db.communications_filed(dsp, &filed)?;
+    let mut filed_in = |filed: &Filed| -> Result<Option<String>> {
+        if !conversations.contains_key(filed) {
+            let found = db.communications_filed(dsp, filed)?;
             conversations.insert(filed.clone(), found);
         }
-        if conversations[&filed] != text.conversation {
+        Ok(conversations[filed].clone())
+    };
+    let mut moves = Vec::new();
+    for text in db.communications_texts_between(dsp, from, to)? {
+        let filed = match filer.filed(&text.number, text.at)? {
+            Some(filed) => filed,
+            None if filer.someones(&text.number)?
+                && filed_in(&Filed::WorkPhone(text.number.clone()))? == text.conversation =>
+            {
+                Filed::Number(text.number.clone())
+            }
+            None => continue,
+        };
+        if filed_in(&filed)? != text.conversation {
             moves.push((text.id, filed));
         }
     }

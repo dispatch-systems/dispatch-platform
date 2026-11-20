@@ -227,6 +227,13 @@ impl<'a> Filer<'a> {
     /// The conversation of `number`, a work phone no one driver has: the work phone's own, but the
     /// number's while someone in Driver Match has it (`someones`).
     fn work_phone(&mut self, number: &str) -> Result<Filed> {
+        Ok(match self.someones(number)? {
+            true => Filed::Number(number.to_owned()),
+            false => Filed::WorkPhone(number.to_owned()),
+        })
+    }
+    /// Whether someone in Driver Match has `number` (`someones`), as everyone is read once.
+    pub(super) fn someones(&mut self, number: &str) -> Result<bool> {
         let everyone = match &self.everyone {
             Some(everyone) => everyone.clone(),
             None => {
@@ -234,10 +241,7 @@ impl<'a> Filer<'a> {
                 self.everyone.insert(everyone).clone()
             }
         };
-        Ok(match someones(&everyone, number) {
-            true => Filed::Number(number.to_owned()),
-            false => Filed::WorkPhone(number.to_owned()),
-        })
+        Ok(someones(&everyone, number))
     }
     /// The day a text written at `at` is filed by: its own, where the DSP is, but in the two hours
     /// after a stop that run past midnight, the day stopped, as a driver is answered then at the
