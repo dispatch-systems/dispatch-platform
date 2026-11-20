@@ -213,6 +213,62 @@ async fn a_work_phones_texts_are_the_drivers_whose_latest_phone_it_is_that_day_t
     assert_eq!(answered, vec![Some(then(10, 0))]);
 }
 
+/// A driver who ran a route on their own phone: route data named it their work phone that day, and
+/// Driver Match has it as theirs. That day's texts are their work conversation's; any other day's
+/// are their own number's, never a work phone nobody has.
+#[tokio::test]
+async fn a_drivers_own_number_route_data_once_named_a_work_phone_is_theirs_on_other_days() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.yesterday().unwrap();
+    let own = "+12065550103";
+    support::know(
+        &state,
+        &dsp,
+        vec![person("CASEY1", "Casey Diaz", own)],
+        Vec::new(),
+        Vec::new(),
+    );
+    phoned(
+        &state,
+        &dsp,
+        Some(&day.to_string()),
+        phones(&[("blake", "2065550101")]),
+        vec![saved(yesterday, &[("casey", "2065550103")])],
+    )
+    .await;
+    let then = texted(
+        &state,
+        &dsp,
+        own,
+        "Running late",
+        at(&zone, yesterday, 10, 0),
+    )
+    .await;
+    let filed_then = filed(&state, &dsp, &then).await;
+    assert_eq!(
+        (filed_then.kind, filed_then.driver),
+        (ConversationKind::Work, driver("casey"))
+    );
+    let now = texted(
+        &state,
+        &dsp,
+        own,
+        "Can I work Sunday?",
+        at(&zone, day, 9, 0),
+    )
+    .await;
+    let filed_now = filed(&state, &dsp, &now).await;
+    assert_eq!(
+        (
+            filed_now.kind,
+            filed_now.driver,
+            filed_now.number.as_deref()
+        ),
+        (ConversationKind::Number, None, Some(own))
+    );
+}
+
 #[tokio::test]
 async fn answered_work_conversations_are_listed_past_more_than_a_page_waiting_on_the_live_day() {
     let (_root, state, dsp) = started();

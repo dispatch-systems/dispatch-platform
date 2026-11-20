@@ -48,12 +48,12 @@ pub async fn changing<T: Send + 'static>(
     dsp: &str,
     change: impl FnOnce(&Store) -> Result<(T, Vec<String>)> + Send + 'static,
 ) -> Result<T> {
-    let at = dsp.to_owned();
+    let (at, shared) = (dsp.to_owned(), state.clone());
     let (answer, changed) = state
         .run_serving(dsp, DOMAIN, move |db| {
             db.dsp(&at)?.transaction(|| {
                 let (answer, texts) = change(db)?;
-                Ok((answer, file(db, &at, &texts)?))
+                Ok((answer, file(db, &shared, &at, &texts)?))
             })
         })
         .await?;
@@ -124,13 +124,13 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
 /// Files the texts `ids`, which the phone side kept or changed in this write: places each waiting
 /// to be, then keeps whether the conversation each is filed in waits. The lines whose conversations
 /// changed.
-fn file(db: &Store, dsp: &str, ids: &[String]) -> Result<BTreeSet<Option<String>>> {
+fn file(db: &Store, state: &State, dsp: &str, ids: &[String]) -> Result<BTreeSet<Option<String>>> {
     if ids.is_empty() {
         return Ok(BTreeSet::new());
     }
     let waiting = db.unfiled_communications_texts_of(dsp, ids)?;
     if !waiting.is_empty() {
-        place(db, dsp, &waiting)?;
+        place(db, state, dsp, &waiting)?;
     }
     db.settle_communications_texts(dsp, ids)
 }

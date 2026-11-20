@@ -122,7 +122,7 @@ pub fn open(
     let line = line.map(|line| line.id);
     let number = normal(raw).ok_or_else(|| Error::new("invalid_input", 400))?;
     let filed = match line {
-        None => filing::belongs(db, dsp, &number)?,
+        None => filing::belongs(db, state, dsp, &number)?,
         Some(_) => Filed::Number(number),
     };
     let opened = db.open_communications_text(dsp, line, &filed)?;

@@ -108,18 +108,13 @@ async fn read(state: &Arc<State>, dsp: &str, id: &str) -> Conversation {
         .unwrap()
 }
 
-/// A work phone nobody has today is named as the DSP saves it, never as whoever Driver Match has
-/// the number for otherwise, as a work phone passes from driver to driver; it isn't blocked, as only
-/// a number's own conversation is.
+/// A work phone nobody has today is named as the DSP saves it; it isn't blocked, as only a
+/// number's own conversation is.
 #[tokio::test]
 async fn a_work_phone_nobody_has_is_named_as_saved_and_never_blocked() {
     let (_root, state, dsp) = support::started();
     let (zone, day) = today(&state, &dsp).await;
-    // 0103 was Casey's work phone yesterday and is nobody's today, and Driver Match has it as
-    // Casey's own number too.
-    let mut casey = support::driver("CASEY1", "Casey Diaz", "C1");
-    casey.phones = vec!["+12065550103".into()];
-    support::know(&state, &dsp, vec![casey], Vec::new(), Vec::new());
+    // 0103 was Casey's work phone yesterday and is nobody's today.
     let yesterday = vec![support::saved(
         day.yesterday().unwrap(),
         &[("C1", "2065550103")],

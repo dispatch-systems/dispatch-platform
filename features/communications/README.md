@@ -520,12 +520,16 @@ queues a text for a phone.
     who had it earlier that day isn't told apart. A driver's conversation is theirs across days,
     whichever phone they had. Where the day names no one driver with the number, nobody's latest
     phone that day or two drivers', the work phone's own, with no driver, as is a number nobody had
-    that day but ever had as one (`ever_work_phone`). Both are listed in Today's Routes.
+    that day but ever had as one (`ever_work_phone`). Both are listed in Today's Routes. But a number
+    someone in Driver Match has, from a source or added, is theirs, never a work phone nobody has:
+    on such a day its texts are the number's own, as when a driver ran a route on their own phone
+    once, so route data named it a work phone (migration 26 noted each day with texts filed so
+    before to be filed again).
   - **Any other number's**, Messaging's, by the number.
   - **A day Routes can't read**, as one not collected, gone, emptied unsaved or not read since
     Routes kept its phones, or while Routes is off for the DSP: a text kept already stays where it
     was filed, and one that comes is placed under its number, the work phone's own while Routes
-    says it ever was one, until the day can be read. A text is placed as it first comes; how it
+    says it ever was one and no one in Driver Match has it, until the day can be read. A text is placed as it first comes; how it
     went, or its pictures coming, never moves it.
 - **Filed again:** a day's route data changes as the day goes, and may reach historical route
   data after its texts, as a text a phone relayed late; so each time Routes says a day's route

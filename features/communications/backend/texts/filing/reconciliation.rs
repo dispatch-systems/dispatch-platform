@@ -67,11 +67,11 @@ pub(super) async fn noted(state: &Arc<State>, dsp: &str) -> Result<()> {
 /// changed (`work_changed`). A day Routes can't read keeps its texts where they are.
 pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> {
     let day = date(day)?;
-    let at = dsp.to_owned();
+    let (at, shared) = (dsp.to_owned(), state.clone());
     let changed = state
         .run_serving(dsp, DOMAIN, move |db| {
             db.dsp(&at)?.transaction(|| {
-                let mut filer = Filer::new(db, &at)?;
+                let mut filer = Filer::new(db, &shared, &at)?;
                 let moved = !refiled_by(db, &at, &mut filer, day)?.is_empty();
                 if filer.reads(&day.to_string()) {
                     db.refiled_communications_day(&at, &day.to_string())?;
@@ -171,17 +171,21 @@ fn work_changed(db: &Store, dsp: &str) -> Result<bool> {
 /// belongs elsewhere, and wakes the pages waiting on its conversations only once one moved; one
 /// that fails is logged with the day.
 pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
-    let asked = dsp.to_owned();
-    if state.read(move |db| misfiled(db, &asked)).await?.is_empty() {
+    let (asked, shared) = (dsp.to_owned(), state.clone());
+    if state
+        .read(move |db| misfiled(db, &shared, &asked))
+        .await?
+        .is_empty()
+    {
         return Ok(());
     }
     let at = dsp.to_owned();
     let today = state
         .read(move |db| Ok(clock::today(&zone(db, &at)?).to_string()))
         .await?;
-    let at = dsp.to_owned();
+    let (at, shared) = (dsp.to_owned(), state.clone());
     match state
-        .run_serving(dsp, DOMAIN, move |db| refiled(db, &at))
+        .run_serving(dsp, DOMAIN, move |db| refiled(db, &shared, &at))
         .await
     {
         Ok(true) => live::changed(state, dsp),
@@ -194,13 +198,13 @@ pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
     Ok(())
 }
 /// Files every text of today, the DSP's day, again, where it belongs now: whether any moved.
-fn refiled(db: &Store, dsp: &str) -> Result<bool> {
-    let moves = misfiled(db, dsp)?;
+fn refiled(db: &Store, state: &State, dsp: &str) -> Result<bool> {
+    let moves = misfiled(db, state, dsp)?;
     Ok(!db.refile_communications_texts(dsp, &moves)?.is_empty())
 }
 /// Each text of today, the DSP's day, filed elsewhere than it belongs now, with where it does.
-fn misfiled(db: &Store, dsp: &str) -> Result<Vec<(String, Filed)>> {
-    let mut filer = Filer::new(db, dsp)?;
+fn misfiled(db: &Store, state: &State, dsp: &str) -> Result<Vec<(String, Filed)>> {
+    let mut filer = Filer::new(db, state, dsp)?;
     let today = clock::today(&filer.zone);
     elsewhere(db, dsp, &mut filer, today)
 }
