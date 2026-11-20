@@ -187,19 +187,17 @@ mod tests {
         let scratch = Path::new("/Users/someone/Projects/dispatch-platform/scratch");
         let fits = "own-numbers";
         assert!(fits_sockets(fits, &scratch.join(fits)).is_ok());
-        let long = "personal-numbers-not-work-phones";
-        let refused = fits_sockets(long, &scratch.join(long))
+        let most = SOCKET_PATH_MOST - SOCKET_ROOM - scratch.as_os_str().len() - 1;
+        let longest = "x".repeat(most);
+        assert!(fits_sockets(&longest, &scratch.join(&longest)).is_ok());
+        let over = "x".repeat(most + 1);
+        let refused = fits_sockets(&over, &scratch.join(&over))
             .unwrap_err()
             .to_string();
-        let most = SOCKET_PATH_MOST - SOCKET_ROOM - scratch.as_os_str().len() - 1;
         assert!(
             refused.contains(&format!("{most} characters at most")),
             "{refused}"
         );
-        let longest = "x".repeat(most);
-        assert!(fits_sockets(&longest, &scratch.join(&longest)).is_ok());
-        let over = "x".repeat(most + 1);
-        assert!(fits_sockets(&over, &scratch.join(&over)).is_err());
     }
 
     #[test]
