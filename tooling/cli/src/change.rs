@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn a_name_too_long_for_a_socket_in_its_scratch_folder_is_refused_with_the_most_it_may_be() {
-        let scratch = Path::new("/Users/someone/Projects/dispatch-platform/scratch");
+        let scratch = Path::new("/workspace/dispatch-platform/scratch");
         let fits = "own-numbers";
         assert!(fits_sockets(fits, &scratch.join(fits)).is_ok());
         let most = SOCKET_PATH_MOST - SOCKET_ROOM - scratch.as_os_str().len() - 1;
