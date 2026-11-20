@@ -105,10 +105,32 @@ pub fn valid_name(name: &str) -> Result<()> {
     )
 }
 
+/// The most bytes a socket's path may hold on macOS (`sun_path`, less its closing NUL).
+const SOCKET_PATH_MOST: usize = 103;
+/// The room a socket the tools make in a change's scratch folder takes past it: tsx's
+/// `/tsx-<uid>/<pid>.pipe`, with a user ID of up to four digits and a macOS process ID of five.
+const SOCKET_ROOM: usize = 20;
+
+/// Refused when the scratch folder `scratch` of the change `name` leaves too little room for a
+/// socket in it, as tsx makes one under `TMPDIR` for every command that runs TypeScript: on macOS
+/// `generate` and `check` would then fail to listen (`EINVAL`).
+fn fits_sockets(name: &str, scratch: &Path) -> Result<()> {
+    let length = scratch.as_os_str().len();
+    let most = (SOCKET_PATH_MOST - SOCKET_ROOM + name.len()).saturating_sub(length);
+    require(
+        length + SOCKET_ROOM <= SOCKET_PATH_MOST,
+        &format!(
+            "{name} is too long for its scratch folder to hold the sockets the tools make there: \
+             name the change in {most} characters at most."
+        ),
+    )
+}
+
 /// `dispatchdev start <name>`: the change's worktree beside the clone, on a branch of its name
 /// off `base`, with its packages installed, where it has any, and its scratch folder made.
 pub fn start(from: &Path, name: &str, base: &str, runner: &dyn Runner) -> Result<()> {
     valid_name(name)?;
+    fits_sockets(name, &workspace::scratch(name)?)?;
     let clone = Clone::of(from, runner)?;
     let path = clone.worktrees.join(name);
     require(
@@ -159,6 +181,26 @@ mod tests {
     use super::*;
     use crate::Native;
     use std::process::Command;
+
+    #[test]
+    fn a_name_too_long_for_a_socket_in_its_scratch_folder_is_refused_with_the_most_it_may_be() {
+        let scratch = Path::new("/Users/someone/Projects/dispatch-platform/scratch");
+        let fits = "own-numbers";
+        assert!(fits_sockets(fits, &scratch.join(fits)).is_ok());
+        let long = "personal-numbers-not-work-phones";
+        let refused = fits_sockets(long, &scratch.join(long))
+            .unwrap_err()
+            .to_string();
+        let most = SOCKET_PATH_MOST - SOCKET_ROOM - scratch.as_os_str().len() - 1;
+        assert!(
+            refused.contains(&format!("{most} characters at most")),
+            "{refused}"
+        );
+        let longest = "x".repeat(most);
+        assert!(fits_sockets(&longest, &scratch.join(&longest)).is_ok());
+        let over = "x".repeat(most + 1);
+        assert!(fits_sockets(&over, &scratch.join(&over)).is_err());
+    }
 
     #[test]
     fn a_checkout_finds_its_clone_and_the_worktrees_beside_it() {
