@@ -100,7 +100,7 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   await expect(page.locator('.communications')).toHaveAttribute('style', /--column-width: 100%/);
 
   // With Dispatch Phone off, the page has HR Line's section, previewing its own page without
-  // Dispatch Phone's quick replies.
+  // Dispatch Phone's quick replies, or its Previous days.
   const switches = `/api/platform/dsps/${north.id}/features`;
   const off = await owner.post(switches, { feature: 'communications', enabled: false });
   expect(off.status, off.body).toBe(200);
@@ -108,6 +108,7 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   await page.reload();
   await expect(section('cjf87gqd_hr_line.display').locator('.message-display')).toBeVisible();
   await expect(replies('cjf87gqd_hr_line.display')).toHaveCount(0);
+  await expect(section('cjf87gqd_hr_line.display').locator('.previous-days')).toHaveCount(0);
 });
 
 /** When `now` was, in milliseconds, in `timeZone`'s day before it: between a day before it, as long
