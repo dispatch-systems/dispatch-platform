@@ -1,6 +1,7 @@
 //! Text mutations and filing share one transaction in `changing`; conversation listeners wake
 //! only after it commits. Placement failures keep texts pending for upkeep to retry.
-//! Route-driven refiling preserves existing placements while the day's route data is unread.
+//! Route-driven refiling preserves existing placements while the day's route data is unread, but
+//! moves a text under a work phone nobody had to its number's own once Driver Match has the number.
 //! The upkeep coordinator runs placement, refiling, live-day watching and phone cleanup in order.
 mod maintenance;
 mod placement;
@@ -48,12 +49,12 @@ pub async fn changing<T: Send + 'static>(
     dsp: &str,
     change: impl FnOnce(&Store) -> Result<(T, Vec<String>)> + Send + 'static,
 ) -> Result<T> {
-    let at = dsp.to_owned();
+    let (at, shared) = (dsp.to_owned(), state.clone());
     let (answer, changed) = state
         .run_serving(dsp, DOMAIN, move |db| {
             db.dsp(&at)?.transaction(|| {
                 let (answer, texts) = change(db)?;
-                Ok((answer, file(db, &at, &texts)?))
+                Ok((answer, file(db, &shared, &at, &texts)?))
             })
         })
         .await?;
@@ -124,13 +125,13 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
 /// Files the texts `ids`, which the phone side kept or changed in this write: places each waiting
 /// to be, then keeps whether the conversation each is filed in waits. The lines whose conversations
 /// changed.
-fn file(db: &Store, dsp: &str, ids: &[String]) -> Result<BTreeSet<Option<String>>> {
+fn file(db: &Store, state: &State, dsp: &str, ids: &[String]) -> Result<BTreeSet<Option<String>>> {
     if ids.is_empty() {
         return Ok(BTreeSet::new());
     }
     let waiting = db.unfiled_communications_texts_of(dsp, ids)?;
     if !waiting.is_empty() {
-        place(db, dsp, &waiting)?;
+        place(db, state, dsp, &waiting)?;
     }
     db.settle_communications_texts(dsp, ids)
 }

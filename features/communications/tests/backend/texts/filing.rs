@@ -213,6 +213,62 @@ async fn a_work_phones_texts_are_the_drivers_whose_latest_phone_it_is_that_day_t
     assert_eq!(answered, vec![Some(then(10, 0))]);
 }
 
+/// A driver who ran a route on their own phone: route data named it their work phone that day, and
+/// Driver Match has it as theirs. That day's texts are their work conversation's; any other day's
+/// are their own number's, never a work phone nobody has.
+#[tokio::test]
+async fn a_drivers_own_number_route_data_once_named_a_work_phone_is_theirs_on_other_days() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.yesterday().unwrap();
+    let own = "+12065550103";
+    support::know(
+        &state,
+        &dsp,
+        vec![person("CASEY1", "Casey Diaz", own)],
+        Vec::new(),
+        Vec::new(),
+    );
+    phoned(
+        &state,
+        &dsp,
+        Some(&day.to_string()),
+        phones(&[("blake", "2065550101")]),
+        vec![saved(yesterday, &[("casey", "2065550103")])],
+    )
+    .await;
+    let then = texted(
+        &state,
+        &dsp,
+        own,
+        "Running late",
+        at(&zone, yesterday, 10, 0),
+    )
+    .await;
+    let filed_then = filed(&state, &dsp, &then).await;
+    assert_eq!(
+        (filed_then.kind, filed_then.driver),
+        (ConversationKind::Work, driver("casey"))
+    );
+    let now = texted(
+        &state,
+        &dsp,
+        own,
+        "Can I work Sunday?",
+        at(&zone, day, 9, 0),
+    )
+    .await;
+    let filed_now = filed(&state, &dsp, &now).await;
+    assert_eq!(
+        (
+            filed_now.kind,
+            filed_now.driver,
+            filed_now.number.as_deref()
+        ),
+        (ConversationKind::Number, None, Some(own))
+    );
+}
+
 #[tokio::test]
 async fn answered_work_conversations_are_listed_past_more_than_a_page_waiting_on_the_live_day() {
     let (_root, state, dsp) = started();
@@ -544,6 +600,91 @@ async fn a_days_texts_stay_with_the_driver_whose_work_phone_it_was_once_routes_e
     // Emptied unsaved, as the next day's first read leaves it: still theirs.
     phoned(&state, &dsp, None, Vec::new(), Vec::new()).await;
     assert_eq!(filed(&state, &dsp, &text).await.driver, driver("avery"));
+}
+
+/// A text filed under a work phone nobody had, on a day Routes can't read, is its number's once
+/// someone in Driver Match has the number, as the day is filed again.
+#[tokio::test]
+async fn a_text_under_a_work_phone_nobody_had_moves_to_its_number_once_someone_has_it_though_unread()
+ {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.yesterday().unwrap();
+    let before = yesterday.yesterday().unwrap();
+    // 0103 was Casey's work phone two days ago; yesterday can't be read.
+    let unread = (yesterday.to_string(), DayPhones::Uncollected);
+    let saved = vec![saved(before, &[("casey", "2065550103")]), unread.clone()];
+    phoned(&state, &dsp, None, Vec::new(), saved).await;
+    let own = "+12065550103";
+    let text = texted(
+        &state,
+        &dsp,
+        own,
+        "Can I work Sunday?",
+        at(&zone, yesterday, 9, 0),
+    )
+    .await;
+    assert_eq!(
+        filed(&state, &dsp, &text).await.kind,
+        ConversationKind::Work
+    );
+
+    support::know(
+        &state,
+        &dsp,
+        vec![person("CASEY1", "Casey Diaz", own)],
+        Vec::new(),
+        Vec::new(),
+    );
+    phoned(&state, &dsp, None, Vec::new(), vec![unread]).await;
+    let moved = filed(&state, &dsp, &text).await;
+    assert_eq!(
+        (moved.kind, moved.driver, moved.number.as_deref()),
+        (ConversationKind::Number, None, Some(own))
+    );
+}
+
+/// A work phone nobody had, added to someone: the days it texted are filed again by the upkeep,
+/// its texts then the number's, as the person's.
+#[tokio::test]
+async fn a_work_phone_nobody_had_added_to_someone_has_its_earlier_texts_moved_to_its_number() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.yesterday().unwrap();
+    let before = yesterday.yesterday().unwrap();
+    // 0103 was Casey's work phone two days ago, and nobody's yesterday.
+    let saved = vec![
+        saved(before, &[("casey", "2065550103")]),
+        saved(yesterday, &[("blake", "2065550101")]),
+    ];
+    phoned(&state, &dsp, None, Vec::new(), saved).await;
+    let phone = "+12065550103";
+    let text = texted(
+        &state,
+        &dsp,
+        phone,
+        "Who has the charger?",
+        at(&zone, yesterday, 9, 0),
+    )
+    .await;
+    let work = filed(&state, &dsp, &text).await;
+    assert_eq!((work.kind, work.driver), (ConversationKind::Work, None));
+
+    let mut avery = support::driver("AVERY1", "Avery Lopez", "A1");
+    avery.phones = Vec::new();
+    support::know(&state, &dsp, vec![avery], Vec::new(), Vec::new());
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let (shared, id) = (state.clone(), work.id.clone());
+    state
+        .run(move |db| contacts::add_to_person(db, &shared, &c, &id, "AVERY1", true))
+        .await
+        .unwrap();
+    (MAINTENANCE.run)(state.clone(), false).await;
+    let moved = filed(&state, &dsp, &text).await;
+    assert_eq!(
+        (moved.kind, moved.number.as_deref()),
+        (ConversationKind::Number, Some(phone))
+    );
 }
 
 #[tokio::test]

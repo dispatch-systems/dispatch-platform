@@ -70,7 +70,7 @@ pub async fn overdue(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
     if waiting.is_empty() {
         return Ok(());
     }
-    let at_dsp = dsp.to_owned();
+    let (at_dsp, shared) = (dsp.to_owned(), state.clone());
     changing(state, dsp, move |db| {
         let texts = db.overdue_communications_texts(&at_dsp, &on, since, MOST_TEXTS)?;
         // The day each is of, to be filed again, while the DSP's timezone can be read.
@@ -80,7 +80,7 @@ pub async fn overdue(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
             let sender = sender_name(db, &mut senders, text.sent_by.as_deref())?;
             let line = text.line.as_deref();
             let filed = match line {
-                None => unread(db, &at_dsp, &text.number),
+                None => unread(db, &shared, &at_dsp, &text.number),
                 Some(_) => Filed::Number(text.number.clone()),
             };
             db.place_communications_text(&at_dsp, &text.id, line, &filed, sender.as_deref())?;

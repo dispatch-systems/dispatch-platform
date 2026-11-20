@@ -1,8 +1,9 @@
 //! Phone/day attribution: live route phones while they hold the day, otherwise historical
-//! phones, with picks and ever-work-phone fallback. A handoff moves the whole day's texts in
+//! phones, with the ever-work-phone fallback for a number no one in Driver Match has. A handoff moves the whole day's texts in
 //! both directions. DSP-local days include the prior stop's window when it crosses midnight.
 //!
-//! An unread day says nothing: existing placements stay put; new texts use the work phone's own
+//! An unread day says nothing: existing placements stay put, but a known number's under a work
+//! phone nobody had (`reconciliation::elsewhere`); new texts use the work phone's own
 //! conversation when known, otherwise the number's. Status and attachment updates never move a
 //! text already filed. Actor names are read once per placement batch. Only Dispatch Phone's own
 //! line's texts are filed so: another line's are each under its number, on that line.
@@ -16,9 +17,10 @@ use super::super::{
 use super::failed;
 use crate::backend::sender;
 use dispatch_core::{
-    Error, Result,
+    Error, Result, State,
     db::{Store, now},
     foundation::clock,
+    manifest::people::{self, Everyone},
 };
 use dispatch_routes_contract::{
     self as routes, DayPhones, DriverPhone, DriverRoutes, LiveRouteData,
@@ -26,17 +28,17 @@ use dispatch_routes_contract::{
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use serde_json::json;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 /// Places each of `texts`, waiting to be filed, where it belongs on its phone's line, under the
 /// name its sender, if someone at the DSP, is shown by as it's placed: each on its own, so one that
 /// can't be yet, as reading what says where failed, is logged, kept as unplaced since now
 /// (`unplaced`), and waits for the next upkeep, the rest placed.
-pub(super) fn place(db: &Store, dsp: &str, texts: &[Unfiled]) -> Result<()> {
+pub(super) fn place(db: &Store, state: &State, dsp: &str, texts: &[Unfiled]) -> Result<()> {
     let mut filer = None;
     let mut senders = HashMap::new();
     for text in texts {
-        let placed = place_of(db, dsp, &mut filer, text).and_then(|filed| {
+        let placed = place_of(db, state, dsp, &mut filer, text).and_then(|filed| {
             let sender = sender_name(db, &mut senders, text.sent_by.as_deref())?;
             let line = text.line.as_deref();
             db.place_communications_text(dsp, &text.id, line, &filed, sender.as_deref())
@@ -51,6 +53,7 @@ pub(super) fn place(db: &Store, dsp: &str, texts: &[Unfiled]) -> Result<()> {
 /// says, made for the first of them.
 fn place_of<'a>(
     db: &'a Store,
+    state: &'a State,
     dsp: &'a str,
     filer: &mut Option<Filer<'a>>,
     text: &Unfiled,
@@ -60,7 +63,7 @@ fn place_of<'a>(
     }
     let filer = match filer {
         Some(filer) => filer,
-        None => filer.insert(Filer::new(db, dsp)?),
+        None => filer.insert(Filer::new(db, state, dsp)?),
     };
     filer.placed(&text.number, text.at)
 }
@@ -75,22 +78,30 @@ fn unplaced(db: &Store, dsp: &str, texts: &[Unfiled], error: &Error) -> Result<(
     db.unplaced_communications_texts(dsp, &ids, now())
 }
 /// Where a text with `number` goes while where it belongs can't be read: under the work phone's own
-/// conversation while Routes says it ever was one, else the number's, as when Routes can't say.
-pub(super) fn unread(db: &Store, dsp: &str, number: &str) -> Filed {
+/// conversation while Routes says it ever was one and no one in Driver Match has it, else the
+/// number's, as when Routes can't say.
+pub(super) fn unread(db: &Store, state: &State, dsp: &str, number: &str) -> Filed {
     let ever = |ten: String| match routes::for_dsp(db, dsp)? {
         Some(routes) => routes.ever_work_phone(db, dsp, &ten),
         None => Ok(false),
     };
+    let nobodys = || people::everyone(db, state, dsp).map(|everyone| !someones(&everyone, number));
     match ten_digits(number).map(ever) {
-        Some(Ok(true)) => Filed::WorkPhone(number.to_owned()),
+        Some(Ok(true)) if matches!(nobodys(), Ok(true)) => Filed::WorkPhone(number.to_owned()),
         _ => Filed::Number(number.to_owned()),
     }
+}
+/// Whether someone in Driver Match has `number`, from a source or added: then it's their own, never
+/// a work phone nobody has, though route data once named it a work phone, as when a driver ran
+/// the route on their own phone.
+fn someones(everyone: &Everyone, number: &str) -> bool {
+    !everyone.by_phone(number).is_empty()
 }
 
 /// Where a text with `number` written now belongs, as filing would place it: what someone at the
 /// DSP opens to text the number first, so their text and its answers go there.
-pub fn belongs(db: &Store, dsp: &str, number: &str) -> Result<Filed> {
-    Filer::new(db, dsp)?.placed(number, now())
+pub fn belongs(db: &Store, state: &State, dsp: &str, number: &str) -> Result<Filed> {
+    Filer::new(db, state, dsp)?.placed(number, now())
 }
 
 /// The name the one at the DSP who sent a text, `by`, is shown by, by their account: their full
@@ -114,6 +125,7 @@ pub(super) fn sender_name(
 /// written, each day's read once.
 pub(super) struct Filer<'a> {
     db: &'a Store,
+    state: &'a State,
     dsp: &'a str,
     pub(super) zone: TimeZone,
     live: Option<&'static dyn LiveRouteData>,
@@ -125,6 +137,8 @@ pub(super) struct Filer<'a> {
     work_phones: HashMap<String, bool>,
     /// When the two hours after the day before each day stopped end, while they run into it.
     after_stop: HashMap<Date, Option<i64>>,
+    /// Everyone Driver Match has, read once a number may be a work phone nobody has.
+    everyone: Option<Arc<Everyone>>,
 }
 /// A day's work phones, as Routes reads them: the driver each is the latest phone of, by its ten
 /// digits, with the source naming them; none for one that's two drivers' latest, and no one's.
@@ -145,7 +159,7 @@ impl Phones {
     }
 }
 impl<'a> Filer<'a> {
-    pub(super) fn new(db: &'a Store, dsp: &'a str) -> Result<Self> {
+    pub(super) fn new(db: &'a Store, state: &'a State, dsp: &'a str) -> Result<Self> {
         let zone = zone(db, dsp)?;
         let live = routes::live_for_dsp(db, dsp)?;
         let live_day = match live {
@@ -154,6 +168,7 @@ impl<'a> Filer<'a> {
         };
         Ok(Self {
             db,
+            state,
             dsp,
             zone,
             live,
@@ -162,12 +177,14 @@ impl<'a> Filer<'a> {
             days: HashMap::new(),
             work_phones: HashMap::new(),
             after_stop: HashMap::new(),
+            everyone: None,
         })
     }
     /// Where a text with `number`, written at `at`, is filed: under the driver whose latest work
-    /// phone it is that day; else under the work phone, or the number, as itself. None while what would tell can't be read: that day's work phones, or
-    /// whether the number was ever one, as Routes reads them. Routes being off isn't the number not
-    /// being a work phone.
+    /// phone it is that day; else under the work phone, or the number, as itself, the number's
+    /// while someone in Driver Match has it (`someones`). None while what would tell can't be read:
+    /// that day's work phones, or whether the number was ever one, as Routes reads them. Routes
+    /// being off isn't the number not being a work phone.
     pub(super) fn filed(&mut self, number: &str, at: i64) -> Result<Option<Filed>> {
         let Some(ten) = ten_digits(number) else {
             return Ok(Some(Filed::Number(number.to_owned())));
@@ -181,7 +198,7 @@ impl<'a> Filer<'a> {
                 source: phones.source.clone(),
                 id: driver.clone(),
             })),
-            Some(None) => Ok(Some(Filed::WorkPhone(number.to_owned()))),
+            Some(None) => self.work_phone(number).map(Some),
             None => self.own(number, &ten),
         }
     }
@@ -199,12 +216,33 @@ impl<'a> Filer<'a> {
         Ok(own.unwrap_or_else(|| Filed::Number(number.to_owned())))
     }
     /// The conversation of `number`, with the ten digits `ten`, as itself: the work phone's while
-    /// Routes says it ever was one, the number's while it says not; none while Routes is off.
+    /// Routes says it ever was one (`work_phone`), the number's while it says not; none while
+    /// Routes is off.
     fn own(&mut self, number: &str, ten: &str) -> Result<Option<Filed>> {
-        Ok(self.ever_work_phone(ten)?.map(|ever| match ever {
-            true => Filed::WorkPhone(number.to_owned()),
-            false => Filed::Number(number.to_owned()),
-        }))
+        match self.ever_work_phone(ten)? {
+            Some(true) => self.work_phone(number).map(Some),
+            Some(false) => Ok(Some(Filed::Number(number.to_owned()))),
+            None => Ok(None),
+        }
+    }
+    /// The conversation of `number`, a work phone no one driver has: the work phone's own, but the
+    /// number's while someone in Driver Match has it (`someones`).
+    fn work_phone(&mut self, number: &str) -> Result<Filed> {
+        Ok(match self.someones(number)? {
+            true => Filed::Number(number.to_owned()),
+            false => Filed::WorkPhone(number.to_owned()),
+        })
+    }
+    /// Whether someone in Driver Match has `number` (`someones`), as everyone is read once.
+    pub(super) fn someones(&mut self, number: &str) -> Result<bool> {
+        let everyone = match &self.everyone {
+            Some(everyone) => everyone.clone(),
+            None => {
+                let everyone = people::everyone(self.db, self.state, self.dsp)?;
+                self.everyone.insert(everyone).clone()
+            }
+        };
+        Ok(someones(&everyone, number))
     }
     /// The day a text written at `at` is filed by: its own, where the DSP is, but in the two hours
     /// after a stop that run past midnight, the day stopped, as a driver is answered then at the

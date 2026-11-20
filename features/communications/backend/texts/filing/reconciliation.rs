@@ -64,14 +64,15 @@ pub(super) async fn noted(state: &Arc<State>, dsp: &str) -> Result<()> {
 /// of the day as noted to be but while Routes is off, which says nothing of it, then wakes the
 /// pages waiting on what changed. Today's, keeping what changed of the live day
 /// (`live_day::watched`), and noting changed the work conversations whose live day or work phone
-/// changed (`work_changed`). A day Routes can't read keeps its texts where they are.
+/// changed (`work_changed`). A day Routes can't read keeps its texts where they are, but a known
+/// number's under a work phone nobody had (`elsewhere`).
 pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> {
     let day = date(day)?;
-    let at = dsp.to_owned();
+    let (at, shared) = (dsp.to_owned(), state.clone());
     let changed = state
         .run_serving(dsp, DOMAIN, move |db| {
             db.dsp(&at)?.transaction(|| {
-                let mut filer = Filer::new(db, &at)?;
+                let mut filer = Filer::new(db, &shared, &at)?;
                 let moved = !refiled_by(db, &at, &mut filer, day)?.is_empty();
                 if filer.reads(&day.to_string()) {
                     db.refiled_communications_day(&at, &day.to_string())?;
@@ -171,17 +172,21 @@ fn work_changed(db: &Store, dsp: &str) -> Result<bool> {
 /// belongs elsewhere, and wakes the pages waiting on its conversations only once one moved; one
 /// that fails is logged with the day.
 pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
-    let asked = dsp.to_owned();
-    if state.read(move |db| misfiled(db, &asked)).await?.is_empty() {
+    let (asked, shared) = (dsp.to_owned(), state.clone());
+    if state
+        .read(move |db| misfiled(db, &shared, &asked))
+        .await?
+        .is_empty()
+    {
         return Ok(());
     }
     let at = dsp.to_owned();
     let today = state
         .read(move |db| Ok(clock::today(&zone(db, &at)?).to_string()))
         .await?;
-    let at = dsp.to_owned();
+    let (at, shared) = (dsp.to_owned(), state.clone());
     match state
-        .run_serving(dsp, DOMAIN, move |db| refiled(db, &at))
+        .run_serving(dsp, DOMAIN, move |db| refiled(db, &shared, &at))
         .await
     {
         Ok(true) => live::changed(state, dsp),
@@ -194,13 +199,13 @@ pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
     Ok(())
 }
 /// Files every text of today, the DSP's day, again, where it belongs now: whether any moved.
-fn refiled(db: &Store, dsp: &str) -> Result<bool> {
-    let moves = misfiled(db, dsp)?;
+fn refiled(db: &Store, state: &State, dsp: &str) -> Result<bool> {
+    let moves = misfiled(db, state, dsp)?;
     Ok(!db.refile_communications_texts(dsp, &moves)?.is_empty())
 }
 /// Each text of today, the DSP's day, filed elsewhere than it belongs now, with where it does.
-fn misfiled(db: &Store, dsp: &str) -> Result<Vec<(String, Filed)>> {
-    let mut filer = Filer::new(db, dsp)?;
+fn misfiled(db: &Store, state: &State, dsp: &str) -> Result<Vec<(String, Filed)>> {
+    let mut filer = Filer::new(db, state, dsp)?;
     let today = clock::today(&filer.zone);
     elsewhere(db, dsp, &mut filer, today)
 }
@@ -210,7 +215,9 @@ fn refiled_by(db: &Store, dsp: &str, filer: &mut Filer, day: Date) -> Result<BTr
     db.refile_communications_texts(dsp, &moves)
 }
 /// Each text of `day`, from when it began until the next day did, filed elsewhere than `filer`
-/// says it belongs now, with where it does. One whose place can't be told yet stays where it is.
+/// says it belongs now, with where it does. One whose place can't be told yet stays where it is,
+/// but under a work phone nobody had while someone in Driver Match has the number: it's theirs,
+/// whoever's work phone it was that day.
 fn elsewhere(db: &Store, dsp: &str, filer: &mut Filer, day: Date) -> Result<Vec<(String, Filed)>> {
     let next = day
         .tomorrow()
@@ -218,16 +225,25 @@ fn elsewhere(db: &Store, dsp: &str, filer: &mut Filer, day: Date) -> Result<Vec<
         .ok_or_else(|| Error::new("invalid_date", 400))?;
     let (from, to) = (began(&filer.zone, day)?, began(&filer.zone, next)?);
     let mut conversations: HashMap<Filed, Option<String>> = HashMap::new();
-    let mut moves = Vec::new();
-    for text in db.communications_texts_between(dsp, from, to)? {
-        let Some(filed) = filer.filed(&text.number, text.at)? else {
-            continue;
-        };
-        if !conversations.contains_key(&filed) {
-            let found = db.communications_filed(dsp, &filed)?;
+    let mut filed_in = |filed: &Filed| -> Result<Option<String>> {
+        if !conversations.contains_key(filed) {
+            let found = db.communications_filed(dsp, filed)?;
             conversations.insert(filed.clone(), found);
         }
-        if conversations[&filed] != text.conversation {
+        Ok(conversations[filed].clone())
+    };
+    let mut moves = Vec::new();
+    for text in db.communications_texts_between(dsp, from, to)? {
+        let filed = match filer.filed(&text.number, text.at)? {
+            Some(filed) => filed,
+            None if filer.someones(&text.number)?
+                && filed_in(&Filed::WorkPhone(text.number.clone()))? == text.conversation =>
+            {
+                Filed::Number(text.number.clone())
+            }
+            None => continue,
+        };
+        if filed_in(&filed)? != text.conversation {
             moves.push((text.id, filed));
         }
     }

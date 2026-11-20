@@ -262,6 +262,15 @@ pub const FEATURE: Feature = Feature {
                     "migrations/dsp/0025_communications_picked_dropped.sql"
                 )),
             },
+            // Each day with texts under a work phone nobody had, filed again, so a number someone in
+            // Driver Match has moves to its own conversation.
+            Migration {
+                id: 26,
+                name: "communications_work_phones_refiled",
+                apply: Sql(include_str!(
+                    "migrations/dsp/0026_communications_work_phones_refiled.sql"
+                )),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
