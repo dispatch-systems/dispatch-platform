@@ -85,8 +85,9 @@ export function Preview({
                 current={open}
                 readOlder={nothing}
                 olderFailed={false}
-                previousDays={false}
-                showPreviousDays={nothing}
+                // As the line's own page: another line's shows every day, with no Previous days.
+                previousDays={texts}
+                showPreviousDays={texts ? undefined : nothing}
                 reach={() => Promise.resolve()}
                 show={nothing}
                 open={open.id}
