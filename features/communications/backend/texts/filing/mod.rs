@@ -1,6 +1,7 @@
 //! Text mutations and filing share one transaction in `changing`; conversation listeners wake
 //! only after it commits. Placement failures keep texts pending for upkeep to retry.
-//! Route-driven refiling preserves existing placements while the day's route data is unread.
+//! Route-driven refiling preserves existing placements while the day's route data is unread, but
+//! moves a text under a work phone nobody had to its number's own once Driver Match has the number.
 //! The upkeep coordinator runs placement, refiling, live-day watching and phone cleanup in order.
 mod maintenance;
 mod placement;

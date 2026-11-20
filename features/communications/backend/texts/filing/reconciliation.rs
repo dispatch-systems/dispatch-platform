@@ -64,7 +64,8 @@ pub(super) async fn noted(state: &Arc<State>, dsp: &str) -> Result<()> {
 /// of the day as noted to be but while Routes is off, which says nothing of it, then wakes the
 /// pages waiting on what changed. Today's, keeping what changed of the live day
 /// (`live_day::watched`), and noting changed the work conversations whose live day or work phone
-/// changed (`work_changed`). A day Routes can't read keeps its texts where they are.
+/// changed (`work_changed`). A day Routes can't read keeps its texts where they are, but a known
+/// number's under a work phone nobody had (`elsewhere`).
 pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> {
     let day = date(day)?;
     let (at, shared) = (dsp.to_owned(), state.clone());

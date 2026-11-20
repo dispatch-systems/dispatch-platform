@@ -2,7 +2,8 @@
 //! phones, with the ever-work-phone fallback for a number no one in Driver Match has. A handoff moves the whole day's texts in
 //! both directions. DSP-local days include the prior stop's window when it crosses midnight.
 //!
-//! An unread day says nothing: existing placements stay put; new texts use the work phone's own
+//! An unread day says nothing: existing placements stay put, but a known number's under a work
+//! phone nobody had (`reconciliation::elsewhere`); new texts use the work phone's own
 //! conversation when known, otherwise the number's. Status and attachment updates never move a
 //! text already filed. Actor names are read once per placement batch. Only Dispatch Phone's own
 //! line's texts are filed so: another line's are each under its number, on that line.
