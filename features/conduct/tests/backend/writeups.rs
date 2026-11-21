@@ -181,7 +181,10 @@ fn a_writeup_changes_until_it_is_signed_then_only_its_manager_deletes_it() {
     sign(&store, &c, &id, 4, "2026-11-03", TODAY).unwrap();
     let signed = read(&store, &c.dsp.id, &id).unwrap();
     assert_eq!(signed.row.signed_on.as_deref(), Some("2026-11-03"));
-    assert_eq!(signed.signed_by_name.as_deref(), Some("Casey Supervisor"));
+    assert_eq!(signed.row.signed_by_name.as_deref(), Some("Casey Supervisor"));
+    // A list's row names who marked it signed too.
+    let listed = rows(&store.dsp(&c.dsp.id).unwrap()).unwrap();
+    assert_eq!(listed[0].signed_by_name.as_deref(), Some("Casey Supervisor"));
 
     // Signed, it stays as it is: its words, its photo and the writeup itself.
     let locked = change(
