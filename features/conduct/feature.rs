@@ -36,6 +36,7 @@ pub const FEATURE: Feature = Feature {
             "conduct_backups",
             "conduct_backup_folders",
             "conduct_requests",
+            "conduct_backup_replaced",
         ],
     )],
     own_migrations: &[OwnMigrations {
@@ -56,9 +57,16 @@ pub const FEATURE: Feature = Feature {
                 name: "conduct_requests",
                 apply: Sql(include_str!("migrations/dsp/0003_conduct_requests.sql")),
             },
+            Migration {
+                id: 4,
+                name: "conduct_backup_replaced",
+                apply: Sql(include_str!(
+                    "migrations/dsp/0004_conduct_backup_replaced.sql"
+                )),
+            },
         ],
     }],
-    // Every minute, the signed copies not yet backed up.
+    // Every minute, the signed copies not yet backed up, and those replaced taken back.
     maintenance: &[backend::backups::MAINTENANCE],
     domains: &[backend::DOMAIN],
     cached: &[dispatch_core::server::cache::Cached {

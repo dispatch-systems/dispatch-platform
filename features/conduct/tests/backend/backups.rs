@@ -8,17 +8,20 @@ use crate::{
         writeups::{self, Subject},
     },
 };
-use dispatch_core::{accounts::Context, settings as kept_settings};
+use dispatch_core::{accounts::Context, settings as kept_settings, testing};
 use dispatch_documents_contract::Author;
 
 const TODAY: &str = "2026-11-08";
 /// A JPEG's first bytes: all a photo needs to be kept as one.
 const PHOTO: [u8; 4] = [0xff, 0xd8, 0xff, 0xdb];
+/// Another, longer, which a copy saved of it is told apart by.
+const RETAKEN: [u8; 6] = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10];
 /// Where Jordan Gray's tardies go.
 const TARDIES: &str = "Writeups/Jordan Gray/Excessive Tardies";
 
 /// Writes Jordan Gray up for tardies at `tier`, with a photo of the paper if `photo`, and marks
-/// it signed if `signed`: its ID and revision.
+/// it signed if `signed`, without a photo as a release before they were needed did: its ID and
+/// revision.
 async fn written(
     state: &Arc<State>,
     c: &Context,
@@ -50,27 +53,52 @@ async fn written(
                 copies::keep(db, &c, &id, 1, &PHOTO)?;
             }
             let mut revision = if photo { 2 } else { 1 };
-            if signed {
+            if signed && photo {
                 writeups::sign(db, &c, &id, revision, "2026-11-03", TODAY)?;
                 revision += 1;
+            } else if signed {
+                db.dsp(&c.dsp.id)?.exec(
+                    "UPDATE conduct_writeups SET signed_on='2026-11-03',signed_by_name=?,\
+                     signed_at='2026-11-03T12:00:00Z' WHERE id=?",
+                    [c.auth.user.name(), id.clone()],
+                )?;
             }
             Ok((id, revision))
         })
         .await
         .unwrap()
 }
-/// Deletes the writeup `id` as read at `revision`, as its route does: its saved copy taken
+/// Deletes the writeup `id` as read at `revision`, as its route does: its saved copies taken
 /// back first.
 async fn deleted(state: &Arc<State>, c: &Context, id: &str, revision: i64) -> Result<()> {
     let (by, of) = (c.clone(), id.to_owned());
     let copy = state.read(move |db| saved(db, &by, &of, revision)).await?;
     if let Some((files, saved)) = copy {
-        take_back(state, c, files, &saved).await?;
+        for saved in &saved {
+            take_back(state, c, files, saved).await?;
+        }
     }
     let (by, of) = (c.clone(), id.to_owned());
     state
         .run(move |db| writeups::delete(db, &by, &of, revision))
         .await
+}
+/// Keeps `photo` in place of the signed writeup `id`'s, as read at `revision`, as the member
+/// `c`: the revision it moves the writeup to.
+async fn replaced(state: &Arc<State>, c: &Context, id: &str, revision: i64, photo: &[u8]) -> i64 {
+    let (by, of, photo) = (c.clone(), id.to_owned(), photo.to_vec());
+    state
+        .run(move |db| copies::keep(db, &by, &of, revision, &photo))
+        .await
+        .unwrap();
+    revision + 1
+}
+/// The names and sizes of the files the stand-in keeps for the DSP `dsp`.
+fn sizes(dsp: &str) -> Vec<(String, usize)> {
+    support::files(dsp)
+        .into_iter()
+        .map(|(_, name, length, _)| (name, length))
+        .collect()
 }
 /// Has the DSP back its signed copies up, as its Settings saves it.
 async fn choose(state: &Arc<State>, c: &Context) {
@@ -273,4 +301,79 @@ async fn a_copy_saved_as_its_writeup_is_deleted_goes_with_it() {
     support::on_save(&dsp, move |db, _| writeups::delete(db, &by, &id, at));
     back_up(&state, &dsp, 1000).await.unwrap();
     assert_eq!(support::files(&dsp), []);
+}
+
+#[tokio::test]
+async fn a_replaced_photo_is_saved_in_its_place_then_the_copy_before_it_taken_back() {
+    let (_root, state, c) = platform();
+    let dsp = c.dsp.id.clone();
+    choose(&state, &c).await;
+    let (id, at) = written(&state, &c, ConductTier::Verbal, true, true).await;
+    back_up(&state, &dsp, 1000).await.unwrap();
+    let verbal = |length| ("2026-11-02 Verbal.jpg".to_owned(), length);
+    assert_eq!(sizes(&dsp), [verbal(PHOTO.len())]);
+
+    // The new photo is saved first, so the DSP's files are never without one; the copy before
+    // it goes on the next pass, as who replaced it.
+    let at = replaced(&state, &c, &id, at, &RETAKEN).await;
+    back_up(&state, &dsp, 2000).await.unwrap();
+    assert_eq!(sizes(&dsp), [verbal(PHOTO.len()), verbal(RETAKEN.len())]);
+    back_up(&state, &dsp, 3000).await.unwrap();
+    assert_eq!(sizes(&dsp), [verbal(RETAKEN.len())]);
+    assert_eq!(
+        support::removed(&dsp),
+        [Author::Named("Casey Supervisor".into())]
+    );
+
+    // One that can't be taken back is tried again a minute on.
+    let at = replaced(&state, &c, &id, at, &PHOTO).await;
+    back_up(&state, &dsp, 4000).await.unwrap();
+    support::refuse(&dsp, Some(support::BUSY));
+    back_up(&state, &dsp, 5000).await.unwrap();
+    support::refuse(&dsp, None);
+    back_up(&state, &dsp, 5000 + 59 * 1000).await.unwrap();
+    assert_eq!(sizes(&dsp), [verbal(RETAKEN.len()), verbal(PHOTO.len())]);
+    back_up(&state, &dsp, 5000 + 60 * 1000).await.unwrap();
+    assert_eq!(sizes(&dsp), [verbal(PHOTO.len())]);
+
+    // Deleting the writeup takes back every copy of it, the one waiting to go too.
+    let at = replaced(&state, &c, &id, at, &RETAKEN).await;
+    back_up(&state, &dsp, 70 * 1000).await.unwrap();
+    assert_eq!(support::files(&dsp).len(), 2);
+    deleted(&state, &c, &id, at).await.unwrap();
+    assert_eq!(support::files(&dsp), []);
+
+    // A photo added to a writeup signed without one is saved as any other.
+    let (bare, at) = written(&state, &c, ConductTier::Written, false, true).await;
+    replaced(&state, &c, &bare, at, &PHOTO).await;
+    back_up(&state, &dsp, 80 * 1000).await.unwrap();
+    let written_up = ("2026-11-02 Written.jpg".to_owned(), PHOTO.len());
+    assert_eq!(sizes(&dsp), [written_up]);
+    let logged = state
+        .read(move |db| Ok(testing::audit_actions(db, &dsp, "conduct.copy")))
+        .await
+        .unwrap();
+    let replacing = "conduct.copy_replaced";
+    assert_eq!(
+        logged,
+        [replacing, replacing, replacing, "conduct.copy_added"]
+    );
+}
+
+#[tokio::test]
+async fn a_copy_saved_as_its_photo_is_replaced_is_taken_back_once_the_new_one_is_saved() {
+    let (_root, state, c) = platform();
+    let dsp = c.dsp.id.clone();
+    choose(&state, &c).await;
+    let (id, at) = written(&state, &c, ConductTier::Verbal, true, true).await;
+
+    let by = c.clone();
+    support::on_save(&dsp, move |db, _| copies::keep(db, &by, &id, at, &RETAKEN));
+    back_up(&state, &dsp, 1000).await.unwrap();
+    back_up(&state, &dsp, 2000).await.unwrap();
+    back_up(&state, &dsp, 3000).await.unwrap();
+    assert_eq!(
+        sizes(&dsp),
+        [("2026-11-02 Verbal.jpg".to_owned(), RETAKEN.len())]
+    );
 }
