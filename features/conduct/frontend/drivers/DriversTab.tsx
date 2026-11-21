@@ -1,17 +1,48 @@
-import { useMemo } from 'react';
-import { Empty } from '../../../../core/shell/frontend/ui/index.js';
+import { useMemo, useState } from 'react';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { Empty, SortHeader } from '../../../../core/shell/frontend/ui/index.js';
 import type { ConductOverview } from '../../api/index.js';
 import { Person, RowLink, TierBadge, categoryName, personOf } from '../parts.js';
-import { printedDay, tiers } from '../tiers.js';
+import { printedDay } from '../tiers.js';
 import { indexOf } from '../data.js';
 import { type HistoryFilters } from '../../api/client.js';
 import { useListScroll } from '../useListScroll.js';
 import { useConductFilters } from '../useConductFilters.js';
 
+/** What a row is sorted by. */
+type Row = { person: { name: string }; count: number; last: string; waiting: boolean };
+type Direction = 'asc' | 'desc';
+
+/** The columns that sort the list: each one's heading, ascending order and first click. */
+const columns = {
+  name: {
+    label: 'Driver',
+    ascending: (a: Row, b: Row) => a.person.name.localeCompare(b.person.name),
+    first: 'asc',
+  },
+  count: { label: 'Writeups', ascending: (a: Row, b: Row) => a.count - b.count, first: 'desc' },
+  last: {
+    label: 'Last writeup',
+    ascending: (a: Row, b: Row) => a.last.localeCompare(b.last),
+    first: 'desc',
+  },
+  waiting: {
+    label: 'Signature',
+    ascending: (a: Row, b: Row) => Number(a.waiting) - Number(b.waiting),
+    first: 'desc',
+  },
+} satisfies Record<
+  string,
+  { label: string; ascending: (a: Row, b: Row) => number; first: Direction }
+>;
+type Column = keyof typeof columns;
+const byName: { column: Column; direction: Direction } = { column: 'name', direction: 'asc' };
+
 /**
  * Everyone who stands at a tier in some category, or has a writeup awaiting signature: their
- * tier in each category, the highest first, and the people with the highest tiers first. On a
- * phone their totals sit under their name, where the columns for them don't fit.
+ * tier in each category, the highest first. The list opens by name and sorts by the column
+ * clicked, back to by name each time the tab opens. On a phone their totals sit under their
+ * name, where the columns for them don't fit, and the list stays by name.
  */
 export function DriversTab({
   overview,
@@ -29,15 +60,16 @@ export function DriversTab({
     filters,
     change,
   );
+  const [sort, setSort] = useState(byName);
   const rows = useMemo(() => {
     const index = indexOf(overview);
+    const turn = sort.direction === 'asc' ? 1 : -1;
     return overview.drivers
       .map((driver) => {
         const standings = index.standings.get(driver.person) ?? [];
         return {
           person: personOf(overview, driver.person),
           standings,
-          highest: standings[0] ? tiers.indexOf(standings[0].tier) : -1,
           count: driver.count,
           last: driver.latestOn,
           waiting: driver.awaitingSignature > 0,
@@ -55,8 +87,33 @@ export function DriversTab({
           );
         return named && held;
       })
-      .sort((a, b) => b.highest - a.highest || b.last.localeCompare(a.last));
-  }, [overview, search, category, tier]);
+      .sort((a, b) => turn * columns[sort.column].ascending(a, b) || columns.name.ascending(a, b));
+  }, [overview, search, category, tier, sort]);
+  const heading = (column: Column) => {
+    const direction = sort.column === column ? sort.direction : undefined;
+    return (
+      <SortHeader
+        direction={direction}
+        indicator={
+          direction === 'asc' ? (
+            <ArrowUp size={14} />
+          ) : direction === 'desc' ? (
+            <ArrowDown size={14} />
+          ) : (
+            <ArrowUpDown size={14} />
+          )
+        }
+        onSort={() =>
+          setSort({
+            column,
+            direction: direction ? (direction === 'asc' ? 'desc' : 'asc') : columns[column].first,
+          })
+        }
+      >
+        {columns[column].label}
+      </SortHeader>
+    );
+  };
   useListScroll(true);
   return (
     <>
@@ -68,13 +125,11 @@ export function DriversTab({
           <table className="conduct-table conduct-stacked conduct-drivers">
             <thead>
               <tr>
-                <th>Driver</th>
+                {heading('name')}
                 <th>Current tier</th>
-                <th>Writeups</th>
-                <th>Last writeup</th>
-                <th>
-                  <span className="sr-only">Signature</span>
-                </th>
+                {heading('count')}
+                {heading('last')}
+                {heading('waiting')}
               </tr>
             </thead>
             <tbody>

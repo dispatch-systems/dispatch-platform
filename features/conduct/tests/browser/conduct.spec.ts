@@ -390,3 +390,36 @@ test('photo preparation cancels safely, then a rotated copy is signed', async ({
   expect(signatures).toBe(2);
   await expect.poll(() => shown(page)).toEqual([3, 2]);
 });
+
+test('the drivers list opens by name and sorts by the column clicked, until the tab is left', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Conduct', exact: true }).click();
+  await page.getByRole('tab', { name: 'Drivers', exact: true }).click();
+  const rows = page.locator('.conduct-drivers tbody tr');
+  const names = () => rows.locator('.conduct-person > span:last-child').allTextContents();
+  const days = async () =>
+    (await rows.locator('td:nth-child(4)').allTextContents()).map((day) => Date.parse(day));
+  const ordered = <T>(values: T[], compare: (a: T, b: T) => number) =>
+    values.length > 1 && values.every((value, i) => i === 0 || compare(values[i - 1]!, value) <= 0);
+  const byName = (a: string, b: string) => a.localeCompare(b);
+
+  await expect.poll(async () => ordered(await names(), byName)).toBe(true);
+  const last = page.getByRole('columnheader', { name: 'Last writeup' });
+  await last.getByRole('button').click();
+  await expect(last).toHaveAttribute('aria-sort', 'descending');
+  await expect.poll(async () => ordered(await days(), (a, b) => b - a)).toBe(true);
+  await last.getByRole('button').click();
+  await expect(last).toHaveAttribute('aria-sort', 'ascending');
+  await expect.poll(async () => ordered(await days(), (a, b) => a - b)).toBe(true);
+
+  await page.getByRole('tab', { name: 'Writeups', exact: true }).click();
+  await page.getByRole('tab', { name: 'Drivers', exact: true }).click();
+  await expect(page.getByRole('columnheader', { name: 'Driver' })).toHaveAttribute(
+    'aria-sort',
+    'ascending',
+  );
+  await expect.poll(async () => ordered(await names(), byName)).toBe(true);
+});
