@@ -145,6 +145,8 @@ pub struct ConductWriteupRow {
     pub supervisor_name: String,
     /// The day the person signed it, YYYY-MM-DD: none until someone marks it signed.
     pub signed_on: Option<String>,
+    /// Who marked it signed.
+    pub signed_by_name: Option<String>,
     /// Whether a photo of the signed paper is kept.
     pub has_copy: bool,
     /// Its revision, which a change or signing names as what it read.
@@ -164,6 +166,7 @@ impl FromRow for ConductWriteupRow {
             written_on: row.get("written_on")?,
             supervisor_name: row.get("supervisor_name")?,
             signed_on: row.get("signed_on")?,
+            signed_by_name: row.get("signed_by_name")?,
             has_copy: row.get("has_copy")?,
             revision: row.get("revision")?,
         })
@@ -267,8 +270,6 @@ pub struct ConductWriteup {
     pub statement: String,
     pub prior: String,
     pub plan: String,
-    /// Who marked it signed.
-    pub signed_by_name: Option<String>,
 }
 impl FromRow for ConductWriteup {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -277,7 +278,6 @@ impl FromRow for ConductWriteup {
             statement: row.get("statement")?,
             prior: row.get("prior")?,
             plan: row.get("plan")?,
-            signed_by_name: row.get("signed_by_name")?,
         })
     }
 }

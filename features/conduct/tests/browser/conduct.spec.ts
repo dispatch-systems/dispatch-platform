@@ -106,8 +106,13 @@ test('a driver is written up from the page, then marked signed with a photo and 
   // Signing removes it from the waiting queue. It remains available under all statuses.
   await expect(page.getByText('No writeups', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Awaiting signature', exact: true }).click();
-  await page.locator('tbody tr').filter({ hasText: name }).getByRole('button').first().click();
+  // Its row names who marked it signed on hover.
+  const row = page.locator('tbody tr').filter({ hasText: name });
+  await row.getByLabel(/^Signed .+, marked by .+/).hover();
+  await expect(row.getByRole('tooltip')).toHaveText(/^Marked by .+/);
+  await row.getByRole('button').first().click();
   await expect(page.getByText(/^Signed \d+\/\d+\/\d{4}$/)).toBeVisible();
+  await expect(page.locator('.conduct-subtitle')).toContainText(/Marked by.+/);
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Print', exact: true })).toBeVisible();
   // Whoever manages Conduct replaces its photo, and still deletes it.

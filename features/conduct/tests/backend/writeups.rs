@@ -188,7 +188,16 @@ fn a_writeup_is_signed_with_a_photo_then_only_its_manager_replaces_that_or_delet
     sign(&store, &c, &id, 4, "2026-11-03", TODAY).unwrap();
     let signed = read(&store, &c.dsp.id, &id).unwrap();
     assert_eq!(signed.row.signed_on.as_deref(), Some("2026-11-03"));
-    assert_eq!(signed.signed_by_name.as_deref(), Some("Casey Supervisor"));
+    assert_eq!(
+        signed.row.signed_by_name.as_deref(),
+        Some("Casey Supervisor")
+    );
+    // A list's row names who marked it signed too.
+    let listed = rows(&store.dsp(&c.dsp.id).unwrap()).unwrap();
+    assert_eq!(
+        listed[0].signed_by_name.as_deref(),
+        Some("Casey Supervisor")
+    );
 
     // Signed, its words stay as they are.
     let locked = change(

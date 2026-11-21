@@ -7,7 +7,7 @@ import { deleteWriteup, readWriteup, useWriteup } from '../../api/client.js';
 import { NoticePaper } from '../notice/NoticePaper.js';
 import { SignedCopy } from './SignedCopy.js';
 import { usePrintNotice } from '../notice/usePrintNotice.js';
-import { SignedState, categoryName, personOf } from '../parts.js';
+import { MarkedBy, SignedState, categoryName, personOf } from '../parts.js';
 import { PhotoDialog } from './PhotoDialog.js';
 import { SignDialog } from './SignDialog.js';
 import { WriteupText } from './WriteupText.js';
@@ -67,6 +67,9 @@ export function WriteupView({
                   <h1>{person.name}</h1>
                   <p className="conduct-subtitle">
                     {categoryName(overview, writeup.categoryId)} <SignedState writeup={writeup} />
+                    {writeup.signedOn && writeup.signedByName && (
+                      <MarkedBy name={writeup.signedByName} />
+                    )}
                   </p>
                 </div>
                 <div className="heading-actions">

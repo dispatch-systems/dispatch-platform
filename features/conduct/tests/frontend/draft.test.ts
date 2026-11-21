@@ -27,6 +27,7 @@ const writeup = (
   writtenOn,
   supervisorName: 'Casey Supervisor',
   signedOn: writtenOn,
+  signedByName: 'Casey Supervisor',
   hasCopy: false,
   revision: 2,
 });

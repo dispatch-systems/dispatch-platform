@@ -44,7 +44,21 @@ export function SignedState({ writeup }: { writeup: ConductWriteupRow }) {
   );
 }
 
-/** A writeup's signature: when it was signed, or a button that marks it signed where given. */
+/** Who marked a writeup signed, by name beside their initials. */
+export function MarkedBy({ name }: { name: string }) {
+  return (
+    <span className="conduct-marked-by">
+      Marked by
+      <PersonAvatar name={name} className="conduct-signer" />
+      <span className="conduct-marked-by-name">{name}</span>
+    </span>
+  );
+}
+
+/**
+ * A writeup's signature: when it was signed, with who marked it so by their initials, named on
+ * hover or focus; or a button that marks it signed where given.
+ */
 export function WriteupStatus({
   writeup,
   markSigned,
@@ -52,6 +66,21 @@ export function WriteupStatus({
   writeup: ConductWriteupRow;
   markSigned?: (writeup: ConductWriteupRow) => void;
 }) {
+  const signer = writeup.signedByName;
+  if (writeup.signedOn && signer)
+    return (
+      <span
+        className="conduct-signed"
+        tabIndex={0}
+        aria-label={`Signed ${printedDay(writeup.signedOn)}, marked by ${signer}`}
+      >
+        <SignedState writeup={writeup} />
+        <PersonAvatar name={signer} className="conduct-signer" />
+        <span className="conduct-signer-card" role="tooltip">
+          Marked by {signer}
+        </span>
+      </span>
+    );
   if (writeup.signedOn || !markSigned) return <SignedState writeup={writeup} />;
   return (
     <button

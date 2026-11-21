@@ -24,6 +24,7 @@ fn writeup(
         written_on: on.into(),
         supervisor_name: "Supervisor".into(),
         signed_on: None,
+        signed_by_name: None,
         has_copy: false,
         revision: 1,
     }

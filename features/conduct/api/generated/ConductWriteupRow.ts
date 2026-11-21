@@ -27,6 +27,10 @@ writtenOn: string, supervisorName: string,
  */
 signedOn: string | null,
 /**
+ * Who marked it signed.
+ */
+signedByName: string | null,
+/**
  * Whether a photo of the signed paper is kept.
  */
 hasCopy: boolean,

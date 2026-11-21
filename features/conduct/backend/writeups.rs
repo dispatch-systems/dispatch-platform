@@ -23,7 +23,7 @@ const SELECT: &str = "SELECT w.*, EXISTS(SELECT 1 FROM conduct_copies k WHERE k.
      FROM conduct_writeups w";
 
 pub(crate) const ROWS: &str = "SELECT w.id,w.person,w.person_name,w.category_id,w.tier,w.final_kind,\
-     w.suspension,w.written_on,w.supervisor_name,w.signed_on,w.revision,w.created_at,\
+     w.suspension,w.written_on,w.supervisor_name,w.signed_on,w.signed_by_name,w.revision,w.created_at,\
      EXISTS(SELECT 1 FROM conduct_copies k WHERE k.writeup_id=w.id) has_copy FROM conduct_writeups w";
 
 /// Every writeup, the newest first.

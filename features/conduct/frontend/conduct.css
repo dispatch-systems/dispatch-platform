@@ -200,6 +200,53 @@
   color: var(--success);
 }
 
+/* Who marked a writeup signed: by their initials in a list, named on hover or focus */
+.conduct-signed {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+.conduct-signer {
+  width: 22px;
+  height: 22px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.conduct-signer-card {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  font-size: 12.5px;
+  white-space: nowrap;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}
+.conduct-signed:hover .conduct-signer-card,
+.conduct-signed:focus-visible .conduct-signer-card {
+  display: block;
+}
+.conduct-marked-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.conduct-marked-by-name {
+  color: var(--foreground);
+}
+
 /* Someone */
 .conduct-person {
   display: inline-flex;
@@ -244,8 +291,9 @@
 }
 .conduct-subtitle {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
 }
 
 /* What a writeup or its form does most, among its heading's other actions. On a phone they

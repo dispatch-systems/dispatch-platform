@@ -5,11 +5,7 @@ import type { ConductTier } from "./ConductTier";
 /**
  * A writeup whole, as it prints.
  */
-export type ConductWriteup = { statement: string, prior: string, plan: string,
-/**
- * Who marked it signed.
- */
-signedByName: string | null, id: string,
+export type ConductWriteup = { statement: string, prior: string, plan: string, id: string,
 /**
  * Who it's for, by the code the directory knows them by now.
  */
@@ -30,6 +26,10 @@ writtenOn: string, supervisorName: string,
  * The day the person signed it, YYYY-MM-DD: none until someone marks it signed.
  */
 signedOn: string | null,
+/**
+ * Who marked it signed.
+ */
+signedByName: string | null,
 /**
  * Whether a photo of the signed paper is kept.
  */
