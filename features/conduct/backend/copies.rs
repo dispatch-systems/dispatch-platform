@@ -83,14 +83,14 @@ pub(crate) fn keep_requested(
 fn keepable(db: &Db, c: &Context, id: &str, revision: i64) -> Result<ConductWriteup> {
     let writeup = writeups::one(db, id)?;
     ensure(
-        writeup.row.signed_on.is_none() || c.can("conduct.manage"),
-        "permission_denied",
-        403,
-    )?;
-    ensure(
         writeup.row.revision == revision,
         "conduct_writeup_changed",
         409,
+    )?;
+    ensure(
+        writeup.row.signed_on.is_none() || c.can("conduct.manage"),
+        "permission_denied",
+        403,
     )?;
     Ok(writeup)
 }
