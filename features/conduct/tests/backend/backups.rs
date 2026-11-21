@@ -320,8 +320,10 @@ async fn a_replaced_photo_is_saved_in_its_place_then_the_copy_before_it_taken_ba
     assert_eq!(sizes(&dsp), [verbal(PHOTO.len()), verbal(RETAKEN.len())]);
     back_up(&state, &dsp, 3000).await.unwrap();
     assert_eq!(sizes(&dsp), [verbal(RETAKEN.len())]);
-    let casey = Author::Named("Casey Supervisor".into());
-    assert_eq!(support::removed(&dsp), [casey.clone()]);
+    assert_eq!(
+        support::removed(&dsp),
+        [Author::Named("Casey Supervisor".into())]
+    );
 
     // One that can't be taken back is tried again a minute on.
     let at = replaced(&state, &c, &id, at, &PHOTO).await;
