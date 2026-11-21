@@ -1,5 +1,6 @@
-//! The DSP's writeups: written, changed until signed, marked signed, and deleted. A signed
-//! writeup never changes again, and only a member who manages Conduct deletes one.
+//! The DSP's writeups: written, changed until signed, marked signed with a photo of the paper
+//! signed, and deleted. A signed writeup's words never change again, and only a member who
+//! manages Conduct replaces its photo or deletes it.
 use super::categories;
 use crate::api::types::{ConductWriteup, ConductWriteupRow, WriteupInput};
 use dispatch_core::{
@@ -138,8 +139,8 @@ pub(crate) fn change(
     })
 }
 
-/// Marks the writeup `id` signed on `signed_on`, a day from its own to `today`: it never
-/// changes again.
+/// Marks the writeup `id` signed on `signed_on`, a day from its own to `today`, once a photo of
+/// its signed paper is kept: its words never change again.
 pub(crate) fn sign(
     store: &Store,
     c: &Context,
@@ -184,6 +185,7 @@ pub(crate) fn sign_requested(
             "conduct_signed_date",
             400,
         )?;
+        ensure(writeup.row.has_copy, "conduct_copy_required", 400)?;
         db.exec(
             "UPDATE conduct_writeups SET signed_on=?,signed_by_name=?,signed_at=?,\
              revision=revision+1 WHERE id=?",
@@ -203,6 +205,10 @@ pub(crate) fn delete(store: &Store, c: &Context, id: &str, revision: i64) -> Res
         let writeup = deletable(&db, c, id, revision)?;
         db.exec("DELETE FROM conduct_requests WHERE writeup_id=?", [id])?;
         db.exec("DELETE FROM conduct_backups WHERE writeup_id=?", [id])?;
+        db.exec(
+            "DELETE FROM conduct_backup_replaced WHERE writeup_id=?",
+            [id],
+        )?;
         db.exec("DELETE FROM conduct_copies WHERE writeup_id=?", [id])?;
         db.exec("DELETE FROM conduct_writeups WHERE id=?", [id])?;
         // By its id alone: the activity log keeps no one's disciplinary record.

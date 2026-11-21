@@ -113,7 +113,7 @@ fn writing(category: &str, tier: ConductTier, revision: Option<i64>) -> WriteupI
 }
 
 #[test]
-fn a_writeup_changes_until_it_is_signed_then_only_its_manager_deletes_it() {
+fn a_writeup_is_signed_with_a_photo_then_only_its_manager_replaces_that_or_deletes_it() {
     let (_root, store, c) = ready();
     let id = add(
         &store,
@@ -169,6 +169,13 @@ fn a_writeup_changes_until_it_is_signed_then_only_its_manager_deletes_it() {
             "conduct_signed_date"
         );
     }
+    // Nor without a photo of the paper signed.
+    assert_eq!(
+        sign(&store, &c, &id, 3, "2026-11-03", TODAY)
+            .unwrap_err()
+            .code,
+        "conduct_copy_required"
+    );
     // A photo kept moves the writeup on: a sign that read it before is refused, so nobody signs
     // for a photo someone else chose.
     copies::keep(&store, &c, &id, 3, &[0xff, 0xd8, 0xff, 0xe0]).unwrap();
@@ -183,7 +190,7 @@ fn a_writeup_changes_until_it_is_signed_then_only_its_manager_deletes_it() {
     assert_eq!(signed.row.signed_on.as_deref(), Some("2026-11-03"));
     assert_eq!(signed.signed_by_name.as_deref(), Some("Casey Supervisor"));
 
-    // Signed, it stays as it is: its words, its photo and the writeup itself.
+    // Signed, its words stay as they are.
     let locked = change(
         &store,
         &c,
@@ -193,31 +200,38 @@ fn a_writeup_changes_until_it_is_signed_then_only_its_manager_deletes_it() {
         TODAY,
     );
     assert_eq!(locked.unwrap_err().code, "conduct_writeup_signed");
-    assert_eq!(
-        copies::keep(&store, &c, &id, 5, &[0xff, 0xd8, 0xff, 0xe1])
-            .unwrap_err()
-            .code,
-        "conduct_writeup_signed"
-    );
-    assert_eq!(
-        copies::read(&store, &c.dsp.id, &id).unwrap().1,
-        [0xff, 0xd8, 0xff, 0xe0]
-    );
 
-    // Nor is it deleted by a member who only uses Conduct: one who manages it deletes it, its
-    // photo with it.
+    // Its photo is replaced only by a member who manages Conduct, and the activity log notes it.
     let mut member = c.clone();
     member.owner = false;
     member.permissions = vec!["conduct.use".into()];
     assert_eq!(
-        delete(&store, &member, &id, 5).unwrap_err().code,
+        copies::keep(&store, &member, &id, 5, &[0xff, 0xd8, 0xff, 0xe1])
+            .unwrap_err()
+            .code,
+        "permission_denied"
+    );
+    copies::keep(&store, &c, &id, 5, &[0xff, 0xd8, 0xff, 0xe1]).unwrap();
+    assert_eq!(
+        copies::read(&store, &c.dsp.id, &id).unwrap().1,
+        [0xff, 0xd8, 0xff, 0xe1]
+    );
+    assert_eq!(
+        testing::audit_actions(&store, &c.dsp.id, "conduct."),
+        ["conduct.copy_replaced"]
+    );
+
+    // Nor is it deleted by a member who only uses Conduct: one who manages it deletes it, its
+    // photo with it.
+    assert_eq!(
+        delete(&store, &member, &id, 6).unwrap_err().code,
         "permission_denied"
     );
     assert_eq!(
-        delete(&store, &c, &id, 4).unwrap_err().code,
+        delete(&store, &c, &id, 5).unwrap_err().code,
         "conduct_writeup_changed"
     );
-    delete(&store, &c, &id, 5).unwrap();
+    delete(&store, &c, &id, 6).unwrap();
     assert_eq!(
         read(&store, &c.dsp.id, &id).unwrap_err().code,
         "conduct_writeup_not_found"

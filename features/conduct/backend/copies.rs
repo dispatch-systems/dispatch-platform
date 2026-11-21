@@ -1,10 +1,11 @@
 //! Photos of writeups' signed paper, kept in the DSP's own database with the rest of its data.
 //! The page shrinks a photo before sending it, so each is small.
-use super::writeups;
+use super::{backups, writeups};
+use crate::api::types::ConductWriteup;
 use dispatch_core::{
     Error, Result,
     accounts::Context,
-    db::{Store, iso},
+    db::{Db, Store, iso},
     ensure,
 };
 use rusqlite::params;
@@ -13,10 +14,12 @@ use rusqlite::params;
 pub(crate) const LIMIT: u64 = 8 * 1024 * 1024;
 
 /// Keeps `bytes` as the photo of the writeup `id`'s signed paper, in place of one kept before,
-/// while the writeup is unsigned and still as read at `revision`: the paper photographed is the
-/// notice as it reads. Keeping one moves the writeup to its next revision, which signing it
-/// names, so a sign that read it before another photo was kept is refused. A signed writeup's
-/// photo stays, and a change to the writeup drops it.
+/// while the writeup is still as read at `revision`. Until it's signed, anyone who uses Conduct
+/// keeps one, of the paper the notice prints as now, and a change to the notice drops it. Once
+/// it's signed, only a member who manages Conduct keeps one, noted in the activity log, and the
+/// copy backed up of the photo before is taken back once the new one is saved. Keeping one
+/// moves the writeup to its next revision, which signing it names, so a sign that read it
+/// before another photo was kept is refused.
 pub(crate) fn keep(
     store: &Store,
     c: &Context,
@@ -45,12 +48,12 @@ pub(crate) fn keep_requested(
         payload: &digest,
     };
     let db = store.dsp(&c.dsp.id)?;
-    db.transaction(|| {
+    super::logged(store, &db, || {
         if let Some(result) = operation.previous(&db, c)? {
-            writeups::unsigned(&db, id, Some(result))?;
+            keepable(&db, c, id, result)?;
             return Ok(());
         }
-        writeups::unsigned(&db, id, Some(revision))?;
+        let writeup = keepable(&db, c, id, revision)?;
         db.exec(
             "INSERT INTO conduct_copies (writeup_id,media_type,bytes,added_by_name,added_at) \
              VALUES (?,?,?,?,?) ON CONFLICT(writeup_id) DO UPDATE SET media_type=excluded.media_type,\
@@ -62,8 +65,34 @@ pub(crate) fn keep_requested(
             params![iso(), id],
         )?;
         operation.record(&db, c, revision + 1)?;
-        Ok(())
+        if writeup.row.signed_on.is_none() {
+            return Ok(());
+        }
+        backups::replaced(&db, id)?;
+        // By its id alone: the activity log keeps no one's disciplinary record.
+        if writeup.row.has_copy {
+            c.audit(store, "conduct.copy_replaced", id)
+        } else {
+            c.audit(store, "conduct.copy_added", id)
+        }
     })
+}
+
+/// The writeup `id`, while it's still as read at `revision` and the member `c` may keep a photo
+/// of its paper: anyone who uses Conduct until it's signed, then only who manages it.
+fn keepable(db: &Db, c: &Context, id: &str, revision: i64) -> Result<ConductWriteup> {
+    let writeup = writeups::one(db, id)?;
+    ensure(
+        writeup.row.signed_on.is_none() || c.can("conduct.manage"),
+        "permission_denied",
+        403,
+    )?;
+    ensure(
+        writeup.row.revision == revision,
+        "conduct_writeup_changed",
+        409,
+    )?;
+    Ok(writeup)
 }
 
 /// The photo of the writeup `id`'s signed paper: its media type and bytes.

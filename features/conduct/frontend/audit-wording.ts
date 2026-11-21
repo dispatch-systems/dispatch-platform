@@ -1,7 +1,8 @@
 import type { AuditPhrases, AuditWording } from '../../../core/shell/frontend/runtime/slots.js';
 
 // How Conduct's events read in the activity log: the category each change was to, and the
-// writeup deleted, by its id alone, so the log keeps no one's disciplinary record.
+// writeup deleted, or whose signed photo changed, by its id alone, so the log keeps no one's
+// disciplinary record.
 
 const phrases: AuditPhrases = {
   'conduct.category_added': (e, { strong }) => ['added the Conduct category ', strong(e.detail)],
@@ -18,6 +19,14 @@ const phrases: AuditPhrases = {
     strong(e.detail),
   ],
   'conduct.writeup_deleted': (e, { strong }) => ['deleted the Conduct writeup ', strong(e.detail)],
+  'conduct.copy_added': (e, { strong }) => [
+    'added a photo to the signed Conduct writeup ',
+    strong(e.detail),
+  ],
+  'conduct.copy_replaced': (e, { strong }) => [
+    'replaced the photo of the signed Conduct writeup ',
+    strong(e.detail),
+  ],
 };
 
 // Each sentence names its event's detail itself.

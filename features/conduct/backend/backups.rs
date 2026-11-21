@@ -4,14 +4,15 @@
 //! the photos not yet saved are tried, so marking a writeup signed never waits on it; one whose
 //! try fails waits longer each time, and is tried for as long as it isn't saved. A folder is
 //! known by its ID, so one renamed or moved among the DSP's files still takes its photos, and
-//! one no longer there is made again. The copy saved is never changed, and is taken back only
-//! as its writeup is deleted, while the DSP still backs its copies up.
+//! one no longer there is made again. A copy saved is never changed: a photo replaced is saved
+//! again, and the copy of the one before it taken back once it is. Otherwise a copy is taken
+//! back only as its writeup is deleted, while the DSP still backs its copies up.
 use super::{DOMAIN, copies, settings, writeups};
 use crate::api::types::{ConductBackup, ConductTier};
 use dispatch_core::{
     Code, Error, Result, State,
     accounts::Context,
-    db::{FromRow, Row, Store, now},
+    db::{Db, FromRow, Row, Store, now},
     ensure,
     foundation::observability,
     manifest::{Maintenance, Upkeep, people},
@@ -82,6 +83,8 @@ struct Photo {
     written_on: String,
     signed_by: String,
     attempts: i64,
+    /// Its writeup's revision as read, which a photo kept in its place moves on.
+    revision: i64,
 }
 impl FromRow for Photo {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -94,6 +97,24 @@ impl FromRow for Photo {
             tier: row.get("tier")?,
             written_on: row.get("written_on")?,
             signed_by: row.get("signed_by_name")?,
+            attempts: row.get("attempts")?,
+            revision: row.get("revision")?,
+        })
+    }
+}
+
+/// The copy saved of a photo since replaced, to take back: its ID where it's saved, and who
+/// kept the photo in its place.
+struct Replaced {
+    saved: String,
+    by: String,
+    attempts: i64,
+}
+impl FromRow for Replaced {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            saved: row.get("saved_id")?,
+            by: row.get("added_by_name")?,
             attempts: row.get("attempts")?,
         })
     }
@@ -122,7 +143,7 @@ fn due(store: &Store, state: &State, dsp: &str, at: i64, most: usize) -> Result<
     let mut due: Vec<Photo> = store.dsp(dsp)?.query_as(
         &format!(
             "SELECT w.id,w.person,w.person_name,w.category_id,c.name category_name,w.tier,\
-             w.written_on,w.signed_by_name,COALESCE(b.attempts,0) attempts {UNSAVED} \
+             w.written_on,w.signed_by_name,COALESCE(b.attempts,0) attempts,w.revision {UNSAVED} \
              AND COALESCE(b.due_at,0)<=? ORDER BY COALESCE(b.due_at,0),w.signed_at,w.id LIMIT ?"
         ),
         params![at, most as i64],
@@ -137,10 +158,35 @@ fn due(store: &Store, state: &State, dsp: &str, at: i64, most: usize) -> Result<
     Ok(due)
 }
 
-/// Saves the DSP's photos due by `at`, in milliseconds, while it backs them up and what keeps
-/// its files can: once it no longer does, as the backup or Conduct switched off, nothing more is
-/// sent, in a pass under way too. After a failure the rest wait for the next pass, as whatever
-/// failed one fails the others.
+/// The DSP's copies of photos since replaced that are due a try by `at`, `most` at most: those
+/// whose writeup's photo now is saved.
+fn replaced_due(store: &Store, dsp: &str, at: i64, most: usize) -> Result<Vec<Replaced>> {
+    store.dsp(dsp)?.query_as(
+        "SELECT r.saved_id,k.added_by_name,r.attempts FROM conduct_backup_replaced r \
+         JOIN conduct_backups b ON b.writeup_id=r.writeup_id AND b.saved_id IS NOT NULL \
+         JOIN conduct_copies k ON k.writeup_id=r.writeup_id \
+         WHERE r.due_at<=? ORDER BY r.due_at,r.saved_id LIMIT ?",
+        params![at, most as i64],
+    )
+}
+
+/// Notes that the photo of the signed writeup `id` was replaced, in the DSP's database `db`:
+/// its new photo waits to be saved, and the copy saved of the one before, if any, to be taken
+/// back once it is.
+pub(crate) fn replaced(db: &Db, id: &str) -> Result<()> {
+    db.exec(
+        "INSERT OR IGNORE INTO conduct_backup_replaced (saved_id,writeup_id) \
+         SELECT saved_id,writeup_id FROM conduct_backups WHERE writeup_id=? AND saved_id IS NOT NULL",
+        [id],
+    )?;
+    db.exec("DELETE FROM conduct_backups WHERE writeup_id=?", [id])?;
+    Ok(())
+}
+
+/// Saves the DSP's photos due by `at`, in milliseconds, then takes back the copies of those
+/// replaced, while it backs them up and what keeps its files can: once it no longer does, as
+/// the backup or Conduct switched off, nothing more is sent, in a pass under way too. After a
+/// failure the rest wait for the next pass, as whatever failed one fails the others.
 pub(crate) async fn back_up(state: &Arc<State>, dsp: &str, at: i64) -> Result<()> {
     let (of, with) = (dsp.to_owned(), state.clone());
     let found = state
@@ -151,18 +197,37 @@ pub(crate) async fn back_up(state: &Arc<State>, dsp: &str, at: i64) -> Result<()
             let Some(files) = files::for_dsp(db, &of)? else {
                 return Ok(None);
             };
-            Ok(Some((files, due(db, &with, &of, at, BATCH)?)))
+            Ok(Some((
+                files,
+                due(db, &with, &of, at, BATCH)?,
+                replaced_due(db, &of, at, BATCH)?,
+            )))
         })
         .await?;
-    let Some((files, due)) = found else {
+    let Some((files, due, replaced)) = found else {
         return Ok(());
     };
-    if due.is_empty() || files.unready(state, dsp).await?.is_some() {
+    if (due.is_empty() && replaced.is_empty()) || files.unready(state, dsp).await?.is_some() {
         return Ok(());
     }
+    if save_due(state, files, dsp, due, at).await? {
+        take_back_replaced(state, files, dsp, replaced, at).await?;
+    }
+    Ok(())
+}
+
+/// Saves `due`, as `back_up` does: false once one failed or the backup stopped, leaving the
+/// rest for the next pass.
+async fn save_due(
+    state: &Arc<State>,
+    files: &'static dyn Files,
+    dsp: &str,
+    due: Vec<Photo>,
+    at: i64,
+) -> Result<bool> {
     for photo in due {
         let outcome = match save(state, files, dsp, &photo).await {
-            Err(error) if error.is(STOPPED) => return Ok(()),
+            Err(error) if error.is(STOPPED) => return Ok(false),
             outcome => outcome.map_err(|error| error.code),
         };
         let stopped = outcome.is_err();
@@ -178,10 +243,63 @@ pub(crate) async fn back_up(state: &Arc<State>, dsp: &str, at: i64) -> Result<()
             files.remove(state, dsp, saved, &Author::Named(by)).await?;
         }
         if stopped {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Takes back `replaced` from where `files` keeps the DSP's, as whoever kept the photo in each
+/// one's place, the first that fails waiting longer each time, and the rest for the next pass.
+async fn take_back_replaced(
+    state: &Arc<State>,
+    files: &'static dyn Files,
+    dsp: &str,
+    replaced: Vec<Replaced>,
+    at: i64,
+) -> Result<()> {
+    for old in replaced {
+        let of = dsp.to_owned();
+        match state.read(move |db| still_chosen(db, &of)).await {
+            Err(error) if error.is(STOPPED) => return Ok(()),
+            checked => checked?,
+        }
+        let outcome = files
+            .remove(state, dsp, &old.saved, &Author::Named(old.by.clone()))
+            .await
+            .map(drop)
+            .map_err(|error| error.code);
+        if let Err(code) = &outcome {
+            failed(Some(dsp), code);
+        }
+        let (of, failure) = (dsp.to_owned(), outcome.clone().err());
+        state
+            .run_serving(dsp, DOMAIN, move |db| {
+                let db = db.dsp(&of)?;
+                match failure {
+                    None => db.exec(
+                        "DELETE FROM conduct_backup_replaced WHERE saved_id=?",
+                        [&old.saved],
+                    ),
+                    Some(code) => db.exec(
+                        "UPDATE conduct_backup_replaced SET attempts=attempts+1,due_at=?,reason=? \
+                         WHERE saved_id=?",
+                        params![at + wait(old.attempts), code, old.saved],
+                    ),
+                }
+                .map(drop)
+            })
+            .await?;
+        if outcome.is_err() {
             break;
         }
     }
     Ok(())
+}
+
+/// How long something tried `attempts` times before waits after failing again, in milliseconds.
+fn wait(attempts: i64) -> i64 {
+    RETRIES_MS[(attempts.max(0) as usize).min(RETRIES_MS.len() - 1)]
 }
 
 /// Saves `photo` in its category's folder, inside its person's: its ID where it's saved.
@@ -315,7 +433,9 @@ impl Place<'_> {
 }
 
 /// Keeps what trying `photo` at `at` came to: where it was saved, or the code of why it wasn't,
-/// with when it's due its next try. False, keeping nothing, once its writeup is deleted.
+/// with when it's due its next try. Once another photo was kept in its place, a copy saved of
+/// it is taken back as a replaced one's is, and the new photo waits as it was. False, keeping
+/// nothing, once its writeup is deleted.
 fn finish(
     store: &Store,
     dsp: &str,
@@ -325,12 +445,21 @@ fn finish(
 ) -> Result<bool> {
     let db = store.dsp(dsp)?;
     db.transaction(|| {
-        let there = db.one_as::<(i64,)>(
-            "SELECT 1 FROM conduct_writeups WHERE id=?",
+        let Some((revision,)) = db.one_as::<(i64,)>(
+            "SELECT revision FROM conduct_writeups WHERE id=?",
             [&photo.writeup],
-        )?;
-        if there.is_none() {
+        )?
+        else {
             return Ok(false);
+        };
+        if revision != photo.revision {
+            if let Ok(saved) = outcome {
+                db.exec(
+                    "INSERT OR IGNORE INTO conduct_backup_replaced (saved_id,writeup_id) VALUES (?,?)",
+                    params![saved, photo.writeup],
+                )?;
+            }
+            return Ok(true);
         }
         match outcome {
             Ok(saved) => db.exec(
@@ -340,12 +469,11 @@ fn finish(
                 params![photo.writeup, saved, at],
             ),
             Err(code) => {
-                let wait = RETRIES_MS[(photo.attempts.max(0) as usize).min(RETRIES_MS.len() - 1)];
                 db.exec(
                     "INSERT INTO conduct_backups (writeup_id,attempts,tried_at,due_at,reason) \
                      VALUES (?,1,?,?,?) ON CONFLICT(writeup_id) DO UPDATE SET attempts=attempts+1,\
                      tried_at=excluded.tried_at,due_at=excluded.due_at,reason=excluded.reason",
-                    params![photo.writeup, at, at + wait, code],
+                    params![photo.writeup, at, at + wait(photo.attempts), code],
                 )
             }
         }?;
@@ -357,15 +485,15 @@ fn finish(
 /// keeps its files.
 const NOT_REMOVED: &str = "conduct_copy_not_removed";
 
-/// Where the copy of the writeup `id` is saved, with what keeps it there, for the member `c`
-/// deleting the writeup as read at `revision`: none while the DSP doesn't back its copies up,
-/// or its copy isn't saved.
+/// Where the copies of the writeup `id` are saved, its photo's and those of photos it replaced
+/// not yet taken back, with what keeps them there, for the member `c` deleting the writeup as
+/// read at `revision`: none while the DSP doesn't back its copies up.
 pub(crate) fn saved(
     store: &Store,
     c: &Context,
     id: &str,
     revision: i64,
-) -> Result<Option<(&'static dyn Files, String)>> {
+) -> Result<Option<(&'static dyn Files, Vec<String>)>> {
     let dsp = &c.dsp.id;
     let db = store.dsp(dsp)?;
     writeups::deletable(&db, c, id, revision)?;
@@ -375,16 +503,20 @@ pub(crate) fn saved(
     let Some(files) = files::for_dsp(store, dsp)? else {
         return Ok(None);
     };
-    let saved = db.one_as::<(String,)>(
-        "SELECT saved_id FROM conduct_backups WHERE writeup_id=? AND saved_id IS NOT NULL",
-        [id],
+    let saved = db.query_as::<(String,)>(
+        "SELECT saved_id FROM conduct_backups WHERE writeup_id=? AND saved_id IS NOT NULL \
+         UNION SELECT saved_id FROM conduct_backup_replaced WHERE writeup_id=?",
+        [id, id],
     )?;
-    Ok(saved.map(|(saved,)| (files, saved)))
+    Ok(Some((
+        files,
+        saved.into_iter().map(|(saved,)| saved).collect(),
+    )))
 }
 
 /// Takes the copy `saved` back from where `files` keeps the DSP's, as the member `c` deleting
 /// its writeup; one already gone from there is taken back. Refused, as `NOT_REMOVED`, while
-/// it can't be: the writeup stays until its copy goes.
+/// it can't be: the writeup stays until its copies go.
 pub(crate) async fn take_back(
     state: &Arc<State>,
     c: &Context,

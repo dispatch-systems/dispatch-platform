@@ -36,6 +36,7 @@ const errors: Readonly<Record<string, string>> = {
   conduct_suspension_required: 'Enter how long the suspension is.',
   conduct_section_required: 'Fill in every section.',
   conduct_copy_not_picture: 'Choose a photo of the signed paper.',
+  conduct_copy_required: 'Add a photo of the signed writeup.',
   conduct_request_conflict: 'This attempt already saved different changes. Open the writeup again.',
 };
 const api = wordedApi(errors);
