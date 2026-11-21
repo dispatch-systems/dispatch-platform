@@ -41,9 +41,7 @@ export function PhotoPicker({
     <div className="conduct-field">
       <div className="conduct-photo-picks">
         <label className="conduct-photo">
-          <span className="conduct-label">
-            Signed copy <span className="muted">(optional)</span>
-          </span>
+          <span className="conduct-label">Signed copy</span>
           <span className="conduct-photo-pick">
             <ImagePlus size={20} />
             {photo ? (

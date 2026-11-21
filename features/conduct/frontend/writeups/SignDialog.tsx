@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { DateField, ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
@@ -7,12 +7,11 @@ import { keepCopy, signWriteup } from '../../api/client.js';
 import { Person, categoryName, personOf } from '../parts.js';
 import { finalNote, printedDay, tierShort } from '../tiers.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
-import { useLeaveGuard } from '../../../../core/shell/frontend/runtime/leave.js';
 import { PhotoPicker, type PickedPhoto } from './PhotoPicker.js';
 import { SignedCopy } from './SignedCopy.js';
-import { shrunk } from './photo.js';
+import { usePhotoSave } from './usePhotoSave.js';
 
-/** Marks a writeup signed on the day its paper was, with a photo of the paper if there is one. */
+/** Marks a writeup signed on the day its paper was, with a photo of the paper signed. */
 export function SignDialog({
   overview,
   writeup,
@@ -30,60 +29,22 @@ export function SignDialog({
   const [day, setDay] = useState(overview.today);
   const [photo, setPhoto] = useState<PickedPhoto>();
   const [request] = useState(randomId);
-  const preparation = useRef<AbortController | null>(null);
-  const committing = useRef(false);
-  const prepared = useRef<{ photo: PickedPhoto; bytes: Blob; request: string } | null>(null);
-  const guard = useRef<((then: () => void) => void) | null>(null);
-  useEffect(() => {
-    guard.current = (then) => {
-      if (!committing.current) {
-        preparation.current?.abort();
-        then();
-      }
-    };
-  });
-  useLeaveGuard(guard);
-  useEffect(() => () => preparation.current?.abort(), []);
-  const cancel = () => {
-    if (!committing.current) {
-      preparation.current?.abort();
-      close();
-    }
-  };
+  const { phase, cancel, save } = usePhotoSave(close);
   const [attempted, setAttempted] = useState(false);
-  const [phase, setPhase] = useState<'idle' | 'preparing' | 'saving'>('idle');
   // The photo this dialog kept, and the revision keeping it moved the writeup to.
   const [kept, setKept] = useState<{ photo: PickedPhoto; revision: number }>();
   const sign = useAction(
-    async () => {
-      const stop = new AbortController();
-      preparation.current = stop;
-      setPhase('preparing');
-      try {
-        let revision = kept?.revision ?? notice.revision;
-        if (photo && photo !== kept?.photo && prepared.current?.photo !== photo) {
-          prepared.current = {
-            photo,
-            bytes: await shrunk(photo.file, stop.signal, photo.turns),
-            request: randomId(),
-          };
-        }
-        stop.signal.throwIfAborted();
+    () =>
+      save(photo === kept?.photo ? undefined : photo, async (prepared) => {
         setAttempted(true);
-        committing.current = true;
-        setPhase('saving');
-        if (photo && photo !== kept?.photo && prepared.current) {
-          revision = (
-            await keepCopy(notice.id, revision, prepared.current.bytes, prepared.current.request)
-          ).writeup.revision;
-          setKept({ photo, revision });
+        let revision = kept?.revision ?? notice.revision;
+        if (prepared) {
+          revision = (await keepCopy(notice.id, revision, prepared.bytes, prepared.request)).writeup
+            .revision;
+          setKept({ photo: prepared.photo, revision });
         }
         signed(await signWriteup(notice.id, day, revision, request));
-      } finally {
-        committing.current = false;
-        setPhase('idle');
-      }
-    },
+      }),
     { inline: true, success: 'Marked signed' },
   );
   const note = notice.tier === 'final' ? finalNote(notice.finalKind, notice.suspension) : '';
@@ -120,7 +81,7 @@ export function SignDialog({
           <button
             type="button"
             className="primary"
-            disabled={sign.busy}
+            disabled={sign.busy || (!photo && !notice.hasCopy)}
             onClick={() => void sign.run()}
           >
             <Check size={16} />

@@ -414,6 +414,7 @@
     "tables": {
       "dsp": [
         "conduct_backup_folders",
+        "conduct_backup_replaced",
         "conduct_backups",
         "conduct_categories",
         "conduct_copies",

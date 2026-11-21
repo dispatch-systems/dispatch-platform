@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, PenLine, Pencil, Printer, Trash2 } from 'lucide-react';
+import { ChevronLeft, ImagePlus, PenLine, Pencil, Printer, Trash2 } from 'lucide-react';
 import { ConfirmDialog, DataState, ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import type { ConductOverview, ConductWriteup } from '../../api/index.js';
@@ -8,13 +8,15 @@ import { NoticePaper } from '../notice/NoticePaper.js';
 import { SignedCopy } from './SignedCopy.js';
 import { usePrintNotice } from '../notice/usePrintNotice.js';
 import { SignedState, categoryName, personOf } from '../parts.js';
+import { PhotoDialog } from './PhotoDialog.js';
 import { SignDialog } from './SignDialog.js';
 import { WriteupText } from './WriteupText.js';
 
 /**
  * One writeup as it prints: printed, changed or deleted until it's signed, then only printed,
- * or deleted by someone who manages Conduct (`manages`). On a phone its words are text above
- * the page, Print and Mark signed stay at the foot of the screen, and Delete ends the page.
+ * or its photo replaced or the writeup deleted by someone who manages Conduct (`manages`). On a
+ * phone its words are text above the page, its photo, Print and Mark signed stay at the foot of
+ * the screen, and Delete ends the page.
  */
 export function WriteupView({
   overview,
@@ -38,6 +40,8 @@ export function WriteupView({
     const fresh = await readWriteup(id);
     if (!fresh.signedOn) setSigning(fresh);
   });
+  const [photographing, setPhotographing] = useState<ConductWriteup>();
+  const beginPhoto = useAction(async () => setPhotographing(await readWriteup(id)));
   const [deleting, setDeleting] = useState(false);
   const remove = useAction(
     async (revision: number) => {
@@ -83,6 +87,16 @@ export function WriteupView({
                     </button>
                   )}
                   <div className="conduct-actions-main">
+                    {writeup.signedOn && manages && (
+                      <button
+                        type="button"
+                        disabled={beginPhoto.busy}
+                        onClick={() => void beginPhoto.run()}
+                      >
+                        <ImagePlus size={16} />
+                        {writeup.hasCopy ? 'Replace photo' : 'Add photo'}
+                      </button>
+                    )}
                     <button type="button" onClick={() => print(writeup)}>
                       <Printer size={16} />
                       Print
@@ -117,6 +131,16 @@ export function WriteupView({
                   signed={() => {
                     take();
                     setSigning(undefined);
+                  }}
+                />
+              )}
+              {photographing && (
+                <PhotoDialog
+                  writeup={photographing}
+                  close={() => setPhotographing(undefined)}
+                  kept={() => {
+                    take();
+                    setPhotographing(undefined);
                   }}
                 />
               )}

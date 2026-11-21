@@ -1,7 +1,7 @@
 //! Conduct's endpoints, each registered with its path and access. The server checks the
 //! session and the permission before a handler runs. Writing up, changing, signing and
-//! deleting writeups is `conduct.use`, deleting a signed one `conduct.manage`; categories and
-//! how the backup is going are `conduct.manage`.
+//! deleting writeups is `conduct.use`, replacing a signed one's photo or deleting it
+//! `conduct.manage`; categories and how the backup is going are `conduct.manage`.
 use super::types::{CategoryInput, ConductSaved, WriteupInput};
 use crate::backend::{DOMAIN, backups, categories, copies, history, overview, writeups};
 use dispatch_core::{
@@ -193,9 +193,9 @@ fn writeup_sign(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     }
     Reply::of(&saved(db, c, id)?)
 }
-/// Deletes a writeup, a signed one only for a member who manages Conduct. Its copy where the
-/// DSP keeps its files goes first, outside the database, while the DSP backs its copies up:
-/// the writeup stays until that copy is gone.
+/// Deletes a writeup, a signed one only for a member who manages Conduct. Its copies where the
+/// DSP keeps its files go first, outside the database, while the DSP backs its copies up: the
+/// writeup stays until they're gone.
 async fn writeup_delete(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     v::fields(&input.body, &["revision"])?;
     let revision = v::integer(&input.body, "revision", 1, i64::MAX)?;
@@ -208,7 +208,9 @@ async fn writeup_delete(state: Arc<State>, input: Input, access: Dsp) -> Result<
         })
         .await?;
     if let Some((files, saved)) = copy {
-        backups::take_back(&state, &c, files, &saved).await?;
+        for saved in &saved {
+            backups::take_back(&state, &c, files, saved).await?;
+        }
     }
     let ran = state.clone();
     state

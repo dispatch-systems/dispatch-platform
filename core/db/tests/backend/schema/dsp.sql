@@ -27,6 +27,7 @@ CREATE TABLE communications_slack_origins ( conversation_id TEXT NOT NULL,genera
 CREATE TABLE communications_text_conversations ( id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('work', 'number')), source TEXT, driver_id TEXT, number TEXT, state TEXT NOT NULL DEFAULT 'responded' CHECK (state IN ('waiting', 'responded', 'done')), waiting_since INTEGER, last_at INTEGER, done_at INTEGER, done_by TEXT , line TEXT);
 CREATE TABLE communications_text_origins ( conversation_id TEXT NOT NULL,generation TEXT NOT NULL,at INTEGER NOT NULL,id TEXT NOT NULL, day_start INTEGER NOT NULL CHECK (day_start IN (0,1)), sender_present INTEGER NOT NULL CHECK (sender_present IN (0,1)), PRIMARY KEY (conversation_id,generation,at,id) ) WITHOUT ROWID;
 CREATE TABLE conduct_backup_folders ( person TEXT NOT NULL, category_id TEXT NOT NULL, folder_id TEXT NOT NULL, PRIMARY KEY (person, category_id) );
+CREATE TABLE conduct_backup_replaced ( saved_id TEXT PRIMARY KEY, writeup_id TEXT NOT NULL REFERENCES conduct_writeups(id) ON DELETE CASCADE, attempts INTEGER NOT NULL DEFAULT 0, due_at INTEGER NOT NULL DEFAULT 0, reason TEXT );
 CREATE TABLE conduct_backups ( writeup_id TEXT PRIMARY KEY REFERENCES conduct_writeups(id), saved_id TEXT, saved_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0, tried_at INTEGER, due_at INTEGER NOT NULL DEFAULT 0, reason TEXT );
 CREATE TABLE conduct_categories ( id TEXT PRIMARY KEY, name TEXT NOT NULL, start_tier TEXT NOT NULL CHECK (start_tier IN ('verbal', 'written', 'final')), step_kind TEXT CHECK (step_kind IN ('reduce', 'reset')), step_after INTEGER CHECK (step_after > 0), step_unit TEXT CHECK (step_unit IN ('days', 'weeks', 'months')), statement TEXT NOT NULL, prior TEXT NOT NULL, plan TEXT NOT NULL, position INTEGER NOT NULL, revision INTEGER NOT NULL DEFAULT 1, retired INTEGER NOT NULL DEFAULT 0 CHECK (retired IN (0, 1)), CHECK ((step_kind IS NULL) = (step_after IS NULL) AND (step_kind IS NULL) = (step_unit IS NULL)) );
 CREATE TABLE conduct_copies ( writeup_id TEXT PRIMARY KEY REFERENCES conduct_writeups(id), media_type TEXT NOT NULL, bytes BLOB NOT NULL, added_by_name TEXT NOT NULL, added_at TEXT NOT NULL );
@@ -107,6 +108,7 @@ CREATE INDEX communications_text_conversations_latest ON communications_text_con
 CREATE UNIQUE INDEX communications_text_conversations_lines ON communications_text_conversations (kind, number, ifnull(line, '')) WHERE driver_id IS NULL;
 CREATE INDEX communications_text_origins_days ON communications_text_origins(conversation_id,generation,at,id) WHERE day_start=1;
 CREATE INDEX communications_text_origins_senders ON communications_text_origins(conversation_id,generation,at,id) WHERE sender_present=1;
+CREATE INDEX conduct_backup_replaced_writeup ON conduct_backup_replaced(writeup_id);
 CREATE UNIQUE INDEX conduct_categories_name ON conduct_categories (name COLLATE NOCASE) WHERE retired = 0;
 CREATE INDEX conduct_requests_writeup ON conduct_requests(writeup_id);
 CREATE INDEX conduct_writeups_person ON conduct_writeups (person, category_id);

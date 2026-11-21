@@ -23,6 +23,24 @@ async function uniform(page: Page) {
 async function text(page: Page, label: string, value: string) {
   await page.getByRole('textbox', { name: label, exact: true }).fill(value);
 }
+/** A blank picture `width` by `height`, as a photo of the paper signed. */
+async function paper(page: Page, width = 2, height = 3) {
+  const png = await page.evaluate(
+    ({ width, height }) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      return canvas.toDataURL('image/png').split(',')[1]!;
+    },
+    { width, height },
+  );
+  return { name: 'paper.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') };
+}
+/** The size of the signed copy the page shows. */
+const shown = (page: Page) =>
+  page
+    .getByRole('img', { name: 'Signed copy', exact: true })
+    .evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight]);
 async function complete(page: Page) {
   await page
     .getByRole('textbox', { name: /Statement of the problem: missing item/ })
@@ -30,7 +48,9 @@ async function complete(page: Page) {
   await page.getByRole('textbox', { name: /Statement of the problem: date/ }).fill('11/08/2026');
 }
 
-test('a driver is written up from the page, then marked signed and locked', async ({ page }) => {
+test('a driver is written up from the page, then marked signed with a photo and locked', async ({
+  page,
+}) => {
   const name = await newUniform(page);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('Fill in the blanks marked in yellow.');
@@ -76,7 +96,13 @@ test('a driver is written up from the page, then marked signed and locked', asyn
     .filter({ hasText: name })
     .getByRole('button', { name: 'Mark signed' })
     .click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Mark signed', exact: true }).click();
+  // Not without a photo of the paper signed.
+  const signing = page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Mark signed', exact: true });
+  await expect(signing).toBeDisabled();
+  await page.getByLabel(/^Signed copy/).setInputFiles(await paper(page));
+  await signing.click();
   // Signing removes it from the waiting queue. It remains available under all statuses.
   await expect(page.getByText('No writeups', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Awaiting signature', exact: true }).click();
@@ -84,7 +110,12 @@ test('a driver is written up from the page, then marked signed and locked', asyn
   await expect(page.getByText(/^Signed \d+\/\d+\/\d{4}$/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Print', exact: true })).toBeVisible();
-  // Whoever manages Conduct still deletes it.
+  // Whoever manages Conduct replaces its photo, and still deletes it.
+  await expect.poll(() => shown(page)).toEqual([2, 3]);
+  await page.getByRole('button', { name: 'Replace photo', exact: true }).click();
+  await page.getByLabel(/^Signed copy/).setInputFiles(await paper(page, 4, 5));
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
+  await expect.poll(() => shown(page)).toEqual([4, 5]);
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByText('No writeups', { exact: true })).toBeVisible();
@@ -252,12 +283,7 @@ test('photo preparation cancels safely, then a rotated copy is signed', async ({
   await complete(page);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('button', { name: 'Mark signed', exact: true }).click();
-  const png = await page.evaluate(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 2;
-    canvas.height = 3;
-    return canvas.toDataURL('image/png').split(',')[1]!;
-  });
+  const photoFile = await paper(page);
   await page.evaluate(() => {
     const state = window as typeof window & {
       conductPhotoTest: {
@@ -295,11 +321,6 @@ test('photo preparation cancels safely, then a rotated copy is signed', async ({
       send.call(this, body);
     };
   });
-  const photoFile = {
-    name: 'paper.png',
-    mimeType: 'image/png',
-    buffer: Buffer.from(png, 'base64'),
-  };
   await page.getByLabel(/^Signed copy/).setInputFiles(photoFile);
   await expect(page.getByRole('img', { name: 'Selected signed copy' })).toBeVisible();
   await page.getByRole('dialog').getByRole('button', { name: 'Mark signed', exact: true }).click();
@@ -362,11 +383,5 @@ test('photo preparation cancels safely, then a rotated copy is signed', async ({
   await expect(page.getByText(/^Signed \d+\/\d+\/\d{4}$/)).toBeVisible();
   expect(uploads).toBe(2);
   expect(signatures).toBe(2);
-  const copy = page.getByRole('img', { name: 'Signed copy', exact: true });
-  await expect(copy).toBeVisible();
-  await expect
-    .poll(() =>
-      copy.evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight]),
-    )
-    .toEqual([3, 2]);
+  await expect.poll(() => shown(page)).toEqual([3, 2]);
 });

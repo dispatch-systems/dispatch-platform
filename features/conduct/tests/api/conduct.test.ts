@@ -93,10 +93,24 @@ test('a writeup is written up for someone, suggests the next tier, and locks onc
     assert.notEqual((await owner.post(`${route}/writeups`, bad)).status, 201, JSON.stringify(bad));
   }
 
+  // Signed with a photo of the paper, which the page sends as its own body.
   const id = saved.writeup.id;
+  const copied = await fetch(
+    `${f.env.DISPATCH_ORIGIN}${route}/writeups/${id}/copy?revision=${saved.writeup.revision}`,
+    {
+      method: 'POST',
+      headers: {
+        ...owner.headers,
+        origin: f.env.DISPATCH_ORIGIN!,
+        'content-type': 'application/octet-stream',
+      },
+      body: new Uint8Array([0xff, 0xd8, 0xff, 0xdb]),
+    },
+  );
+  assert.equal(copied.status, 200, await copied.text());
   const signed = await owner.post(`${route}/writeups/${id}/sign`, {
     signedOn: overview.today,
-    revision: saved.writeup.revision,
+    revision: saved.writeup.revision + 1,
   });
   assert.equal(signed.status, 200, signed.body);
   const after: ConductSaved = signed.value;
