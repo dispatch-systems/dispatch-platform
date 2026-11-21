@@ -241,6 +241,7 @@
   gap: 7px;
   color: var(--muted-foreground);
   font-size: 13px;
+  white-space: nowrap;
 }
 .conduct-marked-by-name {
   color: var(--foreground);
@@ -290,8 +291,9 @@
 }
 .conduct-subtitle {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
 }
 
 /* What a writeup or its form does most, among its heading's other actions. On a phone they
