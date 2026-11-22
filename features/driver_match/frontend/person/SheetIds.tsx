@@ -5,7 +5,7 @@ import { useChanges } from '../../../../core/shell/frontend/runtime/changes.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
-import { seenRange, shortId, sourceLabel } from '../driver-match.js';
+import { idText, optional, seenRange, shortId } from '../driver-match.js';
 import { LinkTag, SourceTag } from '../parts/Tags.js';
 
 /**
@@ -23,7 +23,7 @@ export function SheetIds({
 }) {
   const confirm = useAction((id: PersonId) => confirmLink(person.code, id.source, id.id), {
     inline: true,
-    success: (id) => `${sourceLabel(id.source)} ID ${shortId(id)} is confirmed`,
+    success: (id) => `${idText(id)} is confirmed`,
   });
   // IDs confirmed here show confirmed at once and until the person is read again after; one that
   // fails goes back.
@@ -52,7 +52,9 @@ export function SheetIds({
               </strong>
               {id.offboarded && <span className="driver-tag slate">Offboarded</span>}
             </div>
-            <small>{[id.name, id.department].filter(Boolean).join(' · ')}</small>
+            <small>
+              {[optional(id.source) ? '' : id.name, id.department].filter(Boolean).join(' · ')}
+            </small>
             {id.emails.length + id.phones.length > 0 && (
               <small className="driver-contacts">
                 {id.emails.map((email) => (

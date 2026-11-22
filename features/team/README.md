@@ -29,6 +29,8 @@ and can't change, and a DSP keeps at least one owner.
 - **People:** it lists the DSP's members for Driver Match (`backend/people.rs`), each by
   their account's user ID under core's source `MEMBERS` (`dispatch`, "Dispatch"), with the
   name and email address on their account, as people the DSP can reach (`.contacts_only()`).
+  The email address only matches them, never shown with them (`.private_contacts()`): it
+  reaches no one who can't already see the team.
   Driver Match joins each to the person their other sources know, so any feature finds the
   person a member is with `Everyone::holding(MEMBERS, user)`, their photo among what it knows.
 - **Errors** only its screens raise are worded in its API client, so they load with them.

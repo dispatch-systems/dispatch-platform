@@ -63,10 +63,10 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
             &[
                 (
                     "peopleFeatures",
-                    serde_json::json!(if feature.people.is_empty() {
-                        Vec::<&str>::new()
-                    } else {
+                    serde_json::json!(if names_people(feature) {
                         vec![feature.switch.id]
+                    } else {
+                        Vec::<&str>::new()
                     }),
                 ),
                 (
@@ -288,19 +288,21 @@ fn people_data_for(features: &[&dispatch_core::manifest::Feature], titles: bool)
     text + "] as const;\n"
 }
 
-/// Every feature that names people, by its switch, as the DSP's view lists what it has on: not
-/// one naming only the DSP's own members, who alone are nobody to tell apart.
+/// Whether `feature`'s data names people besides the DSP's own members, who alone are nobody to
+/// tell apart.
+fn names_people(feature: &dispatch_core::manifest::Feature) -> bool {
+    feature
+        .people
+        .iter()
+        .any(|kind| kind.source != people::MEMBERS)
+}
+/// Every feature that names people besides the DSP's members, by its switch, as the DSP's view
+/// lists what it has on.
 fn people_features() -> String {
     let features: Vec<_> = dispatch_core::manifest::registry()
         .features
         .iter()
-        .filter(|feature| {
-            feature.owner.is_none()
-                && feature
-                    .people
-                    .iter()
-                    .any(|kind| kind.source != people::MEMBERS)
-        })
+        .filter(|feature| feature.owner.is_none() && names_people(feature))
         .map(|feature| feature.switch.id)
         .collect();
     generated(
