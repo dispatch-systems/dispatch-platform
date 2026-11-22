@@ -107,6 +107,8 @@ async function prepared(
   signal: AbortSignal,
 ) {
   const sent = attachments.prepare ? await attachments.prepare(photo, signal) : photo;
+  // A photo removed while it was prepared goes nowhere.
+  signal.throwIfAborted();
   if (sent.size > limits.largest) throw new Error(tooLarge(limits));
   return attachments.add(sent, signal);
 }

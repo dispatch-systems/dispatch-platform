@@ -33,8 +33,8 @@ export async function jpegOf(bitmap: ImageBitmap, longest: number, turns = 0): P
 
 /**
  * `photo` as it goes where nothing larger than `longest` pixels on its longest side is shown: a
- * JPEG that size when it's larger, or more than `most` bytes, and that makes it smaller. A GIF,
- * which may move, and a picture the browser can't open, are left for the server to judge.
+ * JPEG that size when it's larger, or when it's more than `most` bytes and that makes it smaller.
+ * A GIF, which may move, and a picture the browser can't open, are left for the server to judge.
  */
 export async function within(
   photo: File,
@@ -51,10 +51,12 @@ export async function within(
   }
   try {
     signal?.throwIfAborted();
-    if (Math.max(bitmap.width, bitmap.height) <= longest && photo.size <= most) return photo;
+    const fits = Math.max(bitmap.width, bitmap.height) <= longest;
+    if (fits && photo.size <= most) return photo;
     const jpeg = await jpegOf(bitmap, longest);
     signal?.throwIfAborted();
-    if (jpeg.size >= photo.size) return photo;
+    // One that fits keeps its own bytes unless the JPEG's are fewer; a larger one is never sent.
+    if (fits && jpeg.size >= photo.size) return photo;
     const name = `${photo.name.replace(/\.[^.]*$/, '') || 'photo'}.jpg`;
     return new File([jpeg], name, { type: 'image/jpeg' });
   } finally {
