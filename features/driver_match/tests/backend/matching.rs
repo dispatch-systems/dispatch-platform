@@ -275,7 +275,8 @@ fn a_name_someone_wrote_themselves_joins_nobody_but_their_email_does() {
     assert!(together(&result, "T1", "U1"));
     assert_eq!(result["U1"].1, IdLink::Email);
     assert!(!together(&result, "T2", "U2"));
-    assert_eq!(result["U2"].1, IdLink::New); // Signed up before Amazon listed them, a login is someone already: a name Amazon writes
+    assert_eq!(result["U2"].1, IdLink::New);
+    // Signed up before Amazon listed them, a login is someone already: a name Amazon writes
     // alike joins nobody to it either.
     assert_eq!(
         decided(
