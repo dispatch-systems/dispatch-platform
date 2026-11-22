@@ -9,7 +9,8 @@ export type PeopleKindInfo = {
   unit: string | null;
   icon: LucideIcon;
 };
-export type PeopleSourceInfo = { id: string; label: string; order: number };
+/** `optional`: a source drivers needn't be in, as the DSP's logins. */
+export type PeopleSourceInfo = { id: string; label: string; order: number; optional?: boolean };
 export type PeopleDescriptors = {
   peopleKinds?: readonly PeopleKindInfo[];
   peopleSources?: readonly PeopleSourceInfo[];

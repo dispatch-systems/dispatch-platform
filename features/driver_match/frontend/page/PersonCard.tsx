@@ -1,6 +1,6 @@
 import { Check, X } from 'lucide-react';
 import type { PeopleSource, Person } from '../../api/index.js';
-import { knows, roleLabel, sourceLabel, working } from '../driver-match.js';
+import { knows, lacking, roleLabel, sourceLabel } from '../driver-match.js';
 import { Face } from '../parts/Face.js';
 
 /** One person: their face, what they do, which sources have them, and a question about them. */
@@ -17,7 +17,8 @@ export function PersonCard({
   onOpen: (code: string) => void;
   onCheck: (code: string) => void;
 }) {
-  const listed = working(person) ? sources : sources.filter((source) => knows(person, source));
+  const missing = lacking(person, sources);
+  const listed = sources.filter((source) => knows(person, source) || missing.includes(source));
   return (
     <li className={`driver-card${queued ? ' queued' : ''}`}>
       <button type="button" className="driver-card-person" onClick={() => onOpen(person.code)}>

@@ -14,10 +14,10 @@ export const peopleKinds = [
   { id: "dvic", label: "DVIC", order: 90, unit: "inspection", icon: ClipboardCheck },
 ] as const;
 export const peopleSources = [
-  { id: "paycom", label: "Paycom", order: 10 },
-  { id: "amazon", label: "Amazon", order: 20 },
-  { id: "slack", label: "Slack", order: 30 },
-  { id: "dispatch", label: "Dispatch", order: 40 },
+  { id: "paycom", label: "Paycom", order: 10, optional: false },
+  { id: "amazon", label: "Amazon", order: 20, optional: false },
+  { id: "slack", label: "Slack", order: 30, optional: false },
+  { id: "dispatch", label: "Dispatch", order: 40, optional: true },
 ] as const;
 export const personTitles = [
   { id: "owner", label: "Owner" },

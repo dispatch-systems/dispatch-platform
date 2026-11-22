@@ -63,13 +63,16 @@ export const knows = (person: Person, source: PeopleSource) =>
   person.ids.some((id) => id.source === source);
 /** Drivers and helpers belong in every source; anyone else only where they are. */
 export const working = (person: Person) => person.role === 'driver' || person.role === 'helper';
+/** The sources a driver or helper belongs in that lack them: none an optional source is. */
+export const lacking = (person: Person, sources: readonly PeopleSource[]) =>
+  working(person) ? sources.filter((s) => !optional(s) && !knows(person, s)) : [];
 /** Whether a filter shows someone: someone who has left shows only under Inactive or Offboarded. */
 export function shows(filter: PeopleFilter, person: Person, sources: readonly PeopleSource[]) {
   switch (filter) {
     case 'all':
       return !left(person);
     case 'missing':
-      return working(person) && sources.some((source) => !knows(person, source));
+      return lacking(person, sources).length > 0;
     default:
       return person.role === filter;
   }
@@ -91,6 +94,9 @@ export const sourceKinds = (): readonly PeopleSource[] =>
   peopleOrder([...peopleSources, ...privatePeopleSources]).map(
     (source) => source.id as PeopleSource,
   );
+/** Whether drivers needn't be in a source, as the DSP's logins: none lacks them there. */
+export const optional = (source: PeopleSource) =>
+  [...peopleSources, ...privatePeopleSources].some((s) => s.id === source && s.optional === true);
 /** How a source is named: "Paycom". */
 export const sourceLabel = (source: PeopleSource) =>
   [...peopleSources, ...privatePeopleSources].find((s) => s.id === source)?.label ?? source;
@@ -161,7 +167,9 @@ export function day(date: string, today: string) {
 export const toneOf = (code: string) => [...code].reduce((sum, c) => sum + c.charCodeAt(0), 0) % 4;
 /** Long IDs, as Amazon's transporter IDs, by their start and end, which tell them apart. */
 export const shortId = (id: PersonId) =>
-  id.id.length > 12 ? `${id.id.slice(0, 4)}…${id.id.slice(-4)}` : id.id;
+  // A login's ID means nothing to whoever reads it: its email address does.
+  (optional(id.source) && id.emails[0]) ||
+  (id.id.length > 12 ? `${id.id.slice(0, 4)}…${id.id.slice(-4)}` : id.id);
 
 /**
  * The first name another source knows someone by, when it differs from the name shown, which

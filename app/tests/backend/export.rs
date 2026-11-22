@@ -8,7 +8,7 @@ use dispatch_core::collection::{
 use dispatch_core::db::{Kind, Migrations};
 use dispatch_core::manifest::{
     Capability, Collection, Collector,
-    people::{PersonTitle, Source},
+    people::{self, PersonTitle, Source},
 };
 use dispatch_core::tenancy::api::audit::*;
 use std::{
@@ -266,10 +266,12 @@ fn people_data_for(features: &[&dispatch_core::manifest::Feature], titles: bool)
     text += "] as const;\nexport const peopleSources = [\n";
     for source in Source::all().filter(|source| kinds.iter().any(|kind| kind.source == *source)) {
         text += &format!(
-            "  {{ id: {}, label: {}, order: {} }},\n",
+            "  {{ id: {}, label: {}, order: {}, optional: {} }},\n",
             quoted(source.as_str()),
             quoted(source.label()),
-            source.order()
+            source.order(),
+            // The DSP's logins: a driver needn't have one.
+            source == people::MEMBERS
         );
     }
     if !titles {
