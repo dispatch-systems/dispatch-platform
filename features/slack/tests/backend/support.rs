@@ -6,6 +6,7 @@
 use crate::FEATURE;
 use dispatch_core::{
     State,
+    db::Store,
     manifest::{
         Feature, Upkeep,
         events::PeopleChanged,
@@ -24,7 +25,7 @@ use futures_util::TryStreamExt;
 use std::{
     collections::BTreeSet,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard, PoisonError,
         atomic::{AtomicUsize, Ordering},
     },
 };
@@ -364,6 +365,35 @@ pub fn ready(dsp: &str, ready: bool) {
 /// Installs Slack and the stand-ins.
 pub fn install() {
     testing::install(&[], &[&FEATURE, &LISTENER, &KEEPER, &CUSTOM]);
+}
+/// The development seed, for a test of its own: its DSPs have the same IDs in every test, and
+/// the stand-in keeps what each saves by DSP, so a test holds the seed's turn until it ends and
+/// starts with the stand-in holding nothing, as `cargo test` runs a program's tests side by side.
+pub fn seeded() -> (impl Drop, Store) {
+    install();
+    let turn = SEEDED.lock().unwrap_or_else(PoisonError::into_inner);
+    KEPT.lock().unwrap().clear();
+    PAGES.lock().unwrap().clear();
+    UNREADY.lock().unwrap().clear();
+    DISABLING.lock().unwrap().clear();
+    let (root, store) = testing::seeded();
+    (
+        Seeded {
+            _root: root,
+            _turn: turn,
+        },
+        store,
+    )
+}
+/// Whose turn at the development seed it is.
+static SEEDED: Mutex<()> = Mutex::new(());
+/// A test's platform, and its turn at the seed, given up once the platform is gone.
+struct Seeded<R> {
+    _root: R,
+    _turn: MutexGuard<'static, ()>,
+}
+impl<R> Drop for Seeded<R> {
+    fn drop(&mut self) {}
 }
 /// A platform with one DSP, and its server's state.
 pub fn platform() -> (impl Drop, Arc<State>, String) {

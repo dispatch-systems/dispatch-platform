@@ -32,8 +32,7 @@ const DISPATCH: &str = "C0FIXDISPATCH";
 /// photo known by the address of Northline's member, Jordan. Answers the state, the DSP and
 /// Jordan's user ID.
 async fn importing() -> (impl Drop, Arc<State>, String, String) {
-    support::install();
-    let (root, store) = testing::seeded();
+    let (root, store) = support::seeded();
     let mut dsp = String::new();
     for id in store.kept_dsps().unwrap() {
         if store.find_dsp(&id).unwrap().name == "Northline Logistics" {
