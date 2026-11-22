@@ -102,8 +102,8 @@ pub async fn read(bot: &Bot) -> Result<()> {
     let new = bot
         .keep(move |db| db.keep_slack_members(&dsp, &team, &members))
         .await?;
-    // A new picture shows at once, as a new member does.
-    if member_pictures::keep(bot, pictures).await? | new {
+    member_pictures::keep(bot, pictures).await?;
+    if new {
         events::publish(&bot.state, &bot.dsp, PeopleChanged).await;
     }
     Ok(())
@@ -146,7 +146,8 @@ pub async fn told(bot: &Bot, event: &Value, again: bool) -> Result<()> {
     let new = bot
         .keep(move |db| db.keep_slack_member(&dsp, &team, &member))
         .await?;
-    if member_pictures::keep(bot, vec![picture]).await? | new {
+    member_pictures::keep(bot, vec![picture]).await?;
+    if new {
         events::publish(&bot.state, &bot.dsp, PeopleChanged).await;
     }
     Ok(())

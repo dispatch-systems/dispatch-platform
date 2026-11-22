@@ -26,8 +26,9 @@ pub fn source(user: &Value) -> Option<String> {
 
 /// Keeps the pictures of the workspace's members, `sources` by member: each downloaded only when
 /// Slack gives it at another address than the one kept came from, and forgotten once they set
-/// none. One that fails to come is left as it was, for the next reading: whether any changed.
-pub async fn keep(bot: &Bot, sources: Vec<(String, Option<String>)>) -> Result<bool> {
+/// none, each showing at once. One that fails to come is left as it was, for the next reading.
+/// A picture changes nobody's person, so Driver Match isn't told.
+pub async fn keep(bot: &Bot, sources: Vec<(String, Option<String>)>) -> Result<()> {
     let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
     let kept = bot
         .state
@@ -57,7 +58,11 @@ pub async fn keep(bot: &Bot, sources: Vec<(String, Option<String>)>) -> Result<b
             _ => {}
         }
     }
-    Ok(changed)
+    // The DSP's people as features read them carry their photos' versions.
+    if changed {
+        bot.state.changed(Some(&bot.dsp));
+    }
+    Ok(())
 }
 /// The picture at `source`, if it's one kept: from Slack's own servers, and a PNG, JPEG or GIF
 /// that isn't too large.
