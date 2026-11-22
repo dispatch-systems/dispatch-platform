@@ -190,10 +190,11 @@
     scale: 0.96;
   }
 }
+/* On its top right corner, outside its header, which it would cover. */
 .home-remove {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: -10px;
+  right: -10px;
   z-index: 3;
   display: flex;
   align-items: center;
@@ -206,8 +207,8 @@
   cursor: pointer;
 }
 
-/* Its resize handles: a band along each edge and a square at each corner, a grip showing on
-   the widget the pointer is over. */
+/* Its resize handles: a band along each edge and a square at each corner but the ×'s, a grip
+   showing on the widget the pointer is over. */
 .home-handle {
   position: absolute;
   z-index: 2;
@@ -264,23 +265,16 @@
   width: 4px;
   height: 36px;
 }
-.home-handle-ne,
 .home-handle-se,
 .home-handle-sw,
 .home-handle-nw {
   width: 18px;
   height: 18px;
 }
-.home-handle-ne::after,
 .home-handle-se::after,
 .home-handle-sw::after,
 .home-handle-nw::after {
   inset: 5px;
-}
-.home-handle-ne {
-  top: -7px;
-  right: -7px;
-  cursor: nesw-resize;
 }
 .home-handle-sw {
   bottom: -7px;

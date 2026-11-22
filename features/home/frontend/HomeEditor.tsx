@@ -17,8 +17,8 @@ import {
 } from './layout.js';
 import { WidgetFrame } from './WidgetFrame.js';
 
-/** Each edge and corner of a widget, which resizing it drags. */
-const EDGES: readonly Edge[] = ['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw'];
+/** Each edge and corner of a widget, which resizing it drags: its top right holds its ×. */
+const EDGES: readonly Edge[] = ['n', 'e', 's', 'w', 'se', 'sw', 'nw'];
 /** How far the pointer goes before a press becomes a drag, in pixels. */
 const SLOP = 4;
 

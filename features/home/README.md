@@ -24,8 +24,8 @@ open to every member.
   where it is the smaller) moves to the free cells nearest its own while it's held there, those
   the held one left first, and back once it moves on (`moving`, worked out from where they were
   as it was picked up); over one it covers less, it lands on the free cells nearest, beside it.
-  One resized from any edge or corner snaps between its steps as the pointer goes, to the
-  nearest that has room, never over another; one removed goes; others are added from the list of
+  One resized from any edge or corner but its top right, which holds its ×, snaps between its
+  steps as the pointer goes, to the nearest that has room, never over another; one removed goes; others are added from the list of
   those that fit; Reset clears the page. Each change shows at
   once, glides into place, and is kept behind it, made again on what another screen kept
   meanwhile.
