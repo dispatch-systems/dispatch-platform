@@ -24,12 +24,12 @@ export function useFit() {
   useLayoutEffect(() => {
     const element = area.current;
     if (!element) return;
-    const { width, height } = element.getBoundingClientRect();
-    setSpace({ width, height });
-    const observer = new ResizeObserver(([entry]) => {
-      const { width, height } = entry!.contentRect;
-      setSpace({ width, height });
-    });
+    // A space not laid out yet has no size to fit to.
+    const measured = ({ width, height }: { width: number; height: number }) => {
+      if (width && height) setSpace({ width, height });
+    };
+    measured(element.getBoundingClientRect());
+    const observer = new ResizeObserver(([entry]) => measured(entry!.contentRect));
     observer.observe(element);
     return () => observer.disconnect();
   }, []);

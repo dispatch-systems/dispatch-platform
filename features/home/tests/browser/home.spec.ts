@@ -154,3 +154,46 @@ test('Home in a window smaller than its grid shows all of it, scaled down, and n
     await page.getByRole('button', { name: 'Done', exact: true }).click();
   }
 });
+
+test('a widget moved or resized on a grid scaled down lands where the pointer let it go', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const dsp = owner.session.dsps.find(
+    (item: { name: string }) => item.name === 'Northline Logistics',
+  );
+  await placeWidgets(owner, dsp.id, [{ id: 'timecard.late_das', columns: 2, rows: 2 }]);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await login(page);
+  await openDsp(page, dsp.name);
+  await atHome(page);
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const widget = page.getByRole('article', { name: 'Late DAs' });
+  const kept = async () => {
+    const view = await owner.select(dsp.id);
+    const [at] = view.preferences['home.layout'].value.widgets;
+    return { x: at.x, w: at.w };
+  };
+  // Moved by its own width and the gap after it, as the window shows them, once the editor's grid
+  // is drawn: two columns over.
+  const gap = await page
+    .locator('.home-board')
+    .evaluate((board) => 16 * Number(getComputedStyle(board).zoom));
+  const box = (await widget.boundingBox())!;
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + box.width + gap, y, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(kept).toEqual({ x: 2, w: 2 });
+  // Its right edge dragged its own width further: twice as wide.
+  const moved = (await widget.boundingBox())!;
+  const [edge, middle] = [moved.x + moved.width, moved.y + moved.height / 2];
+  await page.mouse.move(edge, middle);
+  await page.mouse.down();
+  await page.mouse.move(edge + moved.width + gap, middle, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(kept).toEqual({ x: 2, w: 4 });
+});
