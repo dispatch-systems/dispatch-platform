@@ -80,14 +80,23 @@ try {
     colorScheme: values.theme as 'light' | 'dark',
   });
   const page = await context.newPage();
-  // Ready once nothing has loaded for a while, its fonts are in and nothing on it is loading.
+  // Ready once nothing has loaded for a while, its fonts are in and nothing on it is loading: on
+  // Home, a widget is loading until its code is in and it shows something under its header.
   const ready = async () => {
     await settled(page);
-    await page.waitForFunction(
-      () =>
-        document.fonts.status === 'loaded' &&
-        !document.querySelector('.loading, [aria-busy="true"]'),
-    );
+    await page
+      .waitForFunction(
+        () =>
+          document.fonts.status === 'loaded' &&
+          !document.querySelector(
+            '.loading, [aria-busy="true"], .home-widget-loading, .widget:not(:has(> :not(header)))',
+          ),
+      )
+      .catch(() => {
+        throw new Error(
+          'The page was still loading after 30 seconds, or a widget still showed nothing under its header.',
+        );
+      });
   };
   await page.goto(values.url!);
   await ready();
