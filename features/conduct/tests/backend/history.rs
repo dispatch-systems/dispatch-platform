@@ -206,11 +206,12 @@ fn whoever_wrote_or_marked_a_writeup_signed_is_the_person_their_account_is() {
     let row = &read()[0];
     assert_eq!(row.supervisor.as_deref(), Some("office"));
     assert_eq!(row.signed_by.as_deref(), Some("office"));
-    // One signed before accounts were kept is the member's whose name it was signed by.
+    // One signed before accounts were kept is no one's, though a member signed up under its
+    // signer's name.
     db.exec(
         "UPDATE conduct_writeups SET signed_by_id=NULL,signed_by_name='Riley Owner'",
         [],
     )
     .unwrap();
-    assert_eq!(read()[0].signed_by.as_deref(), Some("riley"));
+    assert_eq!(read()[0].signed_by, None);
 }

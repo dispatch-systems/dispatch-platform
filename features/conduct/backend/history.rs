@@ -138,7 +138,7 @@ fn read_from(
     } else {
         None
     };
-    let members = overview::Members::read(store, dsp, everyone)?;
+    let members = overview::Members(everyone);
     let writeups = rows
         .into_iter()
         .map(|mut w| {
