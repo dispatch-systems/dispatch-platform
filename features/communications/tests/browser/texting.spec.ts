@@ -13,16 +13,11 @@ import {
   openDsp,
 } from '../../../../core/shell/tests/support/fixtures.js';
 import { connect, event, fromSlack, install } from '../../../slack/tests/support/slack.js';
+import { PIXEL, pastePicture } from '../support/pictures.js';
 
 // The seeded DSP texts through its demo's stand-in phone, (206) 555-0100, which received three
 // texts and delivers what it's given at once; it has no Slack until a test connects it. Routes is
 // on, and Live Route Data, which reads a provider, off: Today's Routes lists nobody.
-
-/** A picture of a single pixel, as a PNG. */
-const PIXEL = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
-  'base64',
-);
 
 test('without Slack, a number not saved as a contact can be texted first and opened again in another format', async ({
   page,
@@ -499,12 +494,10 @@ test('a teammate typing shows above the box, and their reply since the member st
   await expect(conversation.getByText('Gate code is 4412')).toBeVisible();
   await expect(asking).toHaveCount(0);
 
-  // A photo starts a draft too: a reply before its caption is still asked about, and it goes
-  // anyway.
-  const choosing = page.waitForEvent('filechooser');
-  await conversation.getByRole('button', { name: 'Attach', exact: true }).click();
-  await conversation.getByRole('button', { name: 'Attach Image' }).click();
-  await (await choosing).setFiles({ name: 'gate.png', mimeType: 'image/png', buffer: PIXEL });
+  // A photo pasted in starts a draft too: a reply before its caption is still asked about, and
+  // it goes anyway.
+  await pastePicture(box, 'gate.png');
+  await expect(conversation.getByRole('button', { name: 'Remove gate.png' })).toBeVisible();
   const again = await teammate.post(`/api/dsp/communications/conversations/${id}/messages`, {
     text: 'Sending them a photo too',
   });

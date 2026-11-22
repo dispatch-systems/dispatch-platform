@@ -5,6 +5,7 @@ import {
   login,
   type Dispatch,
 } from '../../../../core/shell/tests/support/fixtures.js';
+import { PIXEL } from '../support/pictures.js';
 
 // Today's Routes filled as live route data fills it: Northline at a station, its Cortex connected
 // in fixture mode, whose day has two drivers on work phones of their own, Fixture Driver on
@@ -19,12 +20,6 @@ const EARLIEST = '01:30';
 /** The latest the DSP's time may be as a test starts: its reading window, open until 23:59, stays
  * open for the test with an hour to spare. */
 const LATEST = '23:00';
-
-/** A picture of a single pixel, as a PNG. */
-const PIXEL = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
-  'base64',
-);
 
 /** The time it is `hours` east of UTC, as Settings writes a time. */
 const timeAt = (hours: number) =>
