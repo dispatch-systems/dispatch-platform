@@ -110,3 +110,42 @@ test('Home never shows a widget at every size on Production, whatever its addres
   await expect(page.getByRole('heading', { name: 'Home', exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Late DAs', level: 1 })).toHaveCount(0);
 });
+
+test('Home in a window smaller than its grid shows all of it, scaled down, and never scrolls', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const dsp = owner.session.dsps.find(
+    (item: { name: string }) => item.name === 'Northline Logistics',
+  );
+  // In the grid's bottom right corner, where a page too small for it would cut it off.
+  await placeWidgets(owner, dsp.id, [{ id: 'dvic.latest', columns: 4, rows: 4, x: 8, y: 3 }]);
+  await login(page);
+  await openDsp(page, dsp.name);
+  for (const size of [
+    { width: 1366, height: 768 },
+    { width: 1024, height: 768 },
+  ]) {
+    await page.setViewportSize(size);
+    await atHome(page);
+    for (const editing of [false, true]) {
+      if (editing) await page.getByRole('button', { name: 'Edit', exact: true }).click();
+      const widget = (await page.getByRole('article', { name: 'Latest DVIC' }).boundingBox())!;
+      expect(widget.x + widget.width).toBeLessThanOrEqual(size.width);
+      expect(widget.y + widget.height).toBeLessThanOrEqual(size.height);
+      // Nothing past the page's edges, which would be cut off, as it never scrolls.
+      const past = await page.evaluate(() =>
+        [document.scrollingElement!, document.querySelector('.page-container')!].map((element) => [
+          element.scrollWidth - element.clientWidth,
+          element.scrollHeight - element.clientHeight,
+        ]),
+      );
+      expect(past).toEqual([
+        [0, 0],
+        [0, 0],
+      ]);
+    }
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
+  }
+});

@@ -4,6 +4,7 @@ import { useFillsWindow } from '../../../core/shell/frontend/runtime/fills.js';
 import { replaceHashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
 import type { Widget } from '../../../core/shell/frontend/runtime/slots.js';
 import { Header, Pagination } from '../../../core/shell/frontend/ui/index.js';
+import { useFit } from './fit.js';
 import { sizePages } from './layout.js';
 import { WidgetFrame } from './WidgetFrame.js';
 
@@ -24,6 +25,7 @@ export function WidgetSizes({
   turn: (page: number) => void;
 }) {
   useFillsWindow();
+  const { area, fit } = useFit();
   const pages = useMemo(() => sizePages(widget.sizes), [widget]);
   const shown = Math.min(page, pages.length - 1);
   return (
@@ -40,8 +42,8 @@ export function WidgetSizes({
           }}
         />
       </Header>
-      <div className="home-area">
-        <div className="home-grid">
+      <div ref={area} className="home-area">
+        <div className="home-grid" style={fit}>
           {pages[shown]!.map((at) => (
             <div
               // Each widget's own frames: another's never shows under its heading.

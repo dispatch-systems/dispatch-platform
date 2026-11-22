@@ -1,9 +1,13 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
-/** The windows a widget fits each size in: a desktop's, and a laptop's. */
+/**
+ * The windows a widget fits each size in: a desktop's, a laptop's, and a small one's, where Home
+ * scales its grid down to fit.
+ */
 const WINDOWS = [
   { width: 1920, height: 1080 },
   { width: 1440, height: 900 },
+  { width: 1024, height: 768 },
 ] as const;
 
 /**
