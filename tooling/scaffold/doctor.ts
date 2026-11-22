@@ -69,6 +69,26 @@ export const CHECKS: Check[] = [
     },
   },
   {
+    name: 'browser',
+    // The Chromium the browser tests and `dispatchdev shot` drive, the one this checkout's
+    // Playwright wants: an update to Playwright wants a new one, which installing the packages
+    // doesn't fetch.
+    run: (root) => {
+      const plan = spawnSync(
+        path.join(root, 'node_modules/.bin/playwright'),
+        ['install', '--dry-run', 'chromium'],
+        { cwd: root, encoding: 'utf8' },
+      );
+      if (plan.status !== 0) return { ok: false, fix: 'npm ci' };
+      const missing = [...plan.stdout.matchAll(/Install location:\s+(.+)/g)]
+        .map(([, dir]) => dir!.trim())
+        .filter((dir) => !fs.existsSync(path.join(dir, 'INSTALLATION_COMPLETE')));
+      return missing.length
+        ? { ok: false, fix: 'npx playwright install chromium', detail: missing }
+        : { ok: true };
+    },
+  },
+  {
     name: 'python3',
     run: (root) => {
       const ready = spawnSync('python3', ['tooling/ci/python.py'], { cwd: root, encoding: 'utf8' });

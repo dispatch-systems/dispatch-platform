@@ -56,6 +56,10 @@
         "app/tests/browser/dsp-features.spec.ts",
         "app/tests/frontend/features.test.ts"
       ]
+    },
+    {
+      "sources": ["tooling/dev/shot.ts", "tooling/cli/src/shot.rs"],
+      "tests": ["tooling/tests/browser/shot.spec.ts"]
     }
   ]
 }
