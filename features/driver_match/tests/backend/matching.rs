@@ -243,3 +243,17 @@ fn another_account_joins_only_its_one_holder_whose_names_agree() {
         [(Target::New(0), IdLink::New), (Target::New(1), IdLink::New)]
     );
 }
+
+#[test]
+fn a_private_contact_matches_but_is_never_shown() {
+    // A login's sign-in address, as Team lists its members.
+    let mut login = reached(slack("U9", "Dre Holloway"), "dre@example.com", "");
+    login.private = true;
+    let result = run(&[
+        reached(amazon("T1", &["Andre Holloway"]), "dre@example.com", ""),
+        login.clone(),
+    ]);
+    assert!(together(&result, "T1", "U9"));
+    assert_eq!(result["U9"].1, IdLink::Email);
+    assert!(login.shown(Contact::Email).is_empty());
+}

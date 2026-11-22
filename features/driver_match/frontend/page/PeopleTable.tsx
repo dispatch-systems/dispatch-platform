@@ -8,7 +8,7 @@ import {
   type TableColumn,
   type TableStateStore,
 } from '../../../../core/shell/frontend/ui/index.js';
-import { day, knows, lastSeen, roleLabel, shortId, sourceLabel, working } from '../driver-match.js';
+import { day, lacking, lastSeen, roleLabel, shortId, sourceLabel } from '../driver-match.js';
 import { Face } from '../parts/Face.js';
 
 /** Rows a page. */
@@ -124,7 +124,7 @@ function Ids({ person, source }: { person: Person; source: PeopleSource }) {
         {more.length > 0 && ` +${more.length}`}
       </span>
     );
-  if (!working(person)) return null;
+  if (!lacking(person, [source]).length) return null;
   return (
     <span className="driver-list-missing">
       <X size={14} aria-hidden="true" />
@@ -135,11 +135,10 @@ function Ids({ person, source }: { person: Person; source: PeopleSource }) {
 
 /** On a phone, what the hidden columns say, under the name: what they do and what lacks them. */
 function Under({ person, sources }: { person: Person; sources: readonly PeopleSource[] }) {
-  const lacking = working(person) ? sources.filter((source) => !knows(person, source)) : [];
   return (
     <small className="driver-list-under">
       {roleLabel(person)}
-      {lacking.map((source) => (
+      {lacking(person, sources).map((source) => (
         <Fragment key={source}>
           {' · '}
           <span className="driver-list-missing">Not in {sourceLabel(source)}</span>

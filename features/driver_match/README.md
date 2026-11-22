@@ -20,7 +20,7 @@ what was decided.
   people roles.
 - **Its page**, `driver-match`, is a page of Settings, under Features (its `parent` is
   Settings' sidebar), not of the app's sidebar. It is listed while the DSP has a feature on
-  whose data names people, for those who hold `driver_match.manage`: the questions the backend
+  whose data names people besides its own members, for those who hold `driver_match.manage`: the questions the backend
   sends, asked one at a time, then everyone, by role or a source lacking them, with their
   photo, from core's `/api/dsp/people/{code}/photo`, and their title or role: as a list, a row
   each with their ID in each source or the source lacking them, sortable and a hundred a page,
@@ -143,11 +143,12 @@ the guide: what to declare, and what each part tells Driver Match.
 Each order decides more than where something is listed, so a new kind or source takes its
 place here with its reason.
 
-| Source            | Order | Why there                                                                       |
-| ----------------- | ----- | ------------------------------------------------------------------------------- |
-| Paycom (`paycom`) | 10    | A payroll's legal name is the name a person is shown by.                        |
-| Amazon (`amazon`) | 20    | Shown by when no payroll knows them.                                            |
-| Slack (`slack`)   | 30    | A list of people the DSP can reach: shown by only when nothing else knows them. |
+| Source                | Order | Why there                                                                         |
+| --------------------- | ----- | --------------------------------------------------------------------------------- |
+| Paycom (`paycom`)     | 10    | A payroll's legal name is the name a person is shown by.                          |
+| Amazon (`amazon`)     | 20    | Shown by when no payroll knows them.                                              |
+| Slack (`slack`)       | 30    | A list of people the DSP can reach: shown by only when nothing else knows them.   |
+| Dispatch (`dispatch`) | 40    | The DSP's members, by their accounts: shown by only when nothing else knows them. |
 
 A person is shown by the first source's name, and listed with their sources in this order.
 
@@ -161,6 +162,7 @@ A person is shown by the first source's name, and listed with their sources in t
 | Weekly Scorecard (`weekly_scorecard`)   | 50    | Often adds a middle name.                                                                 |
 | Daily Performance (`daily_performance`) | 60    |                                                                                           |
 | Slack (`slack`)                         | 70    |                                                                                           |
+| Dispatch (`members`)                    | 80    | A member's account name, as they or whoever invited them wrote it.                        |
 | DVIC (`dvic`)                           | 90    | Sometimes writes only a last initial, so its spellings are read after every other kind's. |
 
 An ID's spellings are read kind by kind in this order, and the first is the one it is shown

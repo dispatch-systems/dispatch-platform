@@ -18,7 +18,7 @@ import {
   givenLabel,
   givenRoles,
   goesBy,
-  shortId,
+  idText,
   sourceLabel,
 } from '../driver-match.js';
 import { DataIcon } from '../parts/DataIcon.js';
@@ -49,7 +49,7 @@ export function PersonSheet({
   const [merging, setMerging] = useState(false);
   const [splitting, setSplitting] = useState<PersonId | null>(null);
   const split = useAction((id: PersonId) => splitOff(details.data!.person.code, id.source, id.id), {
-    success: (id) => `${sourceLabel(id.source)} ID ${shortId(id)} is now its own person`,
+    success: (id) => `${idText(id)} is now its own person`,
   });
   const person = details.data?.person;
   return (

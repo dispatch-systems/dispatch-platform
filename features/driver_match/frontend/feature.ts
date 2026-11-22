@@ -18,7 +18,7 @@ declare module '../../../core/shell/frontend/runtime/slots.js' {
 
 const load = () => import('./index.js');
 const DriverMatchPage = lazy(() => load().then((module) => ({ default: module.DriverMatchPage })));
-/** Whether the DSP has a feature on whose data names people: without one, there is no one. */
+/** Whether the DSP has a feature on whose data names people besides its own members: without one, there is no one to tell apart. */
 const named = (view?: DspView) => peopleFeatures.some((feature) => hasFeature(view, feature));
 const manages = (view?: DspView) => can(view, 'driver_match.manage') && named(view);
 

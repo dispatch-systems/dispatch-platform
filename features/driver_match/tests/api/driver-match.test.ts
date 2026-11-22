@@ -75,3 +75,20 @@ test('Driver Match answers only to its own permission, and its decisions to thei
   await give({ code: here.code, role: null });
   assert.equal((await owner.read(directory)).role, before.role);
 });
+
+test("a login is someone's in the directory, and no member or Driver Match page reads its sign-in address", async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const north = await seedDriverMatch(f);
+  const address = 'member@dispatch.test';
+  // Every member reads the directory; the login is someone's there, without its address.
+  const member = await f.client(address);
+  await member.select(north.id);
+  const people: { ids: Record<string, string[]> }[] = await member.read('/api/dsp/people');
+  assert(people.some((person) => (person.ids.dispatch ?? []).length > 0));
+  assert(!JSON.stringify(people).includes(address));
+  // Nor does Driver Match's page show it to those who manage it.
+  const owner = await f.client();
+  await owner.select(north.id);
+  assert(!JSON.stringify(await owner.read('/api/dsp/driver-match')).includes(address));
+});

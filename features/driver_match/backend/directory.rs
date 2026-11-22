@@ -86,14 +86,8 @@ fn person(gathered: &Gathered, code: &str, ids: &[(&IdRow, Source)]) -> Person {
             &mut person.names,
             x.names.iter().map(|name| names::display(name)),
         );
-        once(
-            &mut person.emails,
-            x.contacts.written(Contact::Email).iter().cloned(),
-        );
-        once(
-            &mut person.phones,
-            x.contacts.written(Contact::Phone).iter().cloned(),
-        );
+        once(&mut person.emails, x.shown(Contact::Email).iter().cloned());
+        once(&mut person.phones, x.shown(Contact::Phone).iter().cloned());
     }
     person
 }

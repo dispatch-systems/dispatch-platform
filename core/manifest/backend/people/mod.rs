@@ -10,6 +10,15 @@ pub use directory::{Directory, Everyone, Person, PersonRole, PersonTitle, same_p
 pub use ids::{Kind, KindInfo, Source, SourceInfo};
 pub use rows::{Named, Records, Workdays, named, records, worked};
 
+/// The DSP's members, as IDs people are known by: each member by their account's user ID, which
+/// never changes. A feature lists them in its `people`; any feature finds the person a member
+/// is by `Everyone::holding(MEMBERS, user)`.
+pub const MEMBERS: Source = Source::new(&SourceInfo {
+    id: "dispatch",
+    label: "Dispatch",
+    order: 40,
+});
+
 use crate::{
     Error, Result, State,
     accounts::Context,
@@ -49,8 +58,8 @@ use std::{
 /// It is read while the feature is on, and every ID it names gets a person. The rest says what
 /// the data knows besides: how much it holds of each ID (`records`), whether each record shows
 /// them driving (`driving`), the days each worked (`workdays`), which departments drive
-/// (`driver_departments`), their photos (`photos`), and whether its list is only of people the
-/// DSP can reach (`contacts_only`).
+/// (`driver_departments`), their photos (`photos`), whether its list is only of people the
+/// DSP can reach (`contacts_only`), and whether its contacts are shown (`private_contacts`).
 pub struct People {
     /// What it is, as each person's sheet lists it.
     pub kind: KindInfo,
@@ -79,6 +88,9 @@ pub struct People {
     /// whom it employs: being on it never says someone still works for the DSP, and someone
     /// only such lists name works in the office while one lists them.
     pub contacts_only: bool,
+    /// Whether its email addresses and phone numbers only match people, never shown with them,
+    /// as a member's sign-in address is, which only those who manage the DSP's team see.
+    pub private_contacts: bool,
 }
 /// Reads what one kind of data holds for a DSP.
 pub type Reader<T> = fn(&Store, &str) -> Result<T>;
@@ -101,6 +113,7 @@ impl People {
             driver_departments: None,
             photos: None,
             contacts_only: false,
+            private_contacts: false,
         }
     }
     /// Counts how much it holds of each ID, in `unit`: what one record is, singular.
@@ -142,6 +155,13 @@ impl People {
     pub const fn contacts_only(self) -> Self {
         Self {
             contacts_only: true,
+            ..self
+        }
+    }
+    /// Matches people by its contacts without showing them.
+    pub const fn private_contacts(self) -> Self {
+        Self {
+            private_contacts: true,
             ..self
         }
     }

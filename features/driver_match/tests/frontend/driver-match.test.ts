@@ -53,6 +53,12 @@ test('someone who has left shows only under Inactive or Offboarded, and a driver
     everyone.map((p) => shows('missing', p, sources)),
     [false, false, true, false],
   );
+  // A driver needn't have a login: the DSP's logins never lack anyone.
+  const everywhere = person('M3QX7T', 'driver', [
+    id('paycom', 'E3', 'Sam Ortiz'),
+    id('amazon', 'T3', 'Sam Ortiz'),
+  ]);
+  assert.equal(shows('missing', everywhere, [...sources, 'dispatch' as PeopleSource]), false);
 });
 
 test('each question the backend asks is a check about the people it names', () => {

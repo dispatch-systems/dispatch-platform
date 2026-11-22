@@ -391,8 +391,21 @@ test('--contract writes a contract crate on core alone, what fulfils it, its exp
     changed(second, 'features/driver_match/README.md'),
     /`match_counts`.*while it's on/,
   );
-  // Team has no backend/: it gains one, and core's test helpers for its test.
-  const team = await add('contract', 'team_counts', '--to', 'team');
+  // Team, in the copy, as it was with no backend/: it gains one, and core's test helpers for
+  // its test.
+  const teamDir = path.join(copy, 'features', 'team');
+  for (const entry of ['backend', 'tests/backend'])
+    fs.rmSync(path.join(teamDir, entry), { recursive: true, force: true });
+  const stripTeam = (file: string, pattern: RegExp, by = '') => {
+    const at = path.join(teamDir, file);
+    const content = fs.readFileSync(at, 'utf8');
+    assert.match(content, pattern, `features/team/${file} has its backend's lines`);
+    fs.writeFileSync(at, content.replace(pattern, by));
+  };
+  stripTeam('feature.rs', /^mod backend;\n/m);
+  stripTeam('feature.rs', /^\s*people: &\[[^\n]*\],\n/m);
+  stripTeam('Cargo.toml', /\n*\[dev-dependencies\][\s\S]*$/, '\n');
+  const team = await addToCopy('contract', 'team_counts', '--to', 'team');
   assert(team.files.has('features/team/backend/mod.rs'));
   assert.match(changed(team, 'features/team/feature.rs'), /^mod backend;$/m);
   assert.match(

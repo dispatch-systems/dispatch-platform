@@ -8,7 +8,7 @@ use dispatch_core::collection::{
 use dispatch_core::db::{Kind, Migrations};
 use dispatch_core::manifest::{
     Capability, Collection, Collector,
-    people::{PersonTitle, Source},
+    people::{self, PersonTitle, Source},
 };
 use dispatch_core::tenancy::api::audit::*;
 use std::{
@@ -63,10 +63,10 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
             &[
                 (
                     "peopleFeatures",
-                    serde_json::json!(if feature.people.is_empty() {
-                        Vec::<&str>::new()
-                    } else {
+                    serde_json::json!(if names_people(feature) {
                         vec![feature.switch.id]
+                    } else {
+                        Vec::<&str>::new()
                     }),
                 ),
                 (
@@ -266,10 +266,12 @@ fn people_data_for(features: &[&dispatch_core::manifest::Feature], titles: bool)
     text += "] as const;\nexport const peopleSources = [\n";
     for source in Source::all().filter(|source| kinds.iter().any(|kind| kind.source == *source)) {
         text += &format!(
-            "  {{ id: {}, label: {}, order: {} }},\n",
+            "  {{ id: {}, label: {}, order: {}, optional: {} }},\n",
             quoted(source.as_str()),
             quoted(source.label()),
-            source.order()
+            source.order(),
+            // The DSP's logins: a driver needn't have one.
+            source == people::MEMBERS
         );
     }
     if !titles {
@@ -286,12 +288,21 @@ fn people_data_for(features: &[&dispatch_core::manifest::Feature], titles: bool)
     text + "] as const;\n"
 }
 
-/// Every feature that names people, by its switch, as the DSP's view lists what it has on.
+/// Whether `feature`'s data names people besides the DSP's own members, who alone are nobody to
+/// tell apart.
+fn names_people(feature: &dispatch_core::manifest::Feature) -> bool {
+    feature
+        .people
+        .iter()
+        .any(|kind| kind.source != people::MEMBERS)
+}
+/// Every feature that names people besides the DSP's members, by its switch, as the DSP's view
+/// lists what it has on.
 fn people_features() -> String {
     let features: Vec<_> = dispatch_core::manifest::registry()
         .features
         .iter()
-        .filter(|feature| feature.owner.is_none() && !feature.people.is_empty())
+        .filter(|feature| feature.owner.is_none() && names_people(feature))
         .map(|feature| feature.switch.id)
         .collect();
     generated(

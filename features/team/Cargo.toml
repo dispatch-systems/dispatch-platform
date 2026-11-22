@@ -16,3 +16,6 @@ doctest = false
 dispatch-core = { path = "../../core" }
 # Its answers keep the order their fields are written in.
 serde_json = { workspace = true, features = ["preserve_order"] }
+
+[dev-dependencies]
+dispatch-core = { path = "../../core", features = ["testing"] }

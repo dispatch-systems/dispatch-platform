@@ -140,16 +140,23 @@ people: &[&backend::people::PEOPLE],
 - **People it can reach, not employs** (`.contacts_only()`): being on its list never keeps
   someone from having left, and someone only such lists know works in the office. One person
   may hold several of its IDs, and one it no longer names sits idle.
+- **Contacts it keeps private** (`.private_contacts()`): its email addresses and phone numbers
+  match people but are never shown with them, as a member's sign-in address, which only those
+  who manage the DSP's team see.
+- **The DSP's members** (`people::MEMBERS`): core's own source, each member by their account;
+  any feature finds the person a member is with `Everyone::holding(MEMBERS, user)`. A login is
+  optional: a driver without one isn't counted as missing it.
 
 A kind is read while its feature is on, and every ID it names gets a person after each
 collection; a feature whose people may gain new IDs outside a collection, as a chat
 workspace's members do, publishes `events::PeopleChanged` once they're kept. The app's people
 test runs every connection's queries against a new DSP, so a connection is tried without a test
 of its own. `dispatchdev generate` writes the kinds and sources to TypeScript in
-`api/generated/`: each kind with its label, unit and icon, in their order, then the sources and
+`api/generated/`: each kind with its label, unit and icon, in their order, then the sources (each
+optional or not) and
 the titles a person may be given (`people-data.ts`, which imports the icons from lucide-react),
-loaded only by the lists of people; and the features whose data names people, by their switches
-(`people-features.ts`), small enough for a frontend manifest to ask whether a DSP has one on.
+loaded only by the lists of people; and the features whose data names people besides the DSP's own
+members, by their switches (`people-features.ts`), small enough for a frontend manifest to ask whether a DSP has one on.
 
 The other way round, any feature that shows people or uses what is known of them asks the
 directory (`people/directory.rs`), a contract the feature that tells people apart exposes. Each
