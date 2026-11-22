@@ -92,7 +92,13 @@ export function Supervisor({
 }
 
 /** Who marked a writeup signed, by name beside their photo or initials. */
-export function MarkedBy({ overview, writeup }: { overview: ConductOverview; writeup: ConductWriteupRow }) {
+export function MarkedBy({
+  overview,
+  writeup,
+}: {
+  overview: ConductOverview;
+  writeup: ConductWriteupRow;
+}) {
   if (!writeup.signedOn || !writeup.signedByName) return null;
   return (
     <span className="conduct-marked-by">

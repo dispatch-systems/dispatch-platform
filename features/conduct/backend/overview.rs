@@ -148,10 +148,11 @@ impl<'a> Members<'a> {
                 .map(|person| person.code.clone())
         };
         row.supervisor = person(&row.accounts.0);
-        let signer = row.accounts.1.clone().or_else(|| {
-            let name = row.signed_by_name.as_ref()?;
-            self.by_name.get(name).cloned().flatten()
-        });
+        let by_name = row
+            .signed_by_name
+            .as_ref()
+            .and_then(|name| self.by_name.get(name).cloned().flatten());
+        let signer = row.accounts.1.clone().or(by_name);
         row.signed_by = signer.as_deref().and_then(person);
     }
 }

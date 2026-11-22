@@ -4,7 +4,10 @@ use crate::{
     api::types::{ConductTier, WriteupInput},
     backend::{support::ready, writeups::Subject},
 };
-use dispatch_core::manifest::people::{Person, PersonRole};
+use dispatch_core::{
+    manifest::people::{Person, PersonRole},
+    testing,
+};
 
 fn directory() -> Everyone {
     Everyone::new(
@@ -163,23 +166,9 @@ fn whoever_wrote_or_marked_a_writeup_signed_is_the_person_their_account_is() {
     crate::backend::copies::keep(&store, &c, &id, 1, &[0xff, 0xd8, 0xff, 0xdb]).unwrap();
     let revision = writeups::read(&store, &c.dsp.id, &id).unwrap().row.revision;
     writeups::sign(&store, &c, &id, revision, "2026-11-02", "2026-11-08").unwrap();
-    // A member of the DSP, besides its owner writing up.
-    let member = store
-        .create_user(
-            Some(&c.dsp.id),
-            "riley@example.test",
-            "Riley",
-            "Shah",
-            "test-password-long",
-        )
-        .unwrap();
+    // Another of the DSP's members, besides the platform's owner writing up.
+    let member = testing::owner_of(&store, &c.dsp.id, "riley@example.test", "Riley").unwrap();
     let db = store.dsp(&c.dsp.id).unwrap();
-    let role = dispatch_core::tenancy::roles::default_role(&db, &c.dsp.id, "member").unwrap();
-    db.exec(
-        "INSERT INTO memberships(id,user_id,dsp_id,role,role_id) VALUES ('mem_riley',?,?,'member',?)",
-        rusqlite::params![member.id, c.dsp.id, role],
-    )
-    .unwrap();
     let holding = |code: &str, name: &str, account: &str| Person {
         code: code.into(),
         name: name.into(),
@@ -196,7 +185,7 @@ fn whoever_wrote_or_marked_a_writeup_signed_is_the_person_their_account_is() {
     let everyone = Everyone::new(
         vec![
             holding("office", "Casey Supervisor", &c.auth.user.id),
-            holding("riley", "Riley Shah", &member.id),
+            holding("riley", "Riley Owner", &member),
         ],
         BTreeMap::new(),
     );
@@ -219,7 +208,7 @@ fn whoever_wrote_or_marked_a_writeup_signed_is_the_person_their_account_is() {
     assert_eq!(row.signed_by.as_deref(), Some("office"));
     // One signed before accounts were kept is the member's whose name it was signed by.
     db.exec(
-        "UPDATE conduct_writeups SET signed_by_id=NULL,signed_by_name='Riley Shah'",
+        "UPDATE conduct_writeups SET signed_by_id=NULL,signed_by_name='Riley Owner'",
         [],
     )
     .unwrap();
