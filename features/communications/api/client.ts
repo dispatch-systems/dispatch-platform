@@ -3,6 +3,7 @@ import { wordedApi, ApiError } from '../../../core/shell/frontend/runtime/api.js
 import { useCachedData, useData } from '../../../core/shell/frontend/runtime/data-reads.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
+import { within } from '../../../core/shell/frontend/lib/pictures.js';
 import type {
   Communications,
   CommunicationsUpdates,
@@ -153,6 +154,8 @@ export async function saveQuickReplies(replies: string[], revision: number) {
  * where a photo or file attached to one is read from once it's kept.
  */
 export type Attachments = {
+  /** `photo` as it's uploaded: as it is, or made smaller where no more of it is sent. */
+  prepare?: (photo: File, signal?: AbortSignal) => Promise<File>;
   add: (photo: File, signal?: AbortSignal) => Promise<CommunicationsUpload>;
   address: (id: string) => string;
   /** Where the picture of a video's first frame is read from, for a text's video its phone keeps. */
@@ -179,8 +182,16 @@ export const slackAttachments: Attachments = {
   add: adding(`${communicationsUrl}/uploads`),
   address: (id) => `${communicationsUrl}/files/${id}`,
 };
-/** A text's, of the line at `url`, kept with the texts its phones relay. */
+/** The longest side a text's photo is sent at: the most its phone sends one at, as phones show a
+ * picture message's (Relay's `LARGEST_SIDE`). */
+const TEXT_PHOTO_SIDE = 1920;
+/** The most bytes a text's photo that size goes as it is: more is made a JPEG, carriers taking a
+ * message of a few hundred KB, which the phone fits it to. */
+const TEXT_PHOTO_BYTES = 1024 * 1024;
+/** A text's, of the line at `url`, kept with the texts its phones relay, its photos made smaller
+ * first, so less is uploaded and its phone downloads and scales less. */
 const textAttachments = (url: string): Attachments => ({
+  prepare: (photo, signal) => within(photo, TEXT_PHOTO_SIDE, TEXT_PHOTO_BYTES, signal),
   add: adding(`${url}/texts/uploads`),
   address: (id) => `${url}/texts/files/${id}`,
   preview: (id) => `${url}/texts/files/${id}/preview`,

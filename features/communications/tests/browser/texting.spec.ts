@@ -1187,3 +1187,68 @@ for (const outside of [false, true]) {
     },
   );
 }
+
+test('a large photo goes by text as a JPEG the size its phone sends, uploaded in place of the original', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Dispatch Phone' }).click();
+  await page
+    .getByRole('region', { name: 'Conversations' })
+    .getByRole('listitem')
+    .filter({ hasText: '(425) 555-0199' })
+    .getByRole('button')
+    .first()
+    .click();
+  const conversation = page.getByRole('region', { name: '(425) 555-0199' });
+
+  // A 2400 by 1600 PNG, its top tenth noise, which no smaller PNG holds: over 1 MB.
+  const original = Buffer.from(
+    await page.evaluate(async () => {
+      const canvas = Object.assign(document.createElement('canvas'), {
+        width: 2400,
+        height: 1600,
+      });
+      const context = canvas.getContext('2d')!;
+      context.fillStyle = '#4a7';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      const noise = context.createImageData(canvas.width, 160);
+      for (let at = 0; at < noise.data.length; at += 65_536)
+        crypto.getRandomValues(noise.data.subarray(at, at + 65_536));
+      for (let at = 3; at < noise.data.length; at += 4) noise.data[at] = 255;
+      context.putImageData(noise, 0, 0);
+      const png = await new Promise<Blob>((resolve) =>
+        canvas.toBlob((blob) => resolve(blob!), 'image/png'),
+      );
+      const read = new FileReader();
+      const url = await new Promise<string>((resolve) => {
+        read.onload = () => resolve(read.result as string);
+        read.readAsDataURL(png);
+      });
+      return url.slice(url.indexOf(',') + 1);
+    }),
+    'base64',
+  );
+  const uploading = page.waitForRequest(
+    (request) => request.url().includes('/texts/uploads') && request.method() === 'POST',
+  );
+  const choosing = page.waitForEvent('filechooser');
+  await conversation.getByRole('button', { name: 'Attach', exact: true }).click();
+  await conversation.getByRole('button', { name: 'Attach Image' }).click();
+  await (await choosing).setFiles({ name: 'dock.png', mimeType: 'image/png', buffer: original });
+
+  const upload = await uploading;
+  const sent = new URL(upload.url()).searchParams;
+  expect([sent.get('name'), sent.get('type')]).toEqual(['dock.jpg', 'image/jpeg']);
+  const bytes = upload.postDataBuffer()!;
+  expect(bytes.length).toBeLessThan(original.length);
+  const side = await page.evaluate(async (jpeg) => {
+    const bytes = Uint8Array.from(atob(jpeg), (letter) => letter.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes]));
+    return [bitmap.width, bitmap.height];
+  }, bytes.toString('base64'));
+  expect(side).toEqual([1920, 1280]);
+  await conversation.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(conversation.getByRole('button', { name: 'dock.jpg', exact: true })).toBeVisible();
+});
