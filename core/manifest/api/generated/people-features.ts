@@ -7,6 +7,5 @@ export const peopleFeatures = [
   "weekly_scorecard",
   "driver_profiles",
   "daily_performance",
-  "team",
   "slack"
 ] as const;
