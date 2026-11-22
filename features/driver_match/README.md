@@ -143,12 +143,12 @@ the guide: what to declare, and what each part tells Driver Match.
 Each order decides more than where something is listed, so a new kind or source takes its
 place here with its reason.
 
-| Source            | Order | Why there                                                                       |
-| ----------------- | ----- | ------------------------------------------------------------------------------- |
-| Paycom (`paycom`) | 10    | A payroll's legal name is the name a person is shown by.                        |
-| Amazon (`amazon`) | 20    | Shown by when no payroll knows them.                                            |
-| Slack (`slack`)   | 30    | A list of people the DSP can reach: shown by only when nothing else knows them. |
-| Dispatch (`dispatch`) | 40 | The DSP's members, by their accounts: shown by only when nothing else knows them. |
+| Source                | Order | Why there                                                                         |
+| --------------------- | ----- | --------------------------------------------------------------------------------- |
+| Paycom (`paycom`)     | 10    | A payroll's legal name is the name a person is shown by.                          |
+| Amazon (`amazon`)     | 20    | Shown by when no payroll knows them.                                              |
+| Slack (`slack`)       | 30    | A list of people the DSP can reach: shown by only when nothing else knows them.   |
+| Dispatch (`dispatch`) | 40    | The DSP's members, by their accounts: shown by only when nothing else knows them. |
 
 A person is shown by the first source's name, and listed with their sources in this order.
 

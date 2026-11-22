@@ -32,3 +32,7 @@ fn members(store: &Store, dsp: &str) -> Result<Vec<Named>> {
         })
         .collect())
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/people.rs"]
+mod tests;
