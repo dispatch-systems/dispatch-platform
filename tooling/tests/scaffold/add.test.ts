@@ -396,11 +396,11 @@ test('--contract writes a contract crate on core alone, what fulfils it, its exp
   const teamDir = path.join(copy, 'features', 'team');
   for (const entry of ['backend', 'tests/backend'])
     fs.rmSync(path.join(teamDir, entry), { recursive: true, force: true });
-  const manifest = path.join(teamDir, 'feature.rs');
+  const teamManifest = path.join(teamDir, 'feature.rs');
   fs.writeFileSync(
-    manifest,
+    teamManifest,
     fs
-      .readFileSync(manifest, 'utf8')
+      .readFileSync(teamManifest, 'utf8')
       .replace(/^mod backend;\n/m, '')
       .replace(/^\s*people: &\[[^\n]*\],\n/m, ''),
   );
