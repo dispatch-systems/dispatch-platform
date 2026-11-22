@@ -143,6 +143,9 @@ people: &[&backend::people::PEOPLE],
 - **Contacts it keeps private** (`.private_contacts()`): its email addresses and phone numbers
   match people but are never shown with them, as a member's sign-in address, which only those
   who manage the DSP's team see.
+- **Names its people wrote themselves** (`.self_named()`): a name alone joins them to nobody,
+  as anyone may write any name; a contact only the two share still does, and Driver Match asks
+  about the rest.
 - **The DSP's members** (`people::MEMBERS`): core's own source, each member by their account;
   any feature finds the person a member is with `Everyone::holding(MEMBERS, user)`. A login is
   optional: a driver without one isn't counted as missing it.

@@ -67,7 +67,13 @@ pub fn seed(db: &Store) -> Result<()> {
         "Dispatch-demo-2026!",
     )?;
     let new_dsp = |name: &str, timezone: &str, permanent: bool| {
-        db.new_dsp_as(&demo_id(db, name), name, timezone, &owner.id, permanent)
+        db.new_dsp_as(
+            &demo_id(db, "dsp", name),
+            name,
+            timezone,
+            &owner.id,
+            permanent,
+        )
     };
     let dev = new_dsp("Dev DSP", "America/Chicago", true)?;
     let north = new_dsp("Northline Logistics", "America/Chicago", false)?;
@@ -82,7 +88,7 @@ pub fn seed(db: &Store) -> Result<()> {
     db.set_custom_id(&north.id, "n1")?;
     db.set_custom_id(&summit.id, "s2")?;
     // Northline's member, in its own directory.
-    let member = db.create_user(
+    db.create_user(
         Some(&north.id),
         "member@dispatch.test",
         "Jordan",
@@ -90,11 +96,18 @@ pub fn seed(db: &Store) -> Result<()> {
         "Dispatch-demo-2026!",
     )?;
     let people = db.dsp(&north.id)?;
+    // Under the same ID each time, as the DSPs are, so the person Driver Match makes of their
+    // login keeps its code.
+    let member = demo_id(db, "usr", "member@dispatch.test");
+    people.exec(
+        "UPDATE users SET id=? WHERE email='member@dispatch.test'",
+        [&member],
+    )?;
     people.exec(
         "INSERT INTO memberships(id,user_id,dsp_id,role,role_id) VALUES (?,?,?,'member',?)",
         params![
             crypto::id("mem")?,
-            member.id,
+            member,
             north.id,
             crate::tenancy::roles::default_role(&people, &north.id, "member")?
         ],
@@ -113,12 +126,13 @@ pub fn seed(db: &Store) -> Result<()> {
         b"synthetic fixtures initialized\n",
     )
 }
-/// The ID of the development fixtures' DSP `name`, as `crypto::id` writes one: the same each
-/// time they start afresh at the platform's address, so a link into the DSP still opens it, and
-/// apart from those of fixtures at another address, as of tests running side by side.
-fn demo_id(db: &Store, name: &str) -> String {
+/// The ID of the development fixtures' `name`, of the kind `prefix` names, as `crypto::id` writes
+/// one: the same each time they start afresh at the platform's address, so a link into a DSP
+/// still opens it, and apart from those of fixtures at another address, as of tests running
+/// side by side.
+fn demo_id(db: &Store, prefix: &str, name: &str) -> String {
     let drawn = crypto::sha(format!("{} {name}", db.config.origin));
-    format!("dsp_{}", &drawn[..32])
+    format!("{prefix}_{}", &drawn[..32])
 }
 /// Fills a new DSP with every feature's demo data, given its timezone, and gives its default
 /// roles what they hold in a demo.

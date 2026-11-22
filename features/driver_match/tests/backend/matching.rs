@@ -257,3 +257,32 @@ fn a_private_contact_matches_but_is_never_shown() {
     assert_eq!(result["U9"].1, IdLink::Email);
     assert!(login.shown(Contact::Email).is_empty());
 }
+
+#[test]
+fn a_name_someone_wrote_themselves_joins_nobody_but_their_email_does() {
+    // Logins, each by the name its member wrote signing up.
+    let login = |id: &str, name: &str, email: &str| {
+        let mut x = reached(slack(id, name), email, "");
+        x.self_named = true;
+        x
+    };
+    let result = run(&[
+        reached(amazon("T1", &["Andre Holloway"]), "dre@example.com", ""),
+        amazon("T2", &["Priya Natarajan"]),
+        login("U1", "Andre Holloway", "dre@example.com"),
+        login("U2", "Priya Natarajan", "priya@example.com"),
+    ]);
+    assert!(together(&result, "T1", "U1"));
+    assert_eq!(result["U1"].1, IdLink::Email);
+    assert!(!together(&result, "T2", "U2"));
+    assert_eq!(result["U2"].1, IdLink::New);
+    // Signed up before Amazon listed them, a login is someone already: a name Amazon writes
+    // alike joins nobody to it either.
+    assert_eq!(
+        decided(
+            &[("LOGIN1", vec![login("U3", "Priya Natarajan", "")])],
+            &[amazon("T3", &["Priya Natarajan"])],
+        ),
+        [(Target::New(0), IdLink::New)]
+    );
+}

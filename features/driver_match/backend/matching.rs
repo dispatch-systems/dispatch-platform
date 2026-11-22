@@ -64,6 +64,11 @@ impl Plan {
                 return Some((person, kind.link()));
             }
         }
+        // A name someone wrote themselves vouches for nothing: whoever manages Driver Match
+        // is asked.
+        if x.self_named {
+            return None;
+        }
         self.by_name(x)
     }
 
@@ -132,11 +137,9 @@ impl Plan {
     /// variant could: when the exact spelling is shared, a variant would only guess between
     /// the people sharing it.
     fn by_name(&self, x: &Identity) -> Option<(Target, IdLink)> {
-        let written_alike = self
-            .holders
-            .values()
-            .flatten()
-            .any(|held| held.source != x.source && exact(&held.names, &x.names));
+        let written_alike = self.holders.values().flatten().any(|held| {
+            held.source != x.source && !held.self_named && exact(&held.names, &x.names)
+        });
         if written_alike {
             self.unique(x, exact).map(|p| (p, IdLink::Name))
         } else {
@@ -144,9 +147,12 @@ impl Plan {
         }
     }
     /// The one person whose IDs of other sources carry `x`'s name, as `alike` compares names,
-    /// when no other ID of `x`'s source, but its own other IDs, carries that person's name.
+    /// when no other ID of `x`'s source, but its own other IDs, carries that person's name. A
+    /// name someone wrote themselves carries nothing, whichever came first.
     fn unique(&self, x: &Identity, alike: fn(&[String], &[String]) -> bool) -> Option<Target> {
-        let carries = |held: &Identity| held.source != x.source && alike(&held.names, &x.names);
+        let carries = |held: &Identity| {
+            held.source != x.source && !held.self_named && alike(&held.names, &x.names)
+        };
         let mut matched = self
             .holders
             .iter()

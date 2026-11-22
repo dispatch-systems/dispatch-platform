@@ -1,7 +1,8 @@
 //! The DSP's members, as Driver Match reads them: each by their account, with its name and
 //! email address, which matches them but is never shown with them: only those who manage the
-//! team see it. Members are people the DSP can reach, not whom it employs: an office member's
-//! sources may know them, and a member nothing else knows works in the office.
+//! team see it. A member's name is the one they wrote signing up, so it alone joins them to
+//! nobody: Driver Match asks. Members are people the DSP can reach, not whom it employs: an
+//! office member's sources may know them, and a member nothing else knows works in the office.
 use dispatch_core::{
     Result,
     db::Store,
@@ -20,7 +21,8 @@ pub const PEOPLE: People = People::new(
     members,
 )
 .contacts_only()
-.private_contacts();
+.private_contacts()
+.self_named();
 
 fn members(store: &Store, dsp: &str) -> Result<Vec<Named>> {
     Ok(store
