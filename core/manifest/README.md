@@ -145,7 +145,7 @@ people: &[&backend::people::PEOPLE],
   who manage the DSP's team see.
 - **The DSP's members** (`people::MEMBERS`): core's own source, each member by their account;
   any feature finds the person a member is with `Everyone::holding(MEMBERS, user)`. A login is
-  optional: no driver lacks one.
+  optional: a driver without one isn't counted as missing it.
 
 A kind is read while its feature is on, and every ID it names gets a person after each
 collection; a feature whose people may gain new IDs outside a collection, as a chat

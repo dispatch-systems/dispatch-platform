@@ -165,12 +165,12 @@ export function day(date: string, today: string) {
 
 /** The same tone for a code everywhere it appears. */
 export const toneOf = (code: string) => [...code].reduce((sum, c) => sum + c.charCodeAt(0), 0) % 4;
-/** Long IDs, as Amazon's transporter IDs, by their start and end, which tell them apart. */
 /** An ID as a message names it: a login by its name, any other by its source and shortened ID. */
 export const idText = (id: PersonId) =>
   optional(id.source)
     ? `${sourceLabel(id.source)} login ${id.name}`
     : `${sourceLabel(id.source)} ID ${shortId(id)}`;
+/** Long IDs, as Amazon's transporter IDs, by their start and end, which tell them apart. */
 export const shortId = (id: PersonId) =>
   // A login's ID means nothing to whoever reads it: its name does.
   (optional(id.source) && id.name) ||

@@ -76,7 +76,7 @@ test('Driver Match answers only to its own permission, and its decisions to thei
   assert.equal((await owner.read(directory)).role, before.role);
 });
 
-test("a login's sign-in address joins it to its person, and no one reads it", async (t) => {
+test("a login is someone's in the directory, and no member or Driver Match page reads its sign-in address", async (t) => {
   const f = await fixture();
   t.after(f.close);
   const north = await seedDriverMatch(f);
