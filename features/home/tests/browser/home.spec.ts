@@ -131,9 +131,14 @@ test('Home in a window smaller than its grid shows all of it, scaled down, and n
     await atHome(page);
     for (const editing of [false, true]) {
       if (editing) await page.getByRole('button', { name: 'Edit', exact: true }).click();
-      const widget = (await page.getByRole('article', { name: 'Latest DVIC' }).boundingBox())!;
-      expect(widget.x + widget.width).toBeLessThanOrEqual(size.width);
-      expect(widget.y + widget.height).toBeLessThanOrEqual(size.height);
+      // Inside the window, once the page has taken its new size.
+      const widget = page.getByRole('article', { name: 'Latest DVIC' });
+      await expect
+        .poll(async () => {
+          const box = (await widget.boundingBox())!;
+          return box.x + box.width <= size.width && box.y + box.height <= size.height;
+        })
+        .toBe(true);
       // Nothing past the page's edges, which would be cut off, as it never scrolls.
       const past = await page.evaluate(() =>
         [document.scrollingElement!, document.querySelector('.page-container')!].map((element) => [
