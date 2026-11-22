@@ -102,11 +102,11 @@ pub async fn read(bot: &Bot) -> Result<()> {
     let new = bot
         .keep(move |db| db.keep_slack_members(&dsp, &team, &members))
         .await?;
-    member_pictures::keep(bot, pictures).await?;
     if new {
         events::publish(&bot.state, &bot.dsp, PeopleChanged).await;
     }
-    Ok(())
+    // Pictures come after Driver Match has the members, which wait for none.
+    member_pictures::keep(bot, pictures).await
 }
 /// Reads the DSP's workspace `team`'s members once Slack has given the bot its access there,
 /// as it was just connected or its admin approved reading them. A failure waits for the
@@ -146,11 +146,10 @@ pub async fn told(bot: &Bot, event: &Value, again: bool) -> Result<()> {
     let new = bot
         .keep(move |db| db.keep_slack_member(&dsp, &team, &member))
         .await?;
-    member_pictures::keep(bot, vec![picture]).await?;
     if new {
         events::publish(&bot.state, &bot.dsp, PeopleChanged).await;
     }
-    Ok(())
+    member_pictures::keep(bot, vec![picture]).await
 }
 
 pub(super) fn failed(error: &Error) {
