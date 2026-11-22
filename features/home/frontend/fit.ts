@@ -1,14 +1,10 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { COLUMNS, GAP, ROWS } from './grid.js';
 
 /**
  * The smallest the grid is laid out at, in pixels: as a 1440×900 window gives it, where every
- * widget fits each size it declares. Each cell is 79 by 83, with the gaps between them.
+ * widget fits each size it declares.
  */
-export const SMALLEST = {
-  width: COLUMNS * 79 + (COLUMNS - 1) * GAP,
-  height: ROWS * 83 + (ROWS - 1) * GAP,
-};
+export const SMALLEST = { width: 1128, height: 677 };
 
 /**
  * The grid filling the space the window gives it: where that's smaller than `SMALLEST`, the grid
