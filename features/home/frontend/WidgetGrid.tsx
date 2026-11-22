@@ -1,6 +1,7 @@
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { Widget } from '../../../core/shell/frontend/runtime/slots.js';
 import type { PlacedWidget } from '../api/index.js';
+import { useFit } from './fit.js';
 import { WidgetFrame } from './WidgetFrame.js';
 
 /** The widgets on the page's grid, each in the cells it was placed in. */
@@ -11,9 +12,10 @@ export function WidgetGrid({
   placed: readonly { widget: Widget; at: PlacedWidget }[];
   view: DspView;
 }) {
+  const { area, fit } = useFit();
   return (
-    <div className="home-area">
-      <div className="home-grid">
+    <div ref={area} className="home-area">
+      <div className="home-grid" style={fit}>
         {placed.map(({ widget, at }) => (
           <div
             key={widget.id}

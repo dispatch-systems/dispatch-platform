@@ -110,3 +110,90 @@ test('Home never shows a widget at every size on Production, whatever its addres
   await expect(page.getByRole('heading', { name: 'Home', exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Late DAs', level: 1 })).toHaveCount(0);
 });
+
+test('Home in a window smaller than its grid shows all of it, scaled down, and never scrolls', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const dsp = owner.session.dsps.find(
+    (item: { name: string }) => item.name === 'Northline Logistics',
+  );
+  // In the grid's bottom right corner, where a page too small for it would cut it off.
+  await placeWidgets(owner, dsp.id, [{ id: 'dvic.latest', columns: 4, rows: 4, x: 8, y: 3 }]);
+  await login(page);
+  await openDsp(page, dsp.name);
+  for (const size of [
+    { width: 1366, height: 768 },
+    { width: 1024, height: 768 },
+  ]) {
+    await page.setViewportSize(size);
+    await atHome(page);
+    for (const editing of [false, true]) {
+      if (editing) await page.getByRole('button', { name: 'Edit', exact: true }).click();
+      // Inside the window, once the page has taken its new size.
+      const widget = page.getByRole('article', { name: 'Latest DVIC' });
+      await expect
+        .poll(async () => {
+          const box = (await widget.boundingBox())!;
+          return box.x + box.width <= size.width && box.y + box.height <= size.height;
+        })
+        .toBe(true);
+      // Nothing past the page's edges, which would be cut off, as it never scrolls.
+      const past = await page.evaluate(() =>
+        [document.scrollingElement!, document.querySelector('.page-container')!].map((element) => [
+          element.scrollWidth - element.clientWidth,
+          element.scrollHeight - element.clientHeight,
+        ]),
+      );
+      expect(past).toEqual([
+        [0, 0],
+        [0, 0],
+      ]);
+    }
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
+  }
+});
+
+test('a widget moved or resized on a grid scaled down lands where the pointer let it go', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const dsp = owner.session.dsps.find(
+    (item: { name: string }) => item.name === 'Northline Logistics',
+  );
+  await placeWidgets(owner, dsp.id, [{ id: 'timecard.late_das', columns: 2, rows: 2 }]);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await login(page);
+  await openDsp(page, dsp.name);
+  await atHome(page);
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const widget = page.getByRole('article', { name: 'Late DAs' });
+  const kept = async () => {
+    const view = await owner.select(dsp.id);
+    const [at] = view.preferences['home.layout'].value.widgets;
+    return { x: at.x, w: at.w };
+  };
+  // Moved by its own width and the gap after it, as the window shows them, once the editor's grid
+  // is drawn: two columns over.
+  const gap = await page
+    .locator('.home-board')
+    .evaluate((board) => (16 * board.getBoundingClientRect().width) / board.clientWidth);
+  const box = (await widget.boundingBox())!;
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + box.width + gap, y, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(kept).toEqual({ x: 2, w: 2 });
+  // Its right edge dragged its own width further: twice as wide.
+  const moved = (await widget.boundingBox())!;
+  const [edge, middle] = [moved.x + moved.width, moved.y + moved.height / 2];
+  await page.mouse.move(edge, middle);
+  await page.mouse.down();
+  await page.mouse.move(edge + moved.width + gap, middle, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(kept).toEqual({ x: 2, w: 4 });
+});

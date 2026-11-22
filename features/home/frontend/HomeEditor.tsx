@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useState, type PointerEvent } from 'react';
 import { Plus, RotateCcw, X } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { Widget } from '../../../core/shell/frontend/runtime/slots.js';
 import { ConfirmDialog, Header, Modal } from '../../../core/shell/frontend/ui/index.js';
 import type { PlacedWidget } from '../api/index.js';
+import { useFit } from './fit.js';
 import { COLUMNS, GAP, ROWS } from './grid.js';
 import {
   adding,
@@ -57,23 +58,6 @@ function follow(
   element.setPointerCapture(event.pointerId);
 }
 
-/** The size of the space the board is drawn in, as the window gives it, once it has one. */
-function useSize() {
-  const area = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState<{ width: number; height: number }>();
-  useEffect(() => {
-    const element = area.current;
-    if (!element) return;
-    const observer = new ResizeObserver(([entry]) => {
-      const { width, height } = entry!.contentRect;
-      setSize({ width, height });
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  return { area, size };
-}
-
 /**
  * The page while its member arranges it: each widget picked up and dropped anywhere on the
  * grid, those it mostly covers moving aside while it's held there and back once it moves on, and
@@ -99,7 +83,7 @@ export function HomeEditor({
   reset: () => void;
   done: () => void;
 }) {
-  const { area, size } = useSize();
+  const { area, fit, size, scale } = useFit();
   const [listing, setListing] = useState(open);
   const [resetting, setResetting] = useState(false);
   const [held, setHeld] = useState<Held>();
@@ -108,7 +92,8 @@ export function HomeEditor({
   const [resizing, setResizing] = useState<PlacedWidget>();
   const [added, setAdded] = useState<string>();
   const origin = placed.map(({ at }) => at);
-  // A cell and the gap after it, across and down, in pixels: the grid fills the space.
+  // A cell and the gap after it, across and down, in the grid's own pixels: the grid fills the
+  // space, scaled down where it's small.
   const across = ((size?.width ?? 0) + GAP) / COLUMNS;
   const down = ((size?.height ?? 0) + GAP) / ROWS;
   const box = ({ x, y, w, h }: PlacedWidget) => ({
@@ -159,8 +144,8 @@ export function HomeEditor({
     let now: Held | undefined;
     let tried: { x: number; y: number } | undefined;
     const move = (moved: globalThis.PointerEvent) => {
-      const [dx, dy] = [moved.clientX - startX, moved.clientY - startY];
-      if (!now && Math.hypot(dx, dy) < SLOP) return;
+      const [dx, dy] = [(moved.clientX - startX) / scale, (moved.clientY - startY) / scale];
+      if (!now && Math.hypot(dx, dy) * scale < SLOP) return;
       // Under the pointer, but never past the board's edges, so the page never scrolls.
       const left = Math.min(Math.max(at.x * across + dx, 0), (COLUMNS - at.w) * across);
       const top = Math.min(Math.max(at.y * down + dy, 0), (ROWS - at.h) * down);
@@ -210,7 +195,7 @@ export function HomeEditor({
         widget,
         at,
         edge,
-        [(moved.clientX - startX) / across, (moved.clientY - startY) / down],
+        [(moved.clientX - startX) / scale / across, (moved.clientY - startY) / scale / down],
         others,
       );
       if (!next || (['x', 'y', 'w', 'h'] as const).every((key) => next[key] === last[key])) return;
@@ -243,7 +228,7 @@ export function HomeEditor({
         </button>
       </Header>
       <div ref={area} className="home-area">
-        <div className={held ? 'home-board home-holding' : 'home-board'}>
+        <div className={held ? 'home-board home-holding' : 'home-board'} style={fit}>
           {size && held && <div className="home-drop" style={box(landing(held))} />}
           {size &&
             placed.map(({ widget, at }, index) => {
