@@ -64,6 +64,11 @@ impl Plan {
                 return Some((person, kind.link()));
             }
         }
+        // A name someone wrote themselves vouches for nothing: whoever manages Driver Match
+        // is asked.
+        if x.self_named {
+            return None;
+        }
         self.by_name(x)
     }
 

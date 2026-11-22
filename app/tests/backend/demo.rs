@@ -3,7 +3,7 @@
 //! Conduct, signed and not.
 use dispatch_core::{
     db::Store,
-    manifest::{people, registry},
+    manifest::registry,
     server::{operations, startup},
     testing,
 };
@@ -16,25 +16,15 @@ fn dsps(db: &Store) -> Vec<(String, String)> {
         .unwrap()
 }
 
-/// Every ID the DSP `name`'s people hold, with its source and its holder's code: a member's
-/// account, drawn afresh each time, by its email address.
+/// Every ID the DSP `name`'s people hold, with its source and its holder's code.
 fn codes(db: &Store, name: &str) -> Vec<(String, String, String)> {
-    let dsp = testing::dsp_named(db, name);
-    let members = db.members(&dsp).unwrap();
-    let mut codes: Vec<(String, String, String)> = db
-        .dsp(&dsp)
+    db.dsp(&testing::dsp_named(db, name))
         .unwrap()
-        .query_as("SELECT source,external_id,code FROM person_ids", [])
-        .unwrap();
-    for (source, id, _) in &mut codes {
-        if *source == people::MEMBERS.as_str()
-            && let Some(member) = members.iter().find(|m| m.user_id == *id)
-        {
-            id.clone_from(&member.email);
-        }
-    }
-    codes.sort();
-    codes
+        .query_as(
+            "SELECT source,external_id,code FROM person_ids ORDER BY source,external_id",
+            [],
+        )
+        .unwrap()
 }
 
 #[test]

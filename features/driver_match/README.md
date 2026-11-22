@@ -54,7 +54,7 @@ what was decided.
   person holds those and their names agree (`account`); an email address or phone number only the
   two of them have, among every person of either source, when their names agree; a name nobody else
   carries; the same name written another way, as without a second surname or by a middle name. A
-  nickname, as Alex for Alexander, joins nobody: it suggests a pair to decide. Email addresses are
+  nickname, as Alex for Alexander, joins nobody: it suggests a pair to decide. Nor does a name a source's people wrote themselves (`.self_named()`), as a login's: only a contact joins them, and a name they share with someone suggests a pair. Email addresses are
   compared in lower case and phone numbers by their ten digits; a number that isn't North American
   is shown but matches nobody. A contact two people of one source share, as a family's phone, joins
   nobody but suggests a rehire. What counts as one name written two ways, and which first names are

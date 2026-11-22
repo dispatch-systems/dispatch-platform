@@ -87,6 +87,9 @@ pub(crate) struct Identity {
     pub contacts: Contacts,
     /// Whether its contacts only match, never shown (`private_contacts`).
     pub private: bool,
+    /// Whether its person wrote their own name (`self_named`): a name alone joins them to
+    /// nobody.
+    pub self_named: bool,
     /// What its source says they do.
     pub roles: Vec<String>,
     /// Whether its source only lists people the DSP can reach (`contacts_only`): it says
@@ -119,6 +122,7 @@ impl Identity {
             offboarded: false,
             contacts: Contacts::default(),
             private: false,
+            self_named: false,
             roles: vec![],
             contacts_only: false,
             photo: None,
@@ -201,6 +205,7 @@ pub(crate) fn found(kinds: &[&'static People], store: &Store, dsp: &str) -> Resu
                 .same_as
                 .extend(named.same_as.into_iter().filter(|other| other != id));
             entry.private |= kind.private_contacts;
+            entry.self_named |= kind.self_named;
             for email in &named.emails {
                 entry.contacts.add(Contact::Email, email);
             }

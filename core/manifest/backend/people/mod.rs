@@ -59,7 +59,8 @@ use std::{
 /// the data knows besides: how much it holds of each ID (`records`), whether each record shows
 /// them driving (`driving`), the days each worked (`workdays`), which departments drive
 /// (`driver_departments`), their photos (`photos`), whether its list is only of people the
-/// DSP can reach (`contacts_only`), and whether its contacts are shown (`private_contacts`).
+/// DSP can reach (`contacts_only`), whether its contacts are shown (`private_contacts`), and
+/// whether its people wrote their own names (`self_named`).
 pub struct People {
     /// What it is, as each person's sheet lists it.
     pub kind: KindInfo,
@@ -91,6 +92,9 @@ pub struct People {
     /// Whether its email addresses and phone numbers only match people, never shown with them,
     /// as a member's sign-in address is, which only those who manage the DSP's team see.
     pub private_contacts: bool,
+    /// Whether each of its people wrote their own name, as a member does signing up: a name
+    /// alone then joins them to nobody, and whoever manages Driver Match is asked.
+    pub self_named: bool,
 }
 /// Reads what one kind of data holds for a DSP.
 pub type Reader<T> = fn(&Store, &str) -> Result<T>;
@@ -114,6 +118,7 @@ impl People {
             photos: None,
             contacts_only: false,
             private_contacts: false,
+            self_named: false,
         }
     }
     /// Counts how much it holds of each ID, in `unit`: what one record is, singular.
@@ -162,6 +167,13 @@ impl People {
     pub const fn private_contacts(self) -> Self {
         Self {
             private_contacts: true,
+            ..self
+        }
+    }
+    /// Joins its people to nobody by a name alone, as they wrote their own.
+    pub const fn self_named(self) -> Self {
+        Self {
+            self_named: true,
             ..self
         }
     }
