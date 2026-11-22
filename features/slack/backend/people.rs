@@ -1,9 +1,13 @@
 //! The members of the DSP's Slack workspaces, as Driver Match reads them: each member by
 //! their own ID, and one email address in several workspaces as one person. Slack lists who
 //! the DSP can reach, not whom it employs.
-use super::storage::{
-    members::{Member, MemberStore},
-    workspaces::WorkspaceStore,
+use super::{
+    member_pictures,
+    storage::{
+        member_pictures::MemberPictureStore,
+        members::{Member, MemberStore},
+        workspaces::WorkspaceStore,
+    },
 };
 use dispatch_core::{
     Result,
@@ -21,7 +25,7 @@ pub const SOURCE: Source = Source::new(&SourceInfo {
 });
 
 /// Everyone in the DSP's workspaces, listed while their account is active, with the email
-/// address and phone number on their profile, by their name.
+/// address and phone number on their profile and the picture they set, by their name.
 pub const PEOPLE: People = People::new(
     KindInfo {
         id: "slack",
@@ -32,6 +36,7 @@ pub const PEOPLE: People = People::new(
     SOURCE,
     members,
 )
+.photos(member_pictures::photo)
 .contacts_only();
 
 /// Every member of the DSP's workspaces, by their name. A member of several workspaces is the
@@ -52,6 +57,7 @@ fn members(store: &Store, dsp: &str) -> Result<Vec<Named>> {
             Some((team, member, broken))
         })
         .collect();
+    let pictures = store.slack_member_picture_versions(dsp)?;
     let mut by_email: HashMap<String, Vec<String>> = HashMap::new();
     for (team, member, _) in &members {
         if let Some(email) = &member.email {
@@ -79,6 +85,7 @@ fn members(store: &Store, dsp: &str) -> Result<Vec<Named>> {
             Named {
                 name: member.name,
                 listed: member.active && !broken,
+                photo: pictures.get(&(team.clone(), member.user.clone())).cloned(),
                 emails: member.email.into_iter().collect(),
                 phones: member.phone.into_iter().collect(),
                 same_as,

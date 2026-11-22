@@ -1,10 +1,12 @@
 //! The members of the DSP's workspaces, for Driver Match to tell apart: each one's name, the
-//! email address and phone number on their profile, and whether their account is active. A
+//! email address and phone number on their profile, and whether their account is active, and
+//! the picture they set (`member_pictures`). A
 //! workspace's are read whole when it's connected, or its admin approves reading them, and
 //! hourly; one at a time as Slack tells of someone joining or changing their profile. Bots and
 //! Slackbot aren't members here; guests are.
 use super::{
     bot::{self, Bot},
+    member_pictures,
     slack::text,
     storage::{
         members::{Member, MemberStore},
@@ -71,14 +73,19 @@ pub async fn read(bot: &Bot) -> Result<()> {
         return Ok(());
     }
     let mut members = Vec::new();
+    let mut pictures = Vec::new();
     let mut cursor = Value::Null;
     let mut whole = false;
     for _ in 0..PAGES {
         let page = bot
             .call("users.list", &json!({"limit": 200, "cursor": cursor}))
             .await?;
-        let listed = page["members"].as_array().into_iter().flatten();
-        members.extend(listed.filter_map(member));
+        for user in page["members"].as_array().into_iter().flatten() {
+            if let Some(member) = member(user) {
+                pictures.push((member.user.clone(), member_pictures::source(user)));
+                members.push(member);
+            }
+        }
         cursor = match page["response_metadata"]["next_cursor"].as_str() {
             Some(next) if !next.is_empty() => json!(next),
             _ => {
@@ -98,7 +105,8 @@ pub async fn read(bot: &Bot) -> Result<()> {
     if new {
         events::publish(&bot.state, &bot.dsp, PeopleChanged).await;
     }
-    Ok(())
+    // Pictures come after Driver Match has the members, which wait for none.
+    member_pictures::keep(bot, pictures).await
 }
 /// Reads the DSP's workspace `team`'s members once Slack has given the bot its access there,
 /// as it was just connected or its admin approved reading them. A failure waits for the
@@ -133,6 +141,7 @@ pub async fn told(bot: &Bot, event: &Value, again: bool) -> Result<()> {
     let Some(member) = member(told) else {
         return Ok(());
     };
+    let picture = (member.user.clone(), member_pictures::source(told));
     let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
     let new = bot
         .keep(move |db| db.keep_slack_member(&dsp, &team, &member))
@@ -140,7 +149,7 @@ pub async fn told(bot: &Bot, event: &Value, again: bool) -> Result<()> {
     if new {
         events::publish(&bot.state, &bot.dsp, PeopleChanged).await;
     }
-    Ok(())
+    member_pictures::keep(bot, vec![picture]).await
 }
 
 pub(super) fn failed(error: &Error) {

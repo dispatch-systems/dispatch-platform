@@ -3,6 +3,7 @@
 pub(crate) mod installation;
 pub(crate) mod integrations;
 pub(crate) mod logos;
+pub(crate) mod member_pictures;
 pub(crate) mod members;
 pub(crate) mod migrations;
 pub(crate) mod workspaces;
