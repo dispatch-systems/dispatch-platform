@@ -163,20 +163,41 @@ fn whoever_wrote_or_marked_a_writeup_signed_is_the_person_their_account_is() {
     crate::backend::copies::keep(&store, &c, &id, 1, &[0xff, 0xd8, 0xff, 0xdb]).unwrap();
     let revision = writeups::read(&store, &c.dsp.id, &id).unwrap().row.revision;
     writeups::sign(&store, &c, &id, revision, "2026-11-02", "2026-11-08").unwrap();
+    // A member of the DSP, besides its owner writing up.
+    let member = store
+        .create_user(
+            Some(&c.dsp.id),
+            "riley@example.test",
+            "Riley",
+            "Shah",
+            "test-password-long",
+        )
+        .unwrap();
+    let db = store.dsp(&c.dsp.id).unwrap();
+    let role = dispatch_core::tenancy::roles::default_role(&db, &c.dsp.id, "member").unwrap();
+    db.exec(
+        "INSERT INTO memberships(id,user_id,dsp_id,role,role_id) VALUES ('mem_riley',?,?,'member',?)",
+        rusqlite::params![member.id, c.dsp.id, role],
+    )
+    .unwrap();
+    let holding = |code: &str, name: &str, account: &str| Person {
+        code: code.into(),
+        name: name.into(),
+        names: vec![name.into()],
+        role: PersonRole::Office,
+        title: None,
+        ids: BTreeMap::from([(people::MEMBERS, vec![account.to_owned()])]),
+        emails: vec![],
+        phones: vec![],
+        added_phones: vec![],
+        confirmed: false,
+        photo: None,
+    };
     let everyone = Everyone::new(
-        vec![Person {
-            code: "office".into(),
-            name: "Casey Supervisor".into(),
-            names: vec!["Casey Supervisor".into()],
-            role: PersonRole::Office,
-            title: None,
-            ids: BTreeMap::from([(people::MEMBERS, vec![c.auth.user.id.clone()])]),
-            emails: vec![],
-            phones: vec![],
-            added_phones: vec![],
-            confirmed: false,
-            photo: None,
-        }],
+        vec![
+            holding("office", "Casey Supervisor", &c.auth.user.id),
+            holding("riley", "Riley Shah", &member.id),
+        ],
         BTreeMap::new(),
     );
     let read = || {
@@ -196,11 +217,11 @@ fn whoever_wrote_or_marked_a_writeup_signed_is_the_person_their_account_is() {
     let row = &read()[0];
     assert_eq!(row.supervisor.as_deref(), Some("office"));
     assert_eq!(row.signed_by.as_deref(), Some("office"));
-    // One signed before accounts were kept is theirs by the name it was signed by.
-    store
-        .dsp(&c.dsp.id)
-        .unwrap()
-        .exec("UPDATE conduct_writeups SET signed_by_id=NULL", [])
-        .unwrap();
-    assert_eq!(read()[0].signed_by.as_deref(), Some("office"));
+    // One signed before accounts were kept is the member's whose name it was signed by.
+    db.exec(
+        "UPDATE conduct_writeups SET signed_by_id=NULL,signed_by_name='Riley Shah'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(read()[0].signed_by.as_deref(), Some("riley"));
 }
