@@ -5,15 +5,10 @@ import {
   openDsp,
 } from '../../../../../../core/shell/tests/support/fixtures.js';
 import { hrLine, paired, withHrLine } from '../support/line.js';
+import { pastePicture } from '../../../../../communications/tests/support/pictures.js';
 
 // Northline, given HR Line's custom ID with HR Line on and a phone paired to it; its demo's
 // stand-in phone, (206) 555-0100, is Dispatch Phone's, which (425) 555-0199 texted already.
-
-/** A picture of a single pixel, as a PNG. */
-const PIXEL = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
-  'base64',
-);
 
 test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatch Phone's page none of them", async ({
   page,
@@ -60,13 +55,11 @@ test("HR Line's page lists, names and answers HR Line's texts alone, and Dispatc
   await expect(named).toBeVisible();
   await expect(named.getByRole('button', { name: 'Quick replies' })).toHaveCount(0);
 
-  // Answered with a picture, from HR Line's phone.
-  await named.locator('input[type=file]').setInputFiles({
-    name: 'stub.png',
-    mimeType: 'image/png',
-    buffer: PIXEL,
-  });
-  await named.getByLabel('Message', { exact: true }).fill('Payroll will call you');
+  // Answered with a picture pasted in, from HR Line's phone.
+  const box = named.getByLabel('Message', { exact: true });
+  await pastePicture(box, 'stub.png');
+  await expect(named.getByRole('button', { name: 'Remove stub.png' })).toBeVisible();
+  await box.fill('Payroll will call you');
   await named.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(named.getByText('Payroll will call you', { exact: true })).toBeVisible();
   await expect(named.getByRole('img', { name: 'stub.png' })).toBeVisible();

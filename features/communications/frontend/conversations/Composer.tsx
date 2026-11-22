@@ -197,7 +197,8 @@ export function Composer({
     }
   };
   const sending = send.busy ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />;
-  // A message carries photos or a GIF, never both.
+  // A message carries photos or a GIF, never both; nothing is added while one goes.
+  const attachable = open && !send.busy && !gif && Boolean(limits?.photos);
   const adding: Adding[] = [
     ...(limits && limits.photos > 0
       ? [
@@ -312,6 +313,16 @@ export function Composer({
           onChange={(event) => writing(event.target.value)}
           onSelect={() => {
             caret.current = undefined;
+          }}
+          onPaste={(event) => {
+            // Pictures pasted are added as Attach Image adds them; text, as a spreadsheet's
+            // cells that come with a picture of them, is written.
+            const clipboard = event.clipboardData;
+            if (!attachable || clipboard.types.includes('text/plain')) return;
+            const pasted = [...clipboard.files].filter((file) => file.type.startsWith('image/'));
+            if (!pasted.length) return;
+            event.preventDefault();
+            add(pasted, starts);
           }}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;

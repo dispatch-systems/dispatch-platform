@@ -44,7 +44,7 @@ export function useComposerPhotos(limits: ComposeLimits | undefined, attachments
     if (photo) URL.revokeObjectURL(photo.shown);
     setPhotos((now) => now.filter((each) => each.key !== key));
   };
-  const add = (files: FileList | null, starts: () => void) => {
+  const add = (files: Iterable<File> | null, starts: () => void) => {
     const chosen = [...(files ?? [])];
     if (!limits) return;
     if (chosen.some((file) => !limits.kinds.includes(file.type)))
