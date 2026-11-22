@@ -83,8 +83,10 @@ pub(crate) struct Identity {
     pub listed: bool,
     /// Its source says the DSP offboarded them.
     pub offboarded: bool,
-    /// Its contacts, to match by and to show.
+    /// Its contacts, to match by, and to show unless they're `private`.
     pub contacts: Contacts,
+    /// Whether its contacts only match, never shown (`private_contacts`).
+    pub private: bool,
     /// What its source says they do.
     pub roles: Vec<String>,
     /// Whether its source only lists people the DSP can reach (`contacts_only`): it says
@@ -96,6 +98,14 @@ pub(crate) struct Identity {
     pub same_as: BTreeSet<String>,
 }
 impl Identity {
+    /// Its contacts of `kind` as they're shown: none of a private one's.
+    pub fn shown(&self, kind: Contact) -> &[String] {
+        if self.private {
+            &[]
+        } else {
+            self.contacts.written(kind)
+        }
+    }
     pub fn new(source: Source, id: &str) -> Self {
         Self {
             source,
@@ -108,6 +118,7 @@ impl Identity {
             listed: false,
             offboarded: false,
             contacts: Contacts::default(),
+            private: false,
             roles: vec![],
             contacts_only: false,
             photo: None,
@@ -189,6 +200,7 @@ pub(crate) fn found(kinds: &[&'static People], store: &Store, dsp: &str) -> Resu
             entry
                 .same_as
                 .extend(named.same_as.into_iter().filter(|other| other != id));
+            entry.private |= kind.private_contacts;
             for email in &named.emails {
                 entry.contacts.add(Contact::Email, email);
             }

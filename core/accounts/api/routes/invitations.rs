@@ -57,9 +57,10 @@ async fn accept_invitation(state: Arc<State>, input: Input, _: Public) -> Result
             .schedule_revision
             .fetch_add(1, std::sync::atomic::Ordering::Release);
     }
-    // A new member is someone a feature's people may name, for the feature telling them apart.
-    if let Some(dsp) = joined["dspId"].as_str() {
-        events::publish(&state, dsp, PeopleChanged).await;
+    // A new member is someone a feature's people may name, for the feature telling them apart,
+    // which the answer doesn't wait for.
+    if let Some(dsp) = joined["dspId"].as_str().map(str::to_owned) {
+        tokio::spawn(async move { events::publish(&state, &dsp, PeopleChanged).await });
     }
     Ok(Reply::json(joined))
 }

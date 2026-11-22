@@ -167,8 +167,8 @@ export function day(date: string, today: string) {
 export const toneOf = (code: string) => [...code].reduce((sum, c) => sum + c.charCodeAt(0), 0) % 4;
 /** Long IDs, as Amazon's transporter IDs, by their start and end, which tell them apart. */
 export const shortId = (id: PersonId) =>
-  // A login's ID means nothing to whoever reads it: its email address does.
-  (optional(id.source) && id.emails[0]) ||
+  // A login's ID means nothing to whoever reads it: its name does.
+  (optional(id.source) && id.name) ||
   (id.id.length > 12 ? `${id.id.slice(0, 4)}…${id.id.slice(-4)}` : id.id);
 
 /**
