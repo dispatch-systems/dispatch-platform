@@ -105,6 +105,7 @@
     "features/conduct/frontend/notice/fonts/LiberationSansNarrow-Regular.ttf": "8140663e87a66c1e0dc0cbf06ffcd66cabbb8690da12728d28c3dc711be107d7",
     "features/conduct/frontend/notice/fonts/PinyonScript-Regular.ttf": "4aab130a6ed27f8b8117738c84a5602edf9300cdcc0651a9a65bf96f451ac29a",
     "features/slack/backend/fixture-logo.png": "2d1950df0e829f75590fbf5351789d20efecf64bf71bb079de4d82fdc695d047",
+    "features/slack/backend/fixture-member.png": "19888ee0204d4ea381e2575e51ca86b3849a607b2d4646982eb3dc59cf9156e4",
     "features/slack/tooling/icons/dispatch-dev.png": "fd3d69a1eb444eb1e614fe3a9a68a8060f63562bc604a008f7f7b2b8236e8b71",
     "features/slack/tooling/icons/dispatch-dev.svg": "3d373e6c6fc9ddfb065668b80985052b43279f30f024c25a8d4cfdae90713d15",
     "features/slack/tooling/icons/dispatch.png": "975e66d61bc9bdec4274d9ede03439f1461b64cfa848dc27c9580d2bde85339c",
