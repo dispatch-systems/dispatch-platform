@@ -319,9 +319,9 @@ fn users(workspace: &str) -> Vec<Value> {
         .filter(|user| user.teams.contains(&workspace))
         .map(|user| {
             let photo = if user.photo {
-                format!("{AVATARS}{}_512.jpg", user.id)
+                format!("{AVATARS}{}_192.png", user.id)
             } else {
-                format!("{AVATARS}default-avatar_512.png")
+                format!("{AVATARS}default-avatar_192.png")
             };
             json!({
                 "id": user.id,
@@ -330,13 +330,15 @@ fn users(workspace: &str) -> Vec<Value> {
                 "is_restricted": user.kind == Kind::Guest,
                 "profile": {"real_name": user.name, "display_name": user.goes_by,
                     "email": user.email, "phone": user.phone,
-                    "is_custom_image": user.photo, "image_512": photo},
+                    "is_custom_image": user.photo, "image_192": photo},
             })
         })
         .collect()
 }
 /// Where its members' photos are, as Slack's are on its own servers.
-const AVATARS: &str = "https://avatars.example.com/fixture/";
+const AVATARS: &str = "https://avatars.slack-edge.com/fixture/";
+/// The photo a member gave their profile: a figure on teal, 192 pixels square.
+const MEMBER_PICTURE: &[u8] = include_bytes!("fixture-member.png");
 /// Where Operations' logo is, as a workspace's own is on Slack's servers.
 const LOGO: &str = "https://avatars.slack-edge.com/fixture/T0FIXTURE1_132.png";
 /// Slack's own logo, which a workspace that gave it none shows.
@@ -351,10 +353,21 @@ fn icon(team: &str) -> Value {
         json!({"image_132": SLACKS_LOGO, "image_default": true})
     }
 }
-/// The picture at `url`: Operations' logo, its only one.
+/// The picture at `url`: Operations' logo, or the photo of a member who gave their profile one.
 pub fn picture(url: &str) -> Result<Vec<u8>> {
-    ensure(url == LOGO, "slack_unreachable", 502)?;
-    Ok(LOGO_PICTURE.to_vec())
+    if url == LOGO {
+        return Ok(LOGO_PICTURE.to_vec());
+    }
+    let member = url
+        .strip_prefix(AVATARS)
+        .and_then(|name| name.strip_suffix("_192.png"))
+        .and_then(|id| USERS.iter().find(|user| user.id == id));
+    ensure(
+        member.is_some_and(|user| user.photo),
+        "slack_unreachable",
+        502,
+    )?;
+    Ok(MEMBER_PICTURE.to_vec())
 }
 /// How long its tokens last, as Slack's rotating tokens do.
 const LASTS_MS: i64 = 12 * 60 * 60 * 1000;

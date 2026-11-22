@@ -164,6 +164,13 @@ pub const FEATURE: Feature = Feature {
                     name: "slack_logos",
                     apply: Sql(include_str!("migrations/dsp/0011_slack_logos.sql")),
                 },
+                Migration {
+                    id: 12,
+                    name: "slack_member_pictures",
+                    apply: Sql(include_str!(
+                        "migrations/dsp/0012_slack_member_pictures.sql"
+                    )),
+                },
             ],
         },
     ],

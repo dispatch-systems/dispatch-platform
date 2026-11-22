@@ -201,3 +201,28 @@ async fn people(state: &Arc<State>, dsp: &str) -> Vec<Named> {
         .await
         .unwrap()
 }
+
+#[tokio::test]
+async fn the_picture_a_member_set_is_their_photo_and_slacks_own_is_none() {
+    let (_root, state, dsp) = platform();
+    let operations = connect(&state, &dsp, OPERATIONS, APP).await;
+    read(&operations).await.unwrap();
+    let [morgan, jordan] = ["U0FIXOWNER", "U0FIXJORDAN"].map(|user| format!("{OPERATIONS}:{user}"));
+    let photo =
+        |named: &[Named], id: &str| named.iter().find(|n| n.id == id).unwrap().photo.clone();
+    let named = people(&state, &dsp).await;
+    assert!(photo(&named, &morgan).is_some());
+    assert!(photo(&named, &jordan).is_none());
+    // Driver Match serves it as the photo of whoever holds their ID.
+    let (of, ids) = (dsp.clone(), vec![jordan.clone(), morgan.clone()]);
+    let served = state
+        .read(move |db| (crate::backend::people::PEOPLE.photos.unwrap())(db, &of, &ids))
+        .await
+        .unwrap();
+    assert_eq!(served.map(|(kind, _)| kind), Some("image/png"));
+    // Once they go back to Slack's own, theirs is forgotten.
+    let event = json!({"user": {"id": "U0FIXOWNER",
+        "profile": {"real_name": "Morgan Lane", "is_custom_image": false}}});
+    told(&operations, &event, false).await.unwrap();
+    assert!(photo(&people(&state, &dsp).await, &morgan).is_none());
+}

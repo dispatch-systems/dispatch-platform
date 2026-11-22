@@ -5,6 +5,7 @@
 //! again once Slack gives it at another address. A workspace whose logo is Slack's own has none.
 use super::{
     bot::{self, Bot},
+    picture::{MOST, address, kind},
     storage::logos::{Logo, LogoStore},
 };
 use dispatch_core::{
@@ -16,40 +17,6 @@ use tokio::task::JoinHandle;
 
 /// The size kept, in pixels square: three times a mark of forty-odd.
 const SIZE: &str = "image_132";
-/// How large a picture is kept at most.
-const MOST: usize = 256 * 1024;
-/// What Slack's own servers are called, which pictures come from alone.
-const HOSTS: &str = "slack-edge.com";
-/// The kinds a picture may be, by how its bytes start.
-const KINDS: &[(&[u8], &str)] = &[
-    (b"\x89PNG\r\n\x1a\n", "image/png"),
-    (b"\xff\xd8\xff", "image/jpeg"),
-    (b"GIF87a", "image/gif"),
-    (b"GIF89a", "image/gif"),
-];
-
-/// The address `url` names, if a picture may come from there: Slack's own servers, over HTTPS.
-fn address(url: &str) -> Option<url::Url> {
-    let url = url::Url::parse(url).ok()?;
-    let host = url.host_str()?;
-    let slacks = host == HOSTS
-        || host
-            .strip_suffix(HOSTS)
-            .is_some_and(|sub| sub.ends_with('.'));
-    let plain = url.port().is_none() && url.username().is_empty() && url.password().is_none();
-    (url.scheme() == "https" && slacks && plain).then_some(url)
-}
-/// The kind of picture `bytes` are, if one that's kept: a PNG, JPEG or GIF, and not too large.
-fn kind(bytes: &[u8]) -> Option<&'static str> {
-    if bytes.len() > MOST {
-        return None;
-    }
-    KINDS
-        .iter()
-        .find(|(start, _)| bytes.starts_with(start))
-        .map(|(_, kind)| *kind)
-}
-
 /// Keeps the workspace's logo as Slack describes it, `icon` in what `team.info` answers: none
 /// for Slack's own, which forgets the one kept; else the picture of the size kept, downloaded
 /// only when Slack gives it at another address than the one kept came from. Slack saying

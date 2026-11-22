@@ -110,6 +110,12 @@ impl MemberStore for Store {
                  AND user_id NOT IN (SELECT value FROM json_each(?))",
                 [team, &listed],
             )?;
+            // A member's picture goes with them.
+            db.exec(
+                "DELETE FROM slack_member_pictures WHERE team_id=? \
+                 AND user_id NOT IN (SELECT value FROM json_each(?))",
+                [team, &listed],
+            )?;
             Ok(new)
         })
     }

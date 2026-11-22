@@ -68,3 +68,7 @@ pub const SOURCE: Source = people::SOURCE;
 pub fn member_id(team: &str, user: &str) -> String {
     format!("{team}:{user}")
 }
+/// The workspace and member a Driver Match ID `member_id` made names.
+pub fn member_of(id: &str) -> Option<(&str, &str)> {
+    id.split_once(':')
+}
