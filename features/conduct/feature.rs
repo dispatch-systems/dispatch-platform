@@ -12,7 +12,10 @@ pub use api::types::{
 };
 
 use dispatch_core::{
-    db::{Kind, Migration, OwnMigrations, migrations::Apply::Sql},
+    db::{
+        Kind, Migration, OwnMigrations,
+        migrations::Apply::{Code, Sql},
+    },
     manifest::{Audit, Feature, feature, optional, perm},
 };
 
@@ -63,6 +66,11 @@ pub const FEATURE: Feature = Feature {
                 apply: Sql(include_str!(
                     "migrations/dsp/0004_conduct_backup_replaced.sql"
                 )),
+            },
+            Migration {
+                id: 5,
+                name: "conduct_signed_by",
+                apply: Code(backend::writeups::add_signed_by),
             },
         ],
     }],

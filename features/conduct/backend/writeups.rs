@@ -6,7 +6,7 @@ use crate::api::types::{ConductWriteup, ConductWriteupRow, WriteupInput};
 use dispatch_core::{
     Error, Result,
     accounts::Context,
-    db::{Db, Store, iso},
+    db::{Db, Store, iso, migrations::add_column},
     ensure,
     foundation::crypto,
 };
@@ -253,3 +253,10 @@ pub(crate) fn unsigned(db: &Db, id: &str, revision: Option<i64>) -> Result<Condu
 #[cfg(test)]
 #[path = "../tests/backend/writeups.rs"]
 mod tests;
+
+/// Conduct's migration 5: who marked a writeup signed, by their account (`signed_by_id`), beside
+/// the name it was signed by, for the person the directory knows them as. Writeups signed before
+/// keep none, and are theirs by that name.
+pub(crate) fn add_signed_by(db: &Db) -> Result<()> {
+    add_column(db, "conduct_writeups", "signed_by_id", "TEXT")
+}
