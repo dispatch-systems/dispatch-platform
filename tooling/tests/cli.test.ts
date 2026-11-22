@@ -363,3 +363,29 @@ test('doctor catches declaration drift and stale installed packages despite an u
     fs.rmSync(checkout, { recursive: true, force: true });
   }
 });
+
+test("doctor names each part of the browser this checkout's Playwright wants that isn't installed", () => {
+  const browsers = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-doctor-browsers-'));
+  const before = process.env.PLAYWRIGHT_BROWSERS_PATH;
+  process.env.PLAYWRIGHT_BROWSERS_PATH = browsers;
+  try {
+    const check = CHECKS.find((check) => check.name === 'browser')!;
+    const missing = check.run(root);
+    assert.equal(missing.ok, false);
+    assert.equal(missing.fix, 'npx playwright install chromium');
+    assert(missing.detail!.length > 0);
+    for (const dir of missing.detail!) {
+      assert.equal(path.dirname(dir), browsers);
+      // A download that stopped part way leaves its folder without the mark of a finished one.
+      fs.mkdirSync(dir);
+    }
+    assert.deepEqual(check.run(root).detail, missing.detail);
+    for (const dir of missing.detail!)
+      fs.writeFileSync(path.join(dir, 'INSTALLATION_COMPLETE'), '');
+    assert.equal(check.run(root).ok, true);
+  } finally {
+    if (before === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH;
+    else process.env.PLAYWRIGHT_BROWSERS_PATH = before;
+    fs.rmSync(browsers, { recursive: true, force: true });
+  }
+});

@@ -159,6 +159,13 @@ pub fn start(from: &Path, name: &str, base: &str, runner: &dyn Runner) -> Result
             Some(&path),
             900,
         )?;
+        // The browser its Playwright drives, as ./setup installs it: a new Playwright wants a
+        // new one, which the packages don't bring.
+        runner.command(
+            &["npx", "playwright", "install", "chromium"],
+            Some(&path),
+            900,
+        )?;
     }
     let scratch = workspace::checkout_scratch(&path)?;
     let at = clone.git(runner, &["rev-parse", "--short", base])?;
@@ -166,7 +173,7 @@ pub fn start(from: &Path, name: &str, base: &str, runner: &dyn Runner) -> Result
         "Started {name}: {} on branch {name}, from {base} at {at}{}; its scratch folder is {}.",
         path.display(),
         if packages {
-            ", its packages installed"
+            ", its packages and browser installed"
         } else {
             ""
         },
