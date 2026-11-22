@@ -180,7 +180,7 @@ test('a widget moved or resized on a grid scaled down lands where the pointer le
   // is drawn: two columns over.
   const gap = await page
     .locator('.home-board')
-    .evaluate((board) => 16 * Number(getComputedStyle(board).zoom));
+    .evaluate((board) => (16 * board.getBoundingClientRect().width) / board.clientWidth);
   const box = (await widget.boundingBox())!;
   const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
   await page.mouse.move(x, y);

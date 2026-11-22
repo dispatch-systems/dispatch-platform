@@ -34,8 +34,17 @@ export function useFit() {
     : 1;
   const size = space && { width: space.width / scale, height: space.height / scale };
   // Scaled, it lies over the space, which the page alone sizes: its own size never holds the
-  // space open as the window narrows.
+  // space open as the window narrows. A transform scales only what's drawn, so it's laid out
+  // exactly as at `SMALLEST`, and text that fits there fits here, whatever the system's fonts.
   const fit: CSSProperties | undefined =
-    scale < 1 ? { position: 'absolute', inset: '0 auto auto 0', ...size, zoom: scale } : undefined;
+    scale < 1
+      ? {
+          position: 'absolute',
+          inset: '0 auto auto 0',
+          ...size,
+          transform: `scale(${scale})`,
+          transformOrigin: '0 0',
+        }
+      : undefined;
   return { area, fit, size, scale };
 }
