@@ -153,11 +153,15 @@ pub struct ConductWriteupRow {
     /// The person who marked it signed is, by their code: none while the directory doesn't know
     /// them.
     pub signed_by: Option<String>,
-    /// The accounts of the member who wrote it and of whoever marked it signed, which `supervisor`
-    /// and `signed_by` are found by.
+    /// The account of the member who wrote it, which `supervisor` is found by.
     #[serde(skip)]
     #[cfg_attr(feature = "ts", ts(skip))]
-    pub accounts: (String, Option<String>),
+    pub supervisor_id: String,
+    /// The account of whoever marked it signed, which `signed_by` is found by: none for a writeup
+    /// signed before accounts were kept.
+    #[serde(skip)]
+    #[cfg_attr(feature = "ts", ts(skip))]
+    pub signed_by_id: Option<String>,
     /// Whether a photo of the signed paper is kept.
     pub has_copy: bool,
     /// Its revision, which a change or signing names as what it read.
@@ -180,7 +184,8 @@ impl FromRow for ConductWriteupRow {
             signed_on: row.get("signed_on")?,
             signed_by_name: row.get("signed_by_name")?,
             signed_by: None,
-            accounts: (row.get("supervisor_id")?, row.get("signed_by_id")?),
+            supervisor_id: row.get("supervisor_id")?,
+            signed_by_id: row.get("signed_by_id")?,
             has_copy: row.get("has_copy")?,
             revision: row.get("revision")?,
         })

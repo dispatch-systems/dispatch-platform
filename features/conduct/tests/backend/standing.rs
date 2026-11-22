@@ -27,7 +27,8 @@ fn writeup(
         signed_on: None,
         signed_by_name: None,
         signed_by: None,
-        accounts: ("usr_supervisor".into(), None),
+        supervisor_id: "usr_supervisor".into(),
+        signed_by_id: None,
         has_copy: false,
         revision: 1,
     }

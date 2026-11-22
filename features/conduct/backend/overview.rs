@@ -142,12 +142,12 @@ impl<'a> Members<'a> {
     }
     /// Puts to `row` the people its supervisor and whoever marked it signed are.
     pub(super) fn place(&self, row: &mut ConductWriteupRow) {
-        row.supervisor = self.person(&row.accounts.0);
+        row.supervisor = self.person(&row.supervisor_id);
         let by_name = row
             .signed_by_name
             .as_ref()
             .and_then(|name| self.by_name.get(name).cloned().flatten());
-        let signer = row.accounts.1.clone().or(by_name);
+        let signer = row.signed_by_id.clone().or(by_name);
         row.signed_by = signer.and_then(|account| self.person(&account));
     }
     /// The code of the person the member with the account `account` is.
