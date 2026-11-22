@@ -12,7 +12,7 @@ use dispatch_core::{
     manifest::people::{self, Everyone},
 };
 use jiff::civil::Date;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Today where the DSP is.
 fn day(c: &Context) -> Result<Date> {
@@ -118,41 +118,26 @@ pub(crate) fn writeup(store: &Store, state: &State, dsp: &str, id: &str) -> Resu
     let mut writeup = writeups::read(store, dsp, id)?;
     let everyone = people::everyone(store, state, dsp)?;
     writeup.row.person = now(&everyone, &writeup.row.person, &writeup.row.person_name).code;
-    Members::read(store, dsp, &everyone)?.place(&mut writeup.row);
+    Members(&everyone).place(&mut writeup.row);
     Ok(writeup)
 }
 
 /// Who the DSP's members are in the directory, for the writeups they wrote or marked signed.
-pub(super) struct Members<'a> {
-    everyone: &'a Everyone,
-    /// Each member's account by their name, for a writeup signed before accounts were kept:
-    /// none for a name two members share.
-    by_name: HashMap<String, Option<String>>,
-}
-impl<'a> Members<'a> {
-    pub(super) fn read(store: &Store, dsp: &str, everyone: &'a Everyone) -> Result<Self> {
-        let mut by_name: HashMap<String, Option<String>> = HashMap::new();
-        for member in store.members(dsp)? {
-            by_name
-                .entry(member.name)
-                .and_modify(|account| *account = None)
-                .or_insert(Some(member.user_id));
-        }
-        Ok(Self { everyone, by_name })
-    }
-    /// Puts to `row` the people its supervisor and whoever marked it signed are.
+pub(super) struct Members<'a>(pub(super) &'a Everyone);
+impl Members<'_> {
+    /// Puts to `row` the people its supervisor and whoever marked it signed are, by their
+    /// accounts: none for a writeup signed before accounts were kept, whose signer's name alone,
+    /// which anyone may sign up under, says nothing of who they are.
     pub(super) fn place(&self, row: &mut ConductWriteupRow) {
         row.supervisor = self.person(&row.supervisor_id);
-        let by_name = row
-            .signed_by_name
-            .as_ref()
-            .and_then(|name| self.by_name.get(name).cloned().flatten());
-        let signer = row.signed_by_id.clone().or(by_name);
-        row.signed_by = signer.and_then(|account| self.person(&account));
+        row.signed_by = row
+            .signed_by_id
+            .as_deref()
+            .and_then(|account| self.person(account));
     }
     /// The code of the person the member with the account `account` is.
     fn person(&self, account: &str) -> Option<String> {
-        self.everyone
+        self.0
             .holding(people::MEMBERS, account)
             .map(|person| person.code.clone())
     }

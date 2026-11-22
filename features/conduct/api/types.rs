@@ -158,7 +158,7 @@ pub struct ConductWriteupRow {
     #[cfg_attr(feature = "ts", ts(skip))]
     pub supervisor_id: String,
     /// The account of whoever marked it signed, which `signed_by` is found by: none for a writeup
-    /// signed before accounts were kept.
+    /// signed before accounts were kept, which shows no one's photo.
     #[serde(skip)]
     #[cfg_attr(feature = "ts", ts(skip))]
     pub signed_by_id: Option<String>,
