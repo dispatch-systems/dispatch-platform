@@ -23,6 +23,11 @@ suspension: string | null,
  */
 writtenOn: string, supervisorName: string,
 /**
+ * The person the member who wrote it is, by their code: none while the directory doesn't
+ * know them.
+ */
+supervisor: string | null,
+/**
  * The day the person signed it, YYYY-MM-DD: none until someone marks it signed.
  */
 signedOn: string | null,
@@ -30,6 +35,11 @@ signedOn: string | null,
  * Who marked it signed.
  */
 signedByName: string | null,
+/**
+ * The person who marked it signed is, by their code: none while the directory doesn't know
+ * them.
+ */
+signedBy: string | null,
 /**
  * Whether a photo of the signed paper is kept.
  */

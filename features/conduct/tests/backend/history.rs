@@ -4,7 +4,10 @@ use crate::{
     api::types::{ConductTier, WriteupInput},
     backend::{support::ready, writeups::Subject},
 };
-use dispatch_core::manifest::people::{Person, PersonRole};
+use dispatch_core::{
+    manifest::people::{Person, PersonRole},
+    testing,
+};
 
 fn directory() -> Everyone {
     Everyone::new(
@@ -154,4 +157,60 @@ fn context_uses_the_selected_date_and_an_edits_original_position_on_that_date() 
     .unwrap();
     assert!(moving.earlier.is_empty());
     assert_eq!(moving.standing, None);
+}
+
+#[test]
+fn whoever_wrote_or_marked_a_writeup_signed_is_the_person_their_account_is() {
+    let (_root, store, c) = ready();
+    let id = add(&store, &c, "current", "2026-11-01", ConductTier::Verbal);
+    crate::backend::copies::keep(&store, &c, &id, 1, &[0xff, 0xd8, 0xff, 0xdb]).unwrap();
+    let revision = writeups::read(&store, &c.dsp.id, &id).unwrap().row.revision;
+    writeups::sign(&store, &c, &id, revision, "2026-11-02", "2026-11-08").unwrap();
+    // Another of the DSP's members, besides the platform's owner writing up.
+    let member = testing::owner_of(&store, &c.dsp.id, "riley@example.test", "Riley").unwrap();
+    let db = store.dsp(&c.dsp.id).unwrap();
+    let holding = |code: &str, name: &str, account: &str| Person {
+        code: code.into(),
+        name: name.into(),
+        names: vec![name.into()],
+        role: PersonRole::Office,
+        title: None,
+        ids: BTreeMap::from([(people::MEMBERS, vec![account.to_owned()])]),
+        emails: vec![],
+        phones: vec![],
+        added_phones: vec![],
+        confirmed: false,
+        photo: None,
+    };
+    let everyone = Everyone::new(
+        vec![
+            holding("office", "Casey Supervisor", &c.auth.user.id),
+            holding("riley", "Riley Owner", &member),
+        ],
+        BTreeMap::new(),
+    );
+    let read = || {
+        let all = Query {
+            person: "",
+            search: "",
+            category: "",
+            tier: "",
+            status: "",
+            after: "",
+            limit: 10,
+        };
+        read_from(&store, &c.dsp.id, &everyone, all)
+            .unwrap()
+            .writeups
+    };
+    let row = &read()[0];
+    assert_eq!(row.supervisor.as_deref(), Some("office"));
+    assert_eq!(row.signed_by.as_deref(), Some("office"));
+    // One signed before accounts were kept is the member's whose name it was signed by.
+    db.exec(
+        "UPDATE conduct_writeups SET signed_by_id=NULL,signed_by_name='Riley Owner'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(read()[0].signed_by.as_deref(), Some("riley"));
 }

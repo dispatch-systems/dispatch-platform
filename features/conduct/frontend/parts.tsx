@@ -44,25 +44,86 @@ export function SignedState({ writeup }: { writeup: ConductWriteupRow }) {
   );
 }
 
-/** Who marked a writeup signed, by name beside their initials. */
-export function MarkedBy({ name }: { name: string }) {
+/**
+ * A member as a writeup names them: the photo of the person the directory knows them as, by
+ * their `code`, else the initials of the `name` the writeup gave them.
+ */
+export function MemberAvatar({
+  overview,
+  code,
+  name,
+  className,
+}: {
+  overview: ConductOverview;
+  code: string | null;
+  name: string;
+  className: string;
+}) {
+  const person = code ? personOf(overview, code) : undefined;
+  return (
+    <PersonAvatar
+      name={name}
+      code={person && !person.left ? person.code : null}
+      photo={person?.photo}
+      className={className}
+    />
+  );
+}
+
+/** Who wrote a writeup, by name beside their photo or initials. */
+export function Supervisor({
+  overview,
+  writeup,
+}: {
+  overview: ConductOverview;
+  writeup: ConductWriteupRow;
+}) {
+  return (
+    <span className="conduct-member">
+      <MemberAvatar
+        overview={overview}
+        code={writeup.supervisor}
+        name={writeup.supervisorName}
+        className="conduct-member-avatar"
+      />
+      {writeup.supervisorName}
+    </span>
+  );
+}
+
+/** Who marked a writeup signed, by name beside their photo or initials. */
+export function MarkedBy({
+  overview,
+  writeup,
+}: {
+  overview: ConductOverview;
+  writeup: ConductWriteupRow;
+}) {
+  if (!writeup.signedOn || !writeup.signedByName) return null;
   return (
     <span className="conduct-marked-by">
       Marked by
-      <PersonAvatar name={name} className="conduct-signer" />
-      <span className="conduct-marked-by-name">{name}</span>
+      <MemberAvatar
+        overview={overview}
+        code={writeup.signedBy}
+        name={writeup.signedByName}
+        className="conduct-signer"
+      />
+      <span className="conduct-marked-by-name">{writeup.signedByName}</span>
     </span>
   );
 }
 
 /**
- * A writeup's signature: when it was signed, with who marked it so by their initials, named on
- * hover or focus; or a button that marks it signed where given.
+ * A writeup's signature: when it was signed, with who marked it so by their photo or initials,
+ * named on hover or focus; or a button that marks it signed where given.
  */
 export function WriteupStatus({
+  overview,
   writeup,
   markSigned,
 }: {
+  overview: ConductOverview;
   writeup: ConductWriteupRow;
   markSigned?: (writeup: ConductWriteupRow) => void;
 }) {
@@ -75,7 +136,12 @@ export function WriteupStatus({
         aria-label={`Signed ${printedDay(writeup.signedOn)}, marked by ${signer}`}
       >
         <SignedState writeup={writeup} />
-        <PersonAvatar name={signer} className="conduct-signer" />
+        <MemberAvatar
+          overview={overview}
+          code={writeup.signedBy}
+          name={signer}
+          className="conduct-signer"
+        />
         <span className="conduct-signer-card" role="tooltip">
           Marked by {signer}
         </span>

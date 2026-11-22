@@ -1,7 +1,15 @@
 import { useUpdateState } from '../../../../core/shell/frontend/runtime/navigation-state.js';
 import { DataState, Empty } from '../../../../core/shell/frontend/ui/index.js';
 import type { ConductOverview, ConductWriteupRow } from '../../api/index.js';
-import { Person, RowLink, WriteupStatus, WriteupTier, categoryName, personOf } from '../parts.js';
+import {
+  Person,
+  RowLink,
+  Supervisor,
+  WriteupStatus,
+  WriteupTier,
+  categoryName,
+  personOf,
+} from '../parts.js';
 import { printedDay } from '../tiers.js';
 import { useConductHistory, type HistoryFilters } from '../../api/client.js';
 import { useListScroll } from '../useListScroll.js';
@@ -123,9 +131,11 @@ function HistoryRows({
                       <td>
                         <WriteupTier writeup={w} />
                       </td>
-                      <td className="conduct-nowrap">{w.supervisorName}</td>
+                      <td className="conduct-nowrap">
+                        <Supervisor overview={overview} writeup={w} />
+                      </td>
                       <td>
-                        <WriteupStatus writeup={w} markSigned={markSigned} />
+                        <WriteupStatus overview={overview} writeup={w} markSigned={markSigned} />
                       </td>
                     </tr>
                   ))}

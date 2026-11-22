@@ -7,6 +7,7 @@ import {
   Avatar,
   RowLink,
   TierBadge,
+  Supervisor,
   WriteupStatus,
   WriteupTier,
   categoryName,
@@ -158,9 +159,11 @@ function CategoryHistory({
                     <td>
                       <WriteupTier writeup={w} />
                     </td>
-                    <td className="conduct-nowrap">{w.supervisorName}</td>
+                    <td className="conduct-nowrap">
+                      <Supervisor overview={overview} writeup={w} />
+                    </td>
                     <td>
-                      <WriteupStatus writeup={w} markSigned={markSigned} />
+                      <WriteupStatus overview={overview} writeup={w} markSigned={markSigned} />
                     </td>
                   </tr>
                 ))}

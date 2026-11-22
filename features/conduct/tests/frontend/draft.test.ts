@@ -26,8 +26,10 @@ const writeup = (
   suspension: null,
   writtenOn,
   supervisorName: 'Casey Supervisor',
+  supervisor: null,
   signedOn: writtenOn,
   signedByName: 'Casey Supervisor',
+  signedBy: null,
   hasCopy: false,
   revision: 2,
 });

@@ -125,7 +125,8 @@
       ["conduct", 1, "conduct", "310bff4c6d9f57d4"],
       ["conduct", 2, "conduct_backups", "9ff3abe01501a3fe"],
       ["conduct", 3, "conduct_requests", "3bd801964443c98f"],
-      ["conduct", 4, "conduct_backup_replaced", "ece93656ada2b2d7"]
+      ["conduct", 4, "conduct_backup_replaced", "ece93656ada2b2d7"],
+      ["conduct", 5, "conduct_signed_by", "code"]
     ]
   },
   {

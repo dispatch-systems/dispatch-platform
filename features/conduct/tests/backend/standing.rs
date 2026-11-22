@@ -23,8 +23,12 @@ fn writeup(
         suspension: None,
         written_on: on.into(),
         supervisor_name: "Supervisor".into(),
+        supervisor: None,
         signed_on: None,
         signed_by_name: None,
+        signed_by: None,
+        supervisor_id: "usr_supervisor".into(),
+        signed_by_id: None,
         has_copy: false,
         revision: 1,
     }
