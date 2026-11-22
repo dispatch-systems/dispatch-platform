@@ -256,7 +256,7 @@ mod tests;
 
 /// Conduct's migration 5: who marked a writeup signed, by their account (`signed_by_id`), beside
 /// the name it was signed by, for the person the directory knows them as. Writeups signed before
-/// keep none, and are theirs by that name.
+/// keep none, and show no one as their signer.
 pub(crate) fn add_signed_by(db: &Db) -> Result<()> {
     add_column(db, "conduct_writeups", "signed_by_id", "TEXT")
 }
