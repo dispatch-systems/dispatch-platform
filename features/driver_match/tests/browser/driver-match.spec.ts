@@ -8,8 +8,8 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   const dsp = await seedDriverMatch(dispatch);
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  // Its page is in Settings, under Features, not in the app's sidebar, and counts three pairs
-  // and a second surname to confirm.
+  // Its page is in Settings, under Features, not in the app's sidebar, and counts three pairs,
+  // a login that only shares its name with someone, and a second surname to confirm.
   const app = page.getByRole('navigation', { name: 'Primary navigation' });
   await expect(app.getByRole('link', { name: /^Driver Match/ })).toHaveCount(0);
   await app.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -17,12 +17,12 @@ test('Driver Match asks who might be listed twice and makes them one person', as
     .getByRole('navigation', { name: 'Settings', exact: true })
     .getByRole('group', { name: 'Features' })
     .getByRole('link', { name: /^Driver Match/ });
-  await expect(link).toContainText('4');
+  await expect(link).toContainText('5');
   // A link to where it was, a tab of Settings, opens it, Settings' sidebar beside it.
   await page.goto(`/#dsp/${dsp.id}/settings?tab=driver-match`);
   await expect(page).toHaveURL(new RegExp(`#dsp/${dsp.id}/driver-match$`));
   await expect(link).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByText('4 to check', { exact: true })).toBeVisible();
+  await expect(page.getByText('5 to check', { exact: true })).toBeVisible();
   // Everyone shows as a list until someone picks cards.
   const people = page.getByRole('region', { name: 'People' });
   const row = (name: string) => people.getByRole('row').filter({ hasText: name });
@@ -36,22 +36,28 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   await expect(
     page.getByText('Benjamin Collins and Ben Collins are now one person', { exact: true }),
   ).toBeVisible();
-  await expect(link).toContainText('3');
+  await expect(link).toContainText('4');
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
   // Two people kept apart.
   await check('Drew S.').click();
   await expect(dialog).toContainText('Not sure');
   await dialog.getByRole('button', { name: 'Different people', exact: true }).click();
   await expect(page.getByText(/are kept as different people$/)).toBeVisible();
-  await expect(link).toContainText('2');
+  await expect(link).toContainText('3');
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
   // A name written another way is confirmed the same way.
   await check('Quinn Foster').click();
   await expect(dialog).toContainText('Similar name');
   await dialog.getByRole('button', { name: 'Same person', exact: true }).click();
-  await expect(link).toContainText('1');
+  await expect(link).toContainText('2');
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
   await expect(check('Quinn Foster')).toHaveCount(0);
+  // A login joins nobody by the name its member wrote: whoever manages Driver Match decides.
+  await check('Jordan Ellis').first().click();
+  await dialog.getByRole('button', { name: 'Same person', exact: true }).click();
+  await expect(link).toContainText('1');
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(check('Jordan Ellis')).toHaveCount(0);
 
   // Someone Amazon saw only long ago, whom Paycom doesn't list, has left and shows only under
   // Inactive; one Paycom has never heard of is missing from it.
