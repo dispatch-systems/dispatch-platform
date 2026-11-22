@@ -23,7 +23,8 @@ const SELECT: &str = "SELECT w.*, EXISTS(SELECT 1 FROM conduct_copies k WHERE k.
      FROM conduct_writeups w";
 
 pub(crate) const ROWS: &str = "SELECT w.id,w.person,w.person_name,w.category_id,w.tier,w.final_kind,\
-     w.suspension,w.written_on,w.supervisor_name,w.signed_on,w.signed_by_name,w.revision,w.created_at,\
+     w.suspension,w.written_on,w.supervisor_id,w.supervisor_name,w.signed_on,w.signed_by_id,\
+     w.signed_by_name,w.revision,w.created_at,\
      EXISTS(SELECT 1 FROM conduct_copies k WHERE k.writeup_id=w.id) has_copy FROM conduct_writeups w";
 
 /// Every writeup, the newest first.
@@ -187,9 +188,9 @@ pub(crate) fn sign_requested(
         )?;
         ensure(writeup.row.has_copy, "conduct_copy_required", 400)?;
         db.exec(
-            "UPDATE conduct_writeups SET signed_on=?,signed_by_name=?,signed_at=?,\
+            "UPDATE conduct_writeups SET signed_on=?,signed_by_id=?,signed_by_name=?,signed_at=?,\
              revision=revision+1 WHERE id=?",
-            params![signed_on, c.auth.user.name(), iso(), id],
+            params![signed_on, c.auth.user.id, c.auth.user.name(), iso(), id],
         )?;
         operation.record(&db, c, revision + 1)?;
         Ok(())

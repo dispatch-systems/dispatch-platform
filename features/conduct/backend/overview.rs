@@ -1,7 +1,9 @@
 //! What the page reads in one answer: the categories, the people writeups are for, every
 //! writeup and where each person stands, each writeup's person as the directory knows them now.
 use super::{categories, standing, writeups};
-use crate::api::types::{ConductDriver, ConductOverview, ConductPerson, ConductWriteup};
+use crate::api::types::{
+    ConductDriver, ConductOverview, ConductPerson, ConductWriteup, ConductWriteupRow,
+};
 use dispatch_core::{
     Error, Result, State,
     accounts::Context,
@@ -10,7 +12,7 @@ use dispatch_core::{
     manifest::people::{self, Everyone},
 };
 use jiff::civil::Date;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// Today where the DSP is.
 fn day(c: &Context) -> Result<Date> {
@@ -116,7 +118,42 @@ pub(crate) fn writeup(store: &Store, state: &State, dsp: &str, id: &str) -> Resu
     let mut writeup = writeups::read(store, dsp, id)?;
     let everyone = people::everyone(store, state, dsp)?;
     writeup.row.person = now(&everyone, &writeup.row.person, &writeup.row.person_name).code;
+    Members::read(store, dsp, &everyone)?.place(&mut writeup.row);
     Ok(writeup)
+}
+
+/// Who the DSP's members are in the directory, for the writeups they wrote or marked signed.
+pub(super) struct Members<'a> {
+    everyone: &'a Everyone,
+    /// Each member's account by their name, for a writeup signed before accounts were kept:
+    /// none for a name two members share.
+    by_name: HashMap<String, Option<String>>,
+}
+impl<'a> Members<'a> {
+    pub(super) fn read(store: &Store, dsp: &str, everyone: &'a Everyone) -> Result<Self> {
+        let mut by_name: HashMap<String, Option<String>> = HashMap::new();
+        for member in store.members(dsp)? {
+            by_name
+                .entry(member.name)
+                .and_modify(|account| *account = None)
+                .or_insert(Some(member.user_id));
+        }
+        Ok(Self { everyone, by_name })
+    }
+    /// Puts to `row` the people its supervisor and whoever marked it signed are.
+    pub(super) fn place(&self, row: &mut ConductWriteupRow) {
+        let person = |account: &str| {
+            self.everyone
+                .holding(people::MEMBERS, account)
+                .map(|person| person.code.clone())
+        };
+        row.supervisor = person(&row.accounts.0);
+        let signer = row.accounts.1.clone().or_else(|| {
+            let name = row.signed_by_name.as_ref()?;
+            self.by_name.get(name).cloned().flatten()
+        });
+        row.signed_by = signer.as_deref().and_then(person);
+    }
 }
 
 /// The person a writeup's `code` names now: whoever kept their IDs once merged, or, once the

@@ -138,10 +138,12 @@ fn read_from(
     } else {
         None
     };
+    let members = overview::Members::read(store, dsp, everyone)?;
     let writeups = rows
         .into_iter()
         .map(|mut w| {
             w.row.person = overview::now(everyone, &w.row.person, &w.row.person_name).code;
+            members.place(&mut w.row);
             w.row
         })
         .collect();

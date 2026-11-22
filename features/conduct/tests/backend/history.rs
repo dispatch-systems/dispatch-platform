@@ -155,3 +155,52 @@ fn context_uses_the_selected_date_and_an_edits_original_position_on_that_date() 
     assert!(moving.earlier.is_empty());
     assert_eq!(moving.standing, None);
 }
+
+#[test]
+fn whoever_wrote_or_marked_a_writeup_signed_is_the_person_their_account_is() {
+    let (_root, store, c) = ready();
+    let id = add(&store, &c, "current", "2026-11-01", ConductTier::Verbal);
+    crate::backend::copies::keep(&store, &c, &id, 1, &[0xff, 0xd8, 0xff, 0xdb]).unwrap();
+    let revision = writeups::read(&store, &c.dsp.id, &id).unwrap().row.revision;
+    writeups::sign(&store, &c, &id, revision, "2026-11-02", "2026-11-08").unwrap();
+    let everyone = Everyone::new(
+        vec![Person {
+            code: "office".into(),
+            name: "Casey Supervisor".into(),
+            names: vec!["Casey Supervisor".into()],
+            role: PersonRole::Office,
+            title: None,
+            ids: BTreeMap::from([(people::MEMBERS, vec![c.auth.user.id.clone()])]),
+            emails: vec![],
+            phones: vec![],
+            added_phones: vec![],
+            confirmed: false,
+            photo: None,
+        }],
+        BTreeMap::new(),
+    );
+    let read = || {
+        let all = Query {
+            person: "",
+            search: "",
+            category: "",
+            tier: "",
+            status: "",
+            after: "",
+            limit: 10,
+        };
+        read_from(&store, &c.dsp.id, &everyone, all)
+            .unwrap()
+            .writeups
+    };
+    let row = &read()[0];
+    assert_eq!(row.supervisor.as_deref(), Some("office"));
+    assert_eq!(row.signed_by.as_deref(), Some("office"));
+    // One signed before accounts were kept is theirs by the name it was signed by.
+    store
+        .dsp(&c.dsp.id)
+        .unwrap()
+        .exec("UPDATE conduct_writeups SET signed_by_id=NULL", [])
+        .unwrap();
+    assert_eq!(read()[0].signed_by.as_deref(), Some("office"));
+}

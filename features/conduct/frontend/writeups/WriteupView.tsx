@@ -67,9 +67,7 @@ export function WriteupView({
                   <h1>{person.name}</h1>
                   <p className="conduct-subtitle">
                     {categoryName(overview, writeup.categoryId)} <SignedState writeup={writeup} />
-                    {writeup.signedOn && writeup.signedByName && (
-                      <MarkedBy name={writeup.signedByName} />
-                    )}
+                    <MarkedBy overview={overview} writeup={writeup} />
                   </p>
                 </div>
                 <div className="heading-actions">
