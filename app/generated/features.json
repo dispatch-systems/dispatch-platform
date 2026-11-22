@@ -1285,6 +1285,7 @@
         "slack_integrations",
         "slack_integrations_off",
         "slack_logos",
+        "slack_member_pictures",
         "slack_members",
         "slack_workspaces"
       ],
