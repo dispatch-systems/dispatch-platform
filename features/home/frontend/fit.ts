@@ -37,7 +37,9 @@ export function useFit() {
     ? Math.min(1, space.width / SMALLEST.width, space.height / SMALLEST.height)
     : 1;
   const size = space && { width: space.width / scale, height: space.height / scale };
+  // Scaled, it lies over the space, which the page alone sizes: its own size never holds the
+  // space open as the window narrows.
   const fit: CSSProperties | undefined =
-    scale < 1 ? { flex: 'none', ...size, zoom: scale } : undefined;
+    scale < 1 ? { position: 'absolute', inset: '0 auto auto 0', ...size, zoom: scale } : undefined;
   return { area, fit, size, scale };
 }
