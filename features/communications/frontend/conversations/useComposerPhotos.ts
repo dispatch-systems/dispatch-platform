@@ -49,8 +49,9 @@ export function useComposerPhotos(limits: ComposeLimits | undefined, attachments
     if (!limits) return;
     if (chosen.some((file) => !limits.kinds.includes(file.type)))
       return fail(`Photos must be ${kindsText(limits.kinds)}.`);
-    if (chosen.some((file) => file.size > limits.largest))
-      return fail(`Photos must be ${bytesText(limits.largest)} or smaller.`);
+    // A photo made smaller before it's uploaded is judged by its size then.
+    if (!attachments.prepare && chosen.some((file) => file.size > limits.largest))
+      return fail(tooLarge(limits));
     if (photos.length + chosen.length > limits.photos)
       return fail(`Add up to ${limits.photos} photos.`);
     if (chosen.length) starts();
@@ -62,7 +63,7 @@ export function useComposerPhotos(limits: ComposeLimits | undefined, attachments
     }));
     setPhotos((now) => [...now, ...adding]);
     for (const photo of adding)
-      attachments.add(photo.file, photo.controller.signal).then(
+      prepared(photo.file, limits, attachments, photo.controller.signal).then(
         (uploaded) =>
           setPhotos((now) =>
             now.map((each) => (each.key === photo.key ? { ...each, uploaded } : each)),
@@ -97,6 +98,22 @@ export function useComposerPhotos(limits: ComposeLimits | undefined, attachments
     settle,
   };
 }
+
+/** `photo` uploaded as `attachments` prepare it: refused past what a message's may be. */
+async function prepared(
+  photo: File,
+  limits: ComposeLimits,
+  attachments: Attachments,
+  signal: AbortSignal,
+) {
+  const sent = attachments.prepare ? await attachments.prepare(photo, signal) : photo;
+  // A photo removed while it was prepared goes nowhere.
+  signal.throwIfAborted();
+  if (sent.size > limits.largest) throw new Error(tooLarge(limits));
+  return attachments.add(sent, signal);
+}
+const tooLarge = (limits: ComposeLimits) =>
+  `Photos must be ${bytesText(limits.largest)} or smaller.`;
 
 /** The kinds of photo a message carries, as their names read: "PNG, JPEG or GIF". */
 function kindsText(kinds: readonly string[]) {
