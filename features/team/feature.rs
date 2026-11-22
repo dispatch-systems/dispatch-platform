@@ -1,5 +1,6 @@
 //! Team & Roles: a DSP's members and the roles that grant their permissions.
 mod api;
+mod backend;
 
 /// Who may read the member and role lists, which the app names for a DSP path no route
 /// matches too.
@@ -18,5 +19,6 @@ pub const FEATURE: Feature = Feature {
         perm("roles.manage", "Manage Roles", 82).group("Team"),
     ],
     routes: api::routes::routes,
+    people: &[&backend::people::PEOPLE],
     ..feature("team")
 };

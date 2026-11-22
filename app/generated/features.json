@@ -1321,7 +1321,9 @@
       "live": [],
       "maintenance": [],
       "on": [],
-      "people": [],
+      "people": [
+        "members"
+      ],
       "routes": [
         "GET /api/dsp/members",
         "POST /api/dsp/members/invite",

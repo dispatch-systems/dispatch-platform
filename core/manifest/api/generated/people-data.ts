@@ -1,6 +1,6 @@
 // Generated from the kinds of data the features' people declare, their sources and the titles a person may be given.
 // Run `npm run contracts:generate` after changing them.
-import { Award, CalendarDays, ClipboardCheck, Contact, MessageSquare, Route, Utensils } from 'lucide-react';
+import { Award, CalendarDays, ClipboardCheck, Contact, MessageSquare, Route, UserRound, Utensils } from 'lucide-react';
 export const peopleKinds = [
   { id: "timecards", label: "Timecards", order: 10, unit: "day", icon: CalendarDays },
   { id: "driver_profiles", label: "Roster", order: 15, unit: null, icon: Contact },
@@ -10,12 +10,14 @@ export const peopleKinds = [
   { id: "weekly_scorecard", label: "Weekly Scorecard", order: 50, unit: "week", icon: Award },
   { id: "daily_performance", label: "Daily Performance", order: 60, unit: "day", icon: CalendarDays },
   { id: "slack", label: "Slack", order: 70, unit: null, icon: MessageSquare },
+  { id: "members", label: "Dispatch", order: 80, unit: null, icon: UserRound },
   { id: "dvic", label: "DVIC", order: 90, unit: "inspection", icon: ClipboardCheck },
 ] as const;
 export const peopleSources = [
   { id: "paycom", label: "Paycom", order: 10 },
   { id: "amazon", label: "Amazon", order: 20 },
   { id: "slack", label: "Slack", order: 30 },
+  { id: "dispatch", label: "Dispatch", order: 40 },
 ] as const;
 export const personTitles = [
   { id: "owner", label: "Owner" },

@@ -26,6 +26,11 @@ and can't change, and a DSP keeps at least one owner.
 - **Log:** core records every member and role event: `member.invited`, `member.joined`,
   `member.role_changed`, `member.removed`, `invitation.revoked`, and `role.created`,
   `role.updated` and `role.deleted`, which Team's routes cause.
+- **People:** it lists the DSP's members for Driver Match (`backend/people.rs`), each by
+  their account's user ID under core's source `MEMBERS` (`dispatch`, "Dispatch"), with the
+  name and email address on their account, as people the DSP can reach (`.contacts_only()`).
+  Driver Match joins each to the person their other sources know, so any feature finds the
+  person a member is with `Everyone::holding(MEMBERS, user)`, their photo among what it knows.
 - **Errors** only its screens raise are worded in its API client, so they load with them.
 - **Storage:** none of its own. Members, roles and invitations are core's, in the platform's
   database.

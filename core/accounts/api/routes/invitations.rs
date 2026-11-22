@@ -6,6 +6,7 @@ use crate::{
     accounts::api::requests::InvitationRequest,
     db::Store,
     foundation::validate as v,
+    manifest::events::{self, PeopleChanged},
     server::http::{
         input::{Input, Reply},
         route::{Anyone, Public, Route, async_post, write},
@@ -55,6 +56,10 @@ async fn accept_invitation(state: Arc<State>, input: Input, _: Public) -> Result
         state
             .schedule_revision
             .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+    // A new member is someone a feature's people may name, for the feature telling them apart.
+    if let Some(dsp) = joined["dspId"].as_str() {
+        events::publish(&state, dsp, PeopleChanged).await;
     }
     Ok(Reply::json(joined))
 }

@@ -3,4 +3,4 @@
 /**
  * A source of IDs, by its id.
  */
-export type PeopleSource = "paycom" | "amazon" | "slack";
+export type PeopleSource = "paycom" | "amazon" | "slack" | "dispatch";

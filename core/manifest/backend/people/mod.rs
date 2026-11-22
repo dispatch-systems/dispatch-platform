@@ -10,6 +10,15 @@ pub use directory::{Directory, Everyone, Person, PersonRole, PersonTitle, same_p
 pub use ids::{Kind, KindInfo, Source, SourceInfo};
 pub use rows::{Named, Records, Workdays, named, records, worked};
 
+/// The DSP's members, as IDs people are known by: each member by their account's user ID, which
+/// never changes. A feature lists them in its `people`; any feature finds the person a member
+/// is by `Everyone::holding(MEMBERS, user)`.
+pub const MEMBERS: Source = Source::new(&SourceInfo {
+    id: "dispatch",
+    label: "Dispatch",
+    order: 40,
+});
+
 use crate::{
     Error, Result, State,
     accounts::Context,

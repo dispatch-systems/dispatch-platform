@@ -148,6 +148,7 @@ place here with its reason.
 | Paycom (`paycom`) | 10    | A payroll's legal name is the name a person is shown by.                        |
 | Amazon (`amazon`) | 20    | Shown by when no payroll knows them.                                            |
 | Slack (`slack`)   | 30    | A list of people the DSP can reach: shown by only when nothing else knows them. |
+| Dispatch (`dispatch`) | 40 | The DSP's members, by their accounts: shown by only when nothing else knows them. |
 
 A person is shown by the first source's name, and listed with their sources in this order.
 
@@ -161,6 +162,7 @@ A person is shown by the first source's name, and listed with their sources in t
 | Weekly Scorecard (`weekly_scorecard`)   | 50    | Often adds a middle name.                                                                 |
 | Daily Performance (`daily_performance`) | 60    |                                                                                           |
 | Slack (`slack`)                         | 70    |                                                                                           |
+| Dispatch (`members`)                    | 80    | A member's account name, as they or whoever invited them wrote it.                        |
 | DVIC (`dvic`)                           | 90    | Sometimes writes only a last initial, so its spellings are read after every other kind's. |
 
 An ID's spellings are read kind by kind in this order, and the first is the one it is shown
