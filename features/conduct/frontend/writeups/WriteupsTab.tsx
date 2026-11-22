@@ -1,7 +1,15 @@
 import { useUpdateState } from '../../../../core/shell/frontend/runtime/navigation-state.js';
 import { DataState, Empty } from '../../../../core/shell/frontend/ui/index.js';
 import type { ConductOverview, ConductWriteupRow } from '../../api/index.js';
-import { Person, RowLink, Supervisor, WriteupStatus, WriteupTier, categoryName, personOf } from '../parts.js';
+import {
+  Person,
+  RowLink,
+  Supervisor,
+  WriteupStatus,
+  WriteupTier,
+  categoryName,
+  personOf,
+} from '../parts.js';
 import { printedDay } from '../tiers.js';
 import { useConductHistory, type HistoryFilters } from '../../api/client.js';
 import { useListScroll } from '../useListScroll.js';

@@ -142,18 +142,19 @@ impl<'a> Members<'a> {
     }
     /// Puts to `row` the people its supervisor and whoever marked it signed are.
     pub(super) fn place(&self, row: &mut ConductWriteupRow) {
-        let person = |account: &str| {
-            self.everyone
-                .holding(people::MEMBERS, account)
-                .map(|person| person.code.clone())
-        };
-        row.supervisor = person(&row.accounts.0);
+        row.supervisor = self.person(&row.accounts.0);
         let by_name = row
             .signed_by_name
             .as_ref()
             .and_then(|name| self.by_name.get(name).cloned().flatten());
         let signer = row.accounts.1.clone().or(by_name);
-        row.signed_by = signer.as_deref().and_then(person);
+        row.signed_by = signer.and_then(|account| self.person(&account));
+    }
+    /// The code of the person the member with the account `account` is.
+    fn person(&self, account: &str) -> Option<String> {
+        self.everyone
+            .holding(people::MEMBERS, account)
+            .map(|person| person.code.clone())
     }
 }
 
