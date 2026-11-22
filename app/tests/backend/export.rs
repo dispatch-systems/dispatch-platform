@@ -288,12 +288,19 @@ fn people_data_for(features: &[&dispatch_core::manifest::Feature], titles: bool)
     text + "] as const;\n"
 }
 
-/// Every feature that names people, by its switch, as the DSP's view lists what it has on.
+/// Every feature that names people, by its switch, as the DSP's view lists what it has on: not
+/// one naming only the DSP's own members, who alone are nobody to tell apart.
 fn people_features() -> String {
     let features: Vec<_> = dispatch_core::manifest::registry()
         .features
         .iter()
-        .filter(|feature| feature.owner.is_none() && !feature.people.is_empty())
+        .filter(|feature| {
+            feature.owner.is_none()
+                && feature
+                    .people
+                    .iter()
+                    .any(|kind| kind.source != people::MEMBERS)
+        })
         .map(|feature| feature.switch.id)
         .collect();
     generated(

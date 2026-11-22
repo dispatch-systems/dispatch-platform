@@ -20,7 +20,7 @@ what was decided.
   people roles.
 - **Its page**, `driver-match`, is a page of Settings, under Features (its `parent` is
   Settings' sidebar), not of the app's sidebar. It is listed while the DSP has a feature on
-  whose data names people, for those who hold `driver_match.manage`: the questions the backend
+  whose data names people besides its own members, for those who hold `driver_match.manage`: the questions the backend
   sends, asked one at a time, then everyone, by role or a source lacking them, with their
   photo, from core's `/api/dsp/people/{code}/photo`, and their title or role: as a list, a row
   each with their ID in each source or the source lacking them, sortable and a hundred a page,
