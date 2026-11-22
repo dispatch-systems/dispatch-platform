@@ -85,6 +85,7 @@ pub const FEATURE: Feature = Feature {
                 "slack_connect_requests",
                 "slack_install_links",
                 "slack_logos",
+                "slack_member_pictures",
             ],
         ),
     ],

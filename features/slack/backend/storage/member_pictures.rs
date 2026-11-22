@@ -10,12 +10,12 @@ pub trait MemberPictureStore {
         dsp: &str,
         team: &str,
     ) -> Result<BTreeMap<String, String>>;
-    /// The version of each picture kept of the DSP's members, by workspace and member.
+    /// The version of each picture kept of the DSP's members still kept, by workspace and member.
     fn slack_member_picture_versions(
         &self,
         dsp: &str,
     ) -> Result<BTreeMap<(String, String), String>>;
-    /// The picture kept of the workspace `team`'s member `user`.
+    /// The picture kept of the workspace `team`'s member `user`, while they're a member kept.
     fn slack_member_picture(&self, dsp: &str, team: &str, user: &str) -> Result<Option<Vec<u8>>>;
     /// Keeps the member's picture, from `source`, in place of the one they had, while they're a
     /// member kept: its version is its picture's digest.
@@ -48,7 +48,8 @@ impl MemberPictureStore for Store {
         dsp: &str,
     ) -> Result<BTreeMap<(String, String), String>> {
         let rows: Vec<(String, String, String)> = self.dsp(dsp)?.query_as(
-            "SELECT team_id,user_id,version FROM slack_member_pictures",
+            "SELECT p.team_id,p.user_id,p.version FROM slack_member_pictures p \
+             JOIN slack_members m ON m.team_id=p.team_id AND m.user_id=p.user_id",
             [],
         )?;
         Ok(rows
@@ -58,7 +59,8 @@ impl MemberPictureStore for Store {
     }
     fn slack_member_picture(&self, dsp: &str, team: &str, user: &str) -> Result<Option<Vec<u8>>> {
         let found: Option<(Vec<u8>,)> = self.dsp(dsp)?.one_as(
-            "SELECT picture FROM slack_member_pictures WHERE team_id=? AND user_id=?",
+            "SELECT p.picture FROM slack_member_pictures p JOIN slack_members m \
+             ON m.team_id=p.team_id AND m.user_id=p.user_id WHERE p.team_id=? AND p.user_id=?",
             [team, user],
         )?;
         Ok(found.map(|(picture,)| picture))

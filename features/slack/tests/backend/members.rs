@@ -6,7 +6,9 @@ use crate::backend::{
     app::SCOPES as APP,
     fixture,
     slack::Tokens,
-    storage::{members::MemberStore, workspaces::WorkspaceStore},
+    storage::{
+        member_pictures::MemberPictureStore, members::MemberStore, workspaces::WorkspaceStore,
+    },
     support::{connect, platform},
 };
 use dispatch_core::{
@@ -225,4 +227,15 @@ async fn the_picture_a_member_set_is_their_photo_and_slacks_own_is_none() {
         "profile": {"real_name": "Morgan Lane", "is_custom_image": false}}});
     told(&operations, &event, false).await.unwrap();
     assert!(photo(&people(&state, &dsp).await, &morgan).is_none());
+    // Taken out, a workspace's members' pictures go with it.
+    read(&operations).await.unwrap();
+    let of = dsp.clone();
+    let left = state
+        .run(move |db| {
+            db.remove_slack_workspace(&of, OPERATIONS)?;
+            db.slack_member_picture_sources(&of, OPERATIONS)
+        })
+        .await
+        .unwrap();
+    assert!(left.is_empty());
 }
