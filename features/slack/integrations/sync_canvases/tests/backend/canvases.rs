@@ -19,7 +19,6 @@ use crate::backend::{
     },
     support,
 };
-use dispatch_core::testing;
 use dispatch_documents_contract::Author;
 
 const TEAM: &str = "T0FIXTURE1";
@@ -32,8 +31,7 @@ const DISPATCH: &str = "C0FIXDISPATCH";
 /// Canvases on, and the workspace's member who made the canvas known by the address of
 /// Northline's member. Answers the state, the DSP and that member's user ID.
 async fn syncing(team: &str) -> (impl Drop, Arc<State>, String, String) {
-    support::install();
-    let (root, store) = testing::seeded();
+    let (root, store) = support::seeded();
     let mut dsp = String::new();
     for id in store.kept_dsps().unwrap() {
         if store.find_dsp(&id).unwrap().name == "Northline Logistics" {
