@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.PackageManagerCompat
 import androidx.core.content.UnusedAppRestrictionsConstants
 import com.dspdispatch.relay.Notifications
+import com.dspdispatch.relay.contacts.PhoneBook
 import java.util.concurrent.ExecutionException
 
 /** Reads what the phone says of each step. Its calls reach system services: call it off the main thread. */
@@ -27,13 +28,15 @@ class Probe(private val context: Context) {
     /**
      * What the phone says of each step now, with what the person has said of those only they can:
      * of each maker's control by its name, and of chat features; and whether Android has let the
-     * person choose on texting ([textingUnrestricted]).
+     * person choose on texting ([textingUnrestricted]); and of the phone's contacts, where its line
+     * keeps them on it ([contactsKept]).
      */
-    fun read(makerBatteryByHand: (String) -> ByHand, chatFeaturesByHand: ByHand, textingUnrestricted: Boolean): Facts {
+    fun read(makerBatteryByHand: (String) -> ByHand, chatFeaturesByHand: ByHand, textingUnrestricted: Boolean, contactsKept: Boolean): Facts {
         val texting = TEXTING.all(::allowed)
         return Facts(
             texting = texting,
             phoneNumber = allowed(Manifest.permission.READ_PHONE_NUMBERS),
+            contacts = if (contactsKept) PhoneBook.PERMISSIONS.all(::allowed) else null,
             notificationsAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 allowed(Manifest.permission.POST_NOTIFICATIONS)
             } else {

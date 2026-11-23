@@ -107,6 +107,11 @@ class Dispatch(http: OkHttpClient, private val own: AppVersion) {
         }
     }
 
+    /** Reports what changed of the phone's contacts. */
+    suspend fun contacts(site: String, key: String, report: ContactsReport) {
+        http.call<Done>(post(site, "contacts", wire.encodeToString(report), key))
+    }
+
     /** Reports how the attempts at the outbox's texts went. */
     suspend fun statuses(site: String, key: String, report: StatusesReport) {
         http.call<Done>(post(site, "statuses", wire.encodeToString(report), key))

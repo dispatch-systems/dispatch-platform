@@ -10,6 +10,7 @@ import com.dspdispatch.relay.R
 enum class Step(@param:StringRes val heading: Int, @param:StringRes val undone: Int) {
     TEXTING(R.string.step_texting, R.string.undone_texting),
     PHONE_NUMBER(R.string.step_phone_number, R.string.undone_phone_number),
+    CONTACTS(R.string.step_contacts, R.string.undone_contacts),
     NOTIFICATIONS(R.string.step_notifications, R.string.undone_notifications),
     BATTERY(R.string.step_battery, R.string.undone_battery),
     UNUSED_APPS(R.string.step_unused_apps, R.string.undone_unused_apps),
@@ -23,6 +24,7 @@ enum class Step(@param:StringRes val heading: Int, @param:StringRes val undone: 
 enum class Fix(@param:StringRes val label: Int) {
     ASK_TEXTING(R.string.allow),
     ASK_PHONE_NUMBER(R.string.allow),
+    ASK_CONTACTS(R.string.allow),
     ASK_NOTIFICATIONS(R.string.allow),
     NOTIFICATION_SETTINGS(R.string.open),
 
@@ -64,6 +66,8 @@ enum class UnusedApps { NOT_AVAILABLE, ON, OFF }
 data class Facts(
     val texting: Boolean,
     val phoneNumber: Boolean,
+    /** Whether Android lets the app read and change the phone's contacts; null where its line keeps none on it. */
+    val contacts: Boolean?,
     /**
      * Android 13+ only: whether the app may notify, whether its notifications are on, and whether
      * the channels it posts on, the relay's and Set up's, are.
@@ -96,6 +100,7 @@ fun checklist(facts: Facts): List<Item> = with(facts) {
     listOfNotNull(
         item(Step.TEXTING, texting, Fix.ASK_TEXTING),
         item(Step.PHONE_NUMBER, phoneNumber, Fix.ASK_PHONE_NUMBER),
+        contacts?.let { item(Step.CONTACTS, it, Fix.ASK_CONTACTS) },
         notificationsAllowed?.let { notifications(it) },
         battery(),
         if (unusedApps == UnusedApps.NOT_AVAILABLE) null else item(Step.UNUSED_APPS, unusedApps == UnusedApps.OFF, Fix.UNUSED_APPS),

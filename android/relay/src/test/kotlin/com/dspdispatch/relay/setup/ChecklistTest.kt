@@ -9,6 +9,7 @@ class ChecklistTest {
     private val allDone = Facts(
         texting = true,
         phoneNumber = true,
+        contacts = true,
         notificationsAllowed = true,
         notificationsOn = true,
         channelsOn = true,
@@ -33,8 +34,14 @@ class ChecklistTest {
     }
 
     @Test
-    fun `leaves out the steps a phone's Android doesn't have`() {
-        val older = allDone.copy(notificationsAllowed = null, unusedApps = UnusedApps.NOT_AVAILABLE, restricted = null, textingApp = null)
+    fun `leaves out the steps a phone's Android doesn't have, and Contacts where its line keeps none on it`() {
+        val older = allDone.copy(
+            contacts = null,
+            notificationsAllowed = null,
+            unusedApps = UnusedApps.NOT_AVAILABLE,
+            restricted = null,
+            textingApp = null,
+        )
         assertEquals(
             listOf(Step.TEXTING, Step.PHONE_NUMBER, Step.BATTERY, Step.BACKGROUND_DATA, Step.INSTALL_UPDATES),
             checklist(older).map(Item::step),
@@ -45,6 +52,7 @@ class ChecklistTest {
     fun `asks for a permission not given`() {
         assertEquals(listOf(Fix.ASK_TEXTING), allDone.copy(texting = false).item(Step.TEXTING).fixes)
         assertEquals(listOf(Fix.ASK_PHONE_NUMBER), allDone.copy(phoneNumber = false).item(Step.PHONE_NUMBER).fixes)
+        assertEquals(listOf(Fix.ASK_CONTACTS), allDone.copy(contacts = false).item(Step.CONTACTS).fixes)
     }
 
     @Test

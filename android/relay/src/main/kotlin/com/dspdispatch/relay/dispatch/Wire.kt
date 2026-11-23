@@ -31,11 +31,44 @@ data class PairedLine(val name: String)
 
 /**
  * The texts Dispatch has for the phone to send, oldest first; the videos the phone keeps that
- * someone is playing, by Dispatch's IDs of them, whose bytes it sends; and the app's latest version
- * while the DSP hands one out.
+ * someone is playing, by Dispatch's IDs of them, whose bytes it sends; for a phone of a line that
+ * keeps its contacts on its phones, the names saved for it to save in its contacts, null for any
+ * other; and the app's latest version while the DSP hands one out.
  */
 @Serializable
-data class Outbox(val texts: List<OutgoingText> = emptyList(), val wanted: List<String> = emptyList(), val app: AppVersion? = null)
+data class Outbox(
+    val texts: List<OutgoingText> = emptyList(),
+    val wanted: List<String> = emptyList(),
+    val contacts: List<SavedContact>? = null,
+    val app: AppVersion? = null,
+)
+
+/** A name saved at the DSP for [number], for the phone to save, by when it was saved ([at]). */
+@Serializable
+data class SavedContact(val number: String, val name: String, val at: Long)
+
+/**
+ * What changed of the phone's contacts since it last said: the names it [saved] as handed, each
+ * number's name as its contacts now have it ([changed]), and the numbers they hold no more
+ * ([removed]).
+ */
+@Serializable
+data class ContactsReport(
+    val saved: List<SavedNumber> = emptyList(),
+    val changed: List<NamedNumber> = emptyList(),
+    val removed: List<String> = emptyList(),
+) {
+    /** How many entries it holds, of every kind. */
+    val size get() = saved.size + changed.size + removed.size
+}
+
+/** A name handed to save, by its [number] and when it was saved ([at]), as the phone saved it. */
+@Serializable
+data class SavedNumber(val number: String, val at: Long)
+
+/** A [number] by its [name] in the phone's contacts. */
+@Serializable
+data class NamedNumber(val number: String, val name: String)
 
 /** A version of the app: its name, as people see it, and the `versionCode` Android compares. */
 @Serializable
