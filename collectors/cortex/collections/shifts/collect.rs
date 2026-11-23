@@ -21,8 +21,8 @@ use dispatch_core::{
 use jiff::civil::Date;
 
 /// The week view's roster: drivers, each with their assignments and work blocks by day.
-/// Kept as its path's segments: the build's privacy check reads "/home/" followed by a name as
-/// a home directory left in the binary.
+/// Kept as its path's segments: joined in the binary, its "home" segment between two others
+/// reads to the build's privacy check as a home directory left there.
 const ROSTERS: [&str; 6] = ["", "schedulingV2", "home", "api", "v4", "rosters"];
 /// The week view, which the roster is read from.
 const WEEK: &str = "/scheduling/calendar-view/week";
