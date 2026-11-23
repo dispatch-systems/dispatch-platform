@@ -31,6 +31,8 @@ pub const FEATURES: &[&Feature] = &[
     &dispatch_routes::FEATURE.registered(None, "routes"),
     #[cfg(feature = "settings")]
     &dispatch_settings::FEATURE.registered(None, "settings"),
+    #[cfg(feature = "shifts")]
+    &dispatch_shifts::FEATURE.registered(None, "shifts"),
     #[cfg(feature = "slack")]
     &dispatch_slack::FEATURE.registered(None, "slack"),
     #[cfg(feature = "team")]

@@ -45,6 +45,7 @@ test('the platform switches a DSP’s features, their parts and connections, and
     'Driver Profilesneeds an associates source',
     'Daily Performanceneeds a daily performance source',
     'Vansneeds a vans source',
+    'Schedulesneeds a schedules source',
     'Timecard · Meal Breaksneeds a meal-break source',
   ]);
   await off.getByRole('button', { name: 'Switch off', exact: true }).click();
@@ -56,6 +57,7 @@ test('the platform switches a DSP’s features, their parts and connections, and
     'Driver Profiles',
     'Daily Performance',
     'Vans',
+    'Schedules',
   ])
     await expect(item(pane, name)).toContainText('Off');
   await expect(item(pane, 'Uniform Inventory')).toContainText('On');

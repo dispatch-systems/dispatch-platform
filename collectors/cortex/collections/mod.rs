@@ -4,6 +4,7 @@ pub mod daily_performance;
 pub mod dvic;
 pub mod meals;
 pub mod routes;
+pub mod shifts;
 pub mod vans;
 pub(crate) mod verification;
 pub mod weekly_scorecard;

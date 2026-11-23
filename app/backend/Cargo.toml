@@ -36,6 +36,7 @@ default = [
     "live_route_data",
     "routes",
     "settings",
+    "shifts",
     "slack",
     "team",
     "timecard",
@@ -56,6 +57,7 @@ home = ["dep:dispatch-home"]
 live_route_data = ["dep:dispatch-live-route-data", "routes"]
 routes = ["dep:dispatch-routes"]
 settings = ["dep:dispatch-settings"]
+shifts = ["dep:dispatch-shifts"]
 slack = ["dep:dispatch-slack"]
 team = ["dep:dispatch-team"]
 timecard = ["dep:dispatch-timecard"]
@@ -87,6 +89,7 @@ dispatch-home = { path = "../../features/home", optional = true }
 dispatch-live-route-data = { path = "../../features/live_route_data", optional = true }
 dispatch-routes = { path = "../../features/routes", optional = true }
 dispatch-settings = { path = "../../features/settings", optional = true }
+dispatch-shifts = { path = "../../features/shifts", optional = true }
 dispatch-slack = { path = "../../features/slack", optional = true }
 dispatch-team = { path = "../../features/team", optional = true }
 dispatch-timecard = { path = "../../features/timecard", optional = true }

@@ -8,5 +8,6 @@ export const capabilityLabels = {
   "daily_performance": "a daily performance source",
   "weekly_scorecard": "a weekly scorecard source",
   "associates": "an associates source",
-  "vans": "a vans source"
+  "vans": "a vans source",
+  "shifts": "a schedules source"
 } as const;

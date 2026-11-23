@@ -1504,3 +1504,415 @@ async fn measure_meal_method() -> Result<()> {
     driver.browser.close().await;
     result
 }
+
+/// Surveys of the Scheduling page: controls, a press by label, what appeared, downloads.
+const SCHEDULING_SURVEY: &str = include_str!("../../probes/scheduling_survey.js");
+async fn survey_scheduling_page(driver: &Driver, input: Value) -> Result<Value> {
+    driver
+        .browser
+        .evaluate(&driver.page.id, &call(SCHEDULING_SURVEY, &input))
+        .await
+}
+/// One response the Scheduling page received: what it was asked with, kept to replay it,
+/// and what came back.
+struct Received {
+    described: Value,
+    url: String,
+    method: String,
+    headers: serde_json::Map<String, Value>,
+    bytes: Vec<u8>,
+}
+/// Every request the tab makes for `window`, or until it has been quiet six seconds after a
+/// response, after navigating to `navigate` when given: each request's masked address and
+/// type by count, and each response from the application or carrying an attachment, read,
+/// let go, printed by shape and saved under `output`.
+async fn capture_scheduling(
+    driver: &Driver,
+    output: &Path,
+    label: &'static str,
+    navigate: Option<&str>,
+    window: Duration,
+    saved: &mut usize,
+) -> Result<Vec<Received>> {
+    let page = &driver.page;
+    let mut patterns: Vec<Value> = ["XHR", "Fetch", "Document", "Other"]
+        .iter()
+        .map(|kind| json!({"urlPattern":"*","resourceType":kind,"requestStage":"Request"}))
+        .collect();
+    patterns.extend(
+        ["XHR", "Fetch", "Document", "Other"]
+            .iter()
+            .map(|kind| json!({"urlPattern":"*","resourceType":kind,"requestStage":"Response"})),
+    );
+    page.command("Fetch.enable", json!({"patterns":patterns}))
+        .await?;
+    let started = Instant::now();
+    if let Some(url) = navigate {
+        page.start_navigation(url).await?;
+    }
+    let mut asked: std::collections::BTreeMap<String, usize> = Default::default();
+    let mut received = Vec::new();
+    let mut last_event = Instant::now();
+    while started.elapsed() < window {
+        let event = driver.browser.event(&page.id).await?;
+        if event.is_null() {
+            if !received.is_empty() && last_event.elapsed() > Duration::from_secs(6) {
+                break;
+            }
+            continue;
+        }
+        last_event = Instant::now();
+        let request = &event["request"];
+        let url = s(request, "url").to_owned();
+        let parsed = url::Url::parse(&url).ok();
+        let host = parsed
+            .as_ref()
+            .and_then(|u| u.host_str())
+            .unwrap_or("")
+            .to_owned();
+        if event["responseStatusCode"].is_null() {
+            *asked
+                .entry(format!(
+                    "{} {} {}{}",
+                    s(&event, "resourceType"),
+                    s(request, "method"),
+                    host,
+                    s(&masked_url(&url), "path")
+                ))
+                .or_default() += 1;
+            let _ = page
+                .command(
+                    "Fetch.continueRequest",
+                    json!({"requestId":event["requestId"]}),
+                )
+                .await;
+            continue;
+        }
+        let described = describe_response(&event);
+        let attachment = s(&described["headers"], "content-disposition").starts_with("attachment");
+        let data = host == crate::HOST && ["XHR", "Fetch"].contains(&s(&event, "resourceType"));
+        let body = if data || attachment {
+            page.command(
+                "Fetch.getResponseBody",
+                json!({"requestId":event["requestId"]}),
+            )
+            .await
+            .ok()
+        } else {
+            None
+        };
+        if page
+            .command(
+                "Fetch.continueResponse",
+                json!({"requestId":event["requestId"]}),
+            )
+            .await
+            .is_err()
+        {
+            let _ = page
+                .command(
+                    "Fetch.continueRequest",
+                    json!({"requestId":event["requestId"]}),
+                )
+                .await;
+        }
+        let Some(body) = body else { continue };
+        let bytes = response_bytes(&body)?;
+        let mut record = json!({"page":label,"response":described,"bytes":bytes.len(),
+        "requestHeaders":request["headers"].as_object().map(|h| h.keys().cloned().collect::<Vec<_>>()),
+        "post":request["postData"].as_str().map(|p| {
+            serde_json::from_str::<Value>(p).map(|v| shape(&v, 0)).unwrap_or_else(|_| json!({"text":p.len()}))
+        })});
+        if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
+            record["shape"] = shape(&value, 0);
+        }
+        *saved += 1;
+        record["saved"] = save_capture(output, label, *saved, "response", &bytes)?;
+        eprintln!("SCHEDULING {}", serde_json::to_string(&record)?);
+        received.push(Received {
+            described,
+            url,
+            method: s(request, "method").to_owned(),
+            headers: request["headers"].as_object().cloned().unwrap_or_default(),
+            bytes,
+        });
+    }
+    let _ = page.command("Fetch.disable", json!({})).await;
+    let frame = page.frame().await?;
+    eprintln!(
+        "SCHEDULING {}",
+        json!({"page":label,"ms":started.elapsed().as_millis(),"asked":asked,
+            "landed":masked_url(s(&frame, "url"))})
+    );
+    Ok(received)
+}
+
+// What a collector reading Amazon's Scheduling needs to know: signs in, opens the week's
+// calendar for the service area, and takes every response it receives; then asks each of the
+// application's JSON GET reads again from this process over plain HTTP with the browser's
+// session, bare and with the page's own headers, sending nothing else again; then presses the page's download, and each label in
+// DISPATCH_BENCHMARK_PRESSES after (JSON regexes), saying what appeared and what downloaded.
+// Prints masked addresses, statuses, sizes, header names and shapes; bodies and downloads are
+// saved under DISPATCH_BENCHMARK_OUTPUT, private, the operator's to delete.
+#[tokio::test]
+#[ignore = "requires an explicitly selected DSP and authenticated provider profile"]
+async fn probe_scheduling_page() -> Result<()> {
+    use dispatch_core::collection::browser::http::Http;
+    dispatch_core::testing::install(&[&crate::COLLECTOR], &[]);
+    let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
+    let output = env_path("DISPATCH_BENCHMARK_OUTPUT")?;
+    let date = std::env::var("DISPATCH_BENCHMARK_DATE")
+        .map_err(|_| Error::new("benchmark_configuration_required", 400))?;
+    let service_area = std::env::var("DISPATCH_BENCHMARK_SERVICE_AREA")
+        .map_err(|_| Error::new("benchmark_configuration_required", 400))?;
+    let presses: Vec<String> = serde_json::from_str(
+        &std::env::var("DISPATCH_BENCHMARK_PRESSES").unwrap_or_else(|_| "[]".into()),
+    )?;
+    let profile = dsp.join("state/browsers/cortex-browseros");
+    let runtime = browseros::Runtime::new(
+        Path::new("/opt/dispatch-browseros/0.50.5/browseros"),
+        Path::new("/usr/local/libexec/dispatch-dev/bwrap"),
+        &env_path("DISPATCH_BENCHMARK_WORKER")?,
+        &env_path("DISPATCH_BENCHMARK_RUNS")?,
+        1,
+    )?;
+    let browser = runtime
+        .start(
+            &profile,
+            browseros::Mode::Windowed,
+            browseros::NetworkPolicy::Hosts(&crate::BROWSER_HOSTS),
+        )
+        .await?;
+    let mut driver = Driver::new(browser, &profile, None).await?;
+    let result = async {
+        let secrets = dsp.join("secrets");
+        let credentials = dispatch_core::foundation::crypto::decrypt(
+            &db::key_file(&secrets.join("vault.key"))?,
+            &format!("{}:cortex:2", dsp.file_name().unwrap().to_str().unwrap()),
+            &std::fs::read_to_string(secrets.join("cortex.enc"))?,
+        )?;
+        let signed = driver
+            .request(json!({"action":"start","credentials":credentials}))
+            .await;
+        eprintln!(
+            "SCHEDULING {}",
+            json!({"signIn":signed.as_ref().map(|v|s(v,"type").to_owned()).unwrap_or_else(|e|e.code.clone())})
+        );
+        ensure(
+            signed.is_ok_and(|v| v["type"] == "ready"),
+            "benchmark_verification_required",
+            409,
+        )?;
+        driver.ensure_page().await?;
+        let driver = &driver;
+        let page = &driver.page;
+        let origin = driver.origin.clone();
+        page.command(
+            "Emulation.setDeviceMetricsOverride",
+            json!({"width":1600,"height":1000,"deviceScaleFactor":1,"mobile":false}),
+        )
+        .await?;
+        let mut query = url::form_urlencoded::Serializer::new(String::new());
+        query
+            .append_pair("date", &date)
+            .append_pair("serviceAreaId", &service_area);
+        let week = format!("{origin}/scheduling/calendar-view/week?{}", query.finish());
+        let mut saved = 0usize;
+        let loaded = capture_scheduling(
+            driver,
+            &output,
+            "week",
+            Some(&week),
+            Duration::from_secs(90),
+            &mut saved,
+        )
+        .await?;
+        sleep(Duration::from_secs(2)).await;
+        eprintln!(
+            "SCHEDULING {}",
+            json!({"page":"week","grid":survey_scheduling_page(driver, json!({"action":"grid"})).await?,
+                "controls":survey_scheduling_page(driver, json!({"action":"controls"})).await?})
+        );
+        // The same reads with no page: the browser's cookies and user agent, then the page's
+        // own headers as well. Only GETs: another method may change what Amazon holds, so the
+        // page's are never sent again.
+        let http = Http::signed_in(&driver.browser, &origin, &crate::HOSTS).await?;
+        let skipped = [
+            "cookie", "user-agent", "accept", "accept-language", "accept-encoding", "referer",
+            "origin", "host", "content-length", "connection",
+        ];
+        for received in loaded
+            .iter()
+            .filter(|r| r.method == "GET" && serde_json::from_slice::<Value>(&r.bytes).is_ok())
+            .take(20)
+        {
+            let own: Vec<(String, String)> = received
+                .headers
+                .iter()
+                .filter(|(name, _)| {
+                    let name = name.to_ascii_lowercase();
+                    !skipped.contains(&name.as_str()) && !name.starts_with("sec-")
+                })
+                .map(|(name, value)| (name.clone(), value.as_str().unwrap_or("").to_owned()))
+                .collect();
+            let expected = serde_json::from_slice::<Value>(&received.bytes)
+                .map(|v| digest(&canonical(&v).to_string()))
+                .unwrap_or_default();
+            let mut outcomes = Vec::new();
+            for headers in [Vec::new(), own.clone()] {
+                let started = Instant::now();
+                let outcome = http
+                    .json_text(&received.url, &headers, &week, 32 * 1024 * 1024)
+                    .await
+                    .map_err(|refusal| match refusal {
+                        dispatch_core::collection::browser::http::Refusal::Unavailable => "unavailable".to_owned(),
+                        dispatch_core::collection::browser::http::Refusal::Unreadable(label) => label.to_owned(),
+                    });
+                outcomes.push(match outcome {
+                    Ok(text) => json!({"headers":headers.len(),"ok":true,"bytes":text.len(),
+                        "same":serde_json::from_str::<Value>(&text).map(|v| digest(&canonical(&v).to_string()) == expected).unwrap_or(false),
+                        "ms":started.elapsed().as_millis()}),
+                    Err(refusal) => json!({"headers":headers.len(),"ok":false,"refusal":refusal}),
+                });
+            }
+            eprintln!(
+                "SCHEDULING {}",
+                json!({"replay":received.described["path"],"method":received.method,
+                    "ownHeaders":own.iter().map(|(k, _)| k).collect::<Vec<_>>(),"outcomes":outcomes})
+            );
+        }
+        // The schedule's read for other spans: two weeks, the next week, a month back.
+        if let Some(rosters) = loaded.iter().find(|r| r.url.contains("/rosters?")) {
+            let mut base = url::Url::parse(&rosters.url).map_err(|_| Error::new("egress_denied", 403))?;
+            eprintln!(
+                "SCHEDULING {}",
+                json!({"rostersSegments":base.path_segments().into_iter().flatten().map(|segment| {
+                    if segment.chars().all(|c| c.is_ascii_alphabetic() || c == '-') { segment.to_owned() } else { format!("{{{}}}", segment.len()) }
+                }).collect::<Vec<_>>(),
+                "query":base.query_pairs().map(|(k, v)| format!("{k}={}", if k.ends_with("Date") { v.into_owned() } else { "…".into() })).collect::<Vec<_>>()})
+            );
+            let from: jiff::civil::Date = base
+                .query_pairs()
+                .find(|(k, _)| k == "fromDate")
+                .and_then(|(_, v)| v.parse().ok())
+                .ok_or_else(|| Error::new("benchmark_response_unreadable", 502))?;
+            for (label, start, days) in [
+                ("two_weeks", 0i64, 13i64),
+                ("next_week", 7, 6),
+                ("four_weeks", 0, 27),
+                ("week_minus_4", -28, 6),
+                ("week_minus_12", -84, 6),
+                ("week_minus_52", -364, 6),
+                ("week_plus_2", 14, 6),
+            ] {
+                let first = from + start.days();
+                let last = first + days.days();
+                let pairs: Vec<(String, String)> = base
+                    .query_pairs()
+                    .map(|(k, v)| match k.as_ref() {
+                        "fromDate" => (k.into_owned(), first.to_string()),
+                        "toDate" => (k.into_owned(), last.to_string()),
+                        _ => (k.into_owned(), v.into_owned()),
+                    })
+                    .collect();
+                base.query_pairs_mut().clear().extend_pairs(pairs);
+                let started = Instant::now();
+                let outcome = http.json_text(base.as_str(), &[], &week, 64 * 1024 * 1024).await;
+                let summary = match outcome {
+                    Ok(text) => {
+                        let value: Value = serde_json::from_str(&text).unwrap_or_default();
+                        let rows = value["data"].as_array();
+                        let assigned: usize = rows.into_iter().flatten().map(|row| {
+                            row["shiftAssignmentsMap"].as_object().map_or(0, |m| m.values().map(|d| d.as_array().map_or(0, Vec::len)).sum())
+                        }).sum();
+                        let reserved: usize = rows.into_iter().flatten().map(|row| {
+                            row["reservationsMap"].as_object().map_or(0, |m| m.values().map(|d| d.as_array().map_or(0, Vec::len)).sum())
+                        }).sum();
+                        let days = rows.and_then(|r| r.first()).and_then(|row| row["shiftAssignmentsMap"].as_object()).map_or(0, |m| m.len());
+                        json!({"ok":true,"bytes":text.len(),"rows":rows.map_or(0, Vec::len),"days":days,
+                            "assigned":assigned,"reserved":reserved,"error":value["error"].is_null().then_some(()).is_none()})
+                    }
+                    Err(dispatch_core::collection::browser::http::Refusal::Unavailable) => json!({"ok":false,"refusal":"unavailable"}),
+                    Err(dispatch_core::collection::browser::http::Refusal::Unreadable(label)) => json!({"ok":false,"refusal":label}),
+                };
+                eprintln!(
+                    "SCHEDULING {}",
+                    json!({"span":label,"from":first.to_string(),"to":last.to_string(),"ms":started.elapsed().as_millis(),"outcome":summary})
+                );
+            }
+        }
+        // The download, and whatever it asks for next.
+        eprintln!(
+            "SCHEDULING {}",
+            json!({"hooked":driver.browser.evaluate(&page.id, DOWNLOAD_HOOK).await?})
+        );
+        let mut steps = vec!["^(download|export)".to_owned()];
+        steps.extend(presses);
+        for (step, pattern) in steps.iter().enumerate() {
+            let pressed =
+                survey_scheduling_page(driver, json!({"action":"press","pattern":pattern})).await?;
+            let after = capture_scheduling(
+                driver,
+                &output,
+                "after_press",
+                None,
+                Duration::from_secs(20),
+                &mut saved,
+            )
+            .await?;
+            eprintln!(
+                "SCHEDULING {}",
+                json!({"step":step,"pattern":pattern,"pressed":pressed,"responses":after.len(),
+                    "appeared":survey_scheduling_page(driver, json!({"action":"appeared"})).await?,
+                    "downloads":survey_scheduling_page(driver, json!({"action":"downloads"})).await?})
+            );
+        }
+        // The icon-only controls, described; only one whose icon reads as a download is pressed.
+        let icons = survey_scheduling_page(driver, json!({"action":"icons","limit":20})).await?;
+        eprintln!("SCHEDULING {}", json!({"icons":icons}));
+        for index in 0..icons.as_array().map_or(0, Vec::len) {
+            let pressed =
+                survey_scheduling_page(driver, json!({"action":"pressIcon","index":index})).await?;
+            if pressed["pressed"] != json!(index) {
+                continue;
+            }
+            let after = capture_scheduling(
+                driver,
+                &output,
+                "after_icon",
+                None,
+                Duration::from_secs(20),
+                &mut saved,
+            )
+            .await?;
+            eprintln!(
+                "SCHEDULING {}",
+                json!({"icon":index,"responses":after.len(),
+                    "appeared":survey_scheduling_page(driver, json!({"action":"appeared"})).await?,
+                    "downloads":survey_scheduling_page(driver, json!({"action":"downloads"})).await?})
+            );
+            break;
+        }
+        let downloads = survey_scheduling_page(driver, json!({"action":"downloads"})).await?;
+        for index in 0..downloads.as_array().map_or(0, Vec::len) {
+            let blob = survey_scheduling_page(driver, json!({"action":"blob","index":index})).await?;
+            let Some(text) = blob.as_str().filter(|t| !t.is_empty()) else { continue };
+            use base64::{Engine, engine::general_purpose::STANDARD};
+            let bytes = STANDARD
+                .decode(text)
+                .map_err(|_| Error::new("benchmark_response_unreadable", 502))?;
+            saved += 1;
+            eprintln!(
+                "SCHEDULING {}",
+                json!({"download":index,"saved":save_capture(&output, "download", saved, "blob", &bytes)?})
+            );
+        }
+        let _ = page
+            .command("Emulation.clearDeviceMetricsOverride", json!({}))
+            .await;
+        Ok(())
+    }
+    .await;
+    driver.browser.close().await;
+    result
+}

@@ -6,5 +6,6 @@
   ["cortex.routes.collect", "routes"],
   ["cortex.dvic.collect", "dvic"],
   ["cortex.associates.collect", "driver_profiles"],
-  ["cortex.vans.collect", "vans"]
+  ["cortex.vans.collect", "vans"],
+  ["cortex.shifts.collect", "shifts"]
 ]

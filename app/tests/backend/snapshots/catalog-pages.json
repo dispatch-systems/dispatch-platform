@@ -159,6 +159,14 @@
       "requires": [],
       "default": false,
       "mandatory": false
+    },
+    {
+      "id": "shifts",
+      "label": "Schedules",
+      "permissions": ["shifts.collect"],
+      "requires": ["shifts"],
+      "default": false,
+      "mandatory": false
     }
   ],
   "subfeatures": [
@@ -243,6 +251,7 @@
     "conduct",
     "cjf87gqd_hr_line",
     "cjf87gqd_legacy_tracker",
+    "shifts",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

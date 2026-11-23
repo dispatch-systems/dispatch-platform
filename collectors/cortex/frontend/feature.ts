@@ -30,5 +30,6 @@ export const feature: FrontendFeature = {
     schedule_dvic_required: 'Connect Cortex before enabling DVIC collections.',
     schedule_associates_required: 'Connect Cortex before enabling roster collections.',
     schedule_vans_required: 'Connect Cortex before enabling van collections.',
+    schedule_shifts_required: 'Connect Cortex before enabling schedule collections.',
   },
 };

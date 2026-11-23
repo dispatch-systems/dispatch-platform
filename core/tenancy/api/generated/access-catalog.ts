@@ -17,7 +17,8 @@ export const pages = [
   "slack",
   "vans",
   "live_route_data",
-  "conduct"
+  "conduct",
+  "shifts"
 ] as const;
 export const subfeatures = [
   "timecard.daily",
@@ -49,6 +50,7 @@ export const features = [
   "vans",
   "live_route_data",
   "conduct",
+  "shifts",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -261,6 +263,18 @@ export const featureCatalog = [
     "place": 150
   },
   {
+    "id": "shifts",
+    "label": "Schedules",
+    "permissions": [
+      "shifts.collect"
+    ],
+    "requires": [
+      "shifts"
+    ],
+    "kind": "page",
+    "place": 180
+  },
+  {
     "id": "timecard.daily",
     "label": "Timecard",
     "permissions": [],
@@ -339,7 +353,8 @@ export const featureCatalog = [
       "daily_performance",
       "weekly_scorecard",
       "associates",
-      "vans"
+      "vans",
+      "shifts"
     ]
   }
 ] as const;
@@ -367,6 +382,7 @@ export const permissions = [
   "routes.manage",
   "routes.view",
   "settings.manage",
+  "shifts.collect",
   "slack.manage",
   "timecard.manage",
   "timecard.view",
@@ -402,6 +418,7 @@ export const permissionLabels = {
   "routes.manage": "Manage Routes",
   "routes.view": "View Routes",
   "settings.manage": "Manage DSP Settings",
+  "shifts.collect": "Collect Schedules",
   "slack.manage": "Manage Slack",
   "timecard.manage": "Manage Timecard",
   "timecard.view": "View Timecard",
@@ -513,6 +530,12 @@ export const permissionGroups = [
     ]
   ],
   [
+    "Schedules",
+    [
+      "shifts.collect"
+    ]
+  ],
+  [
     "Team",
     [
       "members.invite",
@@ -575,6 +598,7 @@ export const schedulingPermissions = [
   "driver_profiles.collect",
   "dvic.manage",
   "routes.manage",
+  "shifts.collect",
   "timecard.manage",
   "vans.collect",
   "weekly_scorecard.manage"
