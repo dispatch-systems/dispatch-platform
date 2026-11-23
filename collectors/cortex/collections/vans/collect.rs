@@ -6,7 +6,7 @@ use super::capture::{Capture, Collection, MAX_VANS, Request, Van};
 use crate as cortex;
 use crate::connection::{
     Driver,
-    companies::{COMPANIES, company, refusal},
+    companies::{COMPANIES, refusal, sole_company},
 };
 use dispatch_core::{
     Error, Result,
@@ -29,21 +29,6 @@ const MAX_PAGES: usize = 50;
 
 fn changed() -> Error {
     Error::new(cortex::codes::CORTEX_SOURCE_CHANGED.as_str(), 502)
-}
-
-/// The DSP's company, when it is the only one the sign-in sees: the fleet answers for the
-/// account and takes no company to scope it by, so an account seeing several could answer
-/// with another DSP's vans.
-pub(crate) fn sole_company(reply: &Value, code: &str) -> Result<(String, String)> {
-    let found = company(reply, code)?;
-    ensure(
-        reply["records"]
-            .as_array()
-            .is_some_and(|records| records.len() == 1),
-        cortex::codes::CORTEX_PROVIDER_AMBIGUOUS.as_str(),
-        502,
-    )?;
-    Ok(found)
 }
 
 /// The list's address, from where `key` left off.

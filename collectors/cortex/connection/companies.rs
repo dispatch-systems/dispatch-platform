@@ -1,7 +1,7 @@
 //! The companies a Cortex session sees and refusals from authenticated HTTP reads.
 use crate as cortex;
 use dispatch_core::{
-    Error, Result, collection::browser::http::Refusal, foundation::validate::token,
+    Error, Result, collection::browser::http::Refusal, ensure, foundation::validate::token,
 };
 use serde_json::Value;
 
@@ -40,4 +40,18 @@ pub(crate) fn company(reply: &Value, code: &str) -> Result<(String, String)> {
             502,
         )),
     }
+}
+/// The DSP's company, when it is the only one the sign-in sees: a read answering for the
+/// account, with no company to scope it by, could answer with another DSP's data for an
+/// account seeing several.
+pub(crate) fn sole_company(reply: &Value, code: &str) -> Result<(String, String)> {
+    let found = company(reply, code)?;
+    ensure(
+        reply["records"]
+            .as_array()
+            .is_some_and(|records| records.len() == 1),
+        cortex::codes::CORTEX_PROVIDER_AMBIGUOUS.as_str(),
+        502,
+    )?;
+    Ok(found)
 }
