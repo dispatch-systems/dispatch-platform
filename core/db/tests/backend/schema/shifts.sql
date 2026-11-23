@@ -1,0 +1,11 @@
+CREATE TABLE owner_migrations (owner TEXT NOT NULL, id INTEGER NOT NULL, name TEXT NOT NULL, applied_at INTEGER NOT NULL, PRIMARY KEY(owner, id));
+CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL);
+CREATE TABLE shift_assignments ( mapping_id TEXT PRIMARY KEY, service_area_id TEXT NOT NULL, date TEXT NOT NULL, transporter_id TEXT NOT NULL, driver_name TEXT, employee_id TEXT, kind TEXT NOT NULL, shift_id TEXT NOT NULL, shift_name TEXT NOT NULL, shift_type TEXT NOT NULL, position TEXT, start_min INTEGER NOT NULL, start_max INTEGER NOT NULL, duration_min INTEGER NOT NULL, duration_max INTEGER NOT NULL, qualification TEXT, reason TEXT, status TEXT NOT NULL, state TEXT, comment TEXT, created_at INTEGER, listed INTEGER NOT NULL CHECK(listed IN (0,1)), first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, row TEXT NOT NULL CHECK(json_valid(row)) );
+CREATE TABLE shift_changes ( id INTEGER PRIMARY KEY, job_id TEXT NOT NULL, mapping_id TEXT NOT NULL, date TEXT NOT NULL, transporter_id TEXT NOT NULL, change TEXT NOT NULL CHECK(change IN ('added','changed','removed')), before TEXT CHECK(before IS NULL OR json_valid(before)), after TEXT CHECK(after IS NULL OR json_valid(after)), seen_at TEXT NOT NULL );
+CREATE TABLE shift_runs ( job_id TEXT PRIMARY KEY, station TEXT NOT NULL, service_area_id TEXT NOT NULL, week_start TEXT NOT NULL, week_end TEXT NOT NULL, collected_at TEXT NOT NULL, drivers INTEGER NOT NULL, assignments INTEGER NOT NULL, added INTEGER NOT NULL, changed INTEGER NOT NULL, removed INTEGER NOT NULL );
+CREATE TABLE storage_identity (dsp_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL);
+CREATE INDEX shift_assignments_by_day ON shift_assignments(service_area_id, date);
+CREATE INDEX shift_assignments_by_driver ON shift_assignments(transporter_id, date);
+CREATE INDEX shift_changes_by_assignment ON shift_changes(mapping_id, id);
+CREATE INDEX shift_changes_by_day ON shift_changes(date);
+CREATE INDEX shift_runs_by_week ON shift_runs(service_area_id, week_start, collected_at);

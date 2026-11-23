@@ -18,6 +18,7 @@ import { feature as slack } from '../../features/slack/frontend/feature.js';
 import { feature as vans } from '../../features/vans/frontend/feature.js';
 import { feature as liveRouteData } from '../../features/live_route_data/frontend/feature.js';
 import { feature as conduct } from '../../features/conduct/frontend/feature.js';
+import { feature as shifts } from '../../features/shifts/frontend/feature.js';
 import { feature as paycom } from '../../collectors/paycom/frontend/feature.js';
 import { feature as cortex } from '../../collectors/cortex/frontend/feature.js';
 import { feature as accounts } from '../../core/accounts/frontend/feature.js';
@@ -47,6 +48,7 @@ export const features: readonly FrontendFeature[] = [
   vans,
   liveRouteData,
   conduct,
+  shifts,
   paycom,
   cortex,
   accounts,

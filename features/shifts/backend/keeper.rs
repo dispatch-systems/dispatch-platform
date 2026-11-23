@@ -1,0 +1,56 @@
+//! Schedules keeps Cortex's `shifts` collection: the station's current week, each run adding
+//! to what it keeps.
+use super::DOMAIN;
+use super::storage::{STORAGE, bind_week_request, week_request};
+use crate::ShiftsStore;
+use dispatch_core::{
+    Result,
+    collection::{browser::Collected, registry::AddedStorage},
+    db::Store,
+    manifest::{Keeper, Schedules, schedules},
+    server::cache::DataDomain,
+};
+use dispatch_cortex::shifts::JOB_KIND;
+use serde_json::Value;
+
+pub(crate) struct Shifts;
+impl Keeper for Shifts {
+    fn keeps(&self) -> &'static str {
+        JOB_KIND
+    }
+    fn permission(&self) -> &'static str {
+        "shifts.collect"
+    }
+    fn schedules(&self) -> Schedules {
+        schedules("shifts.collect")
+    }
+    fn domain(&self) -> DataDomain {
+        DOMAIN
+    }
+    fn bind(&self, store: &Store, dsp: &str, _: &Value) -> Result<Value> {
+        Ok(serde_json::to_value(bind_week_request(store, dsp)?)?)
+    }
+    fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
+        store.publish_shifts(dsp, job, &serde_json::from_value(collected.data)?)
+    }
+    fn last_collected(&self, store: &Store, dsp: &str) -> Result<Option<String>> {
+        Ok(store
+            .shifts_db(dsp)?
+            .one_as::<(Option<String>,)>("SELECT max(collected_at) FROM shift_runs", [])?
+            .and_then(|(at,)| at))
+    }
+    fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {
+        bind_week_request(store, dsp).map(|_| ())
+    }
+    fn scheduled(&self, _: &Store, _dsp: &str, _: &str) -> Result<Vec<(String, Value)>> {
+        Ok(vec![("shifts".into(), week_request())])
+    }
+    fn storages(&self) -> &'static [&'static AddedStorage] {
+        static STORAGES: [&AddedStorage; 1] = [&STORAGE];
+        &STORAGES
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/backend/keeper.rs"]
+mod tests;

@@ -1175,6 +1175,65 @@
     "tables": {},
     "subfeatures": []
   },
+  "shifts": {
+    "directory": "features/shifts",
+    "owner": null,
+    "collectors": [
+      "cortex"
+    ],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [
+      "cortex.shifts.collect"
+    ],
+    "migrations": {
+      "shifts": [
+        {
+          "id": 1,
+          "name": "baseline"
+        }
+      ]
+    },
+    "permissions": [
+      "shifts.collect"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [
+        "shifts"
+      ],
+      "integrations": [],
+      "live": [
+        "shifts.collect"
+      ],
+      "maintenance": [],
+      "on": [],
+      "people": [],
+      "routes": [
+        "POST /api/dsp/shifts/jobs/{id}/cancel"
+      ],
+      "exposes": [],
+      "env": [],
+      "settings": []
+    },
+    "switch": "shifts",
+    "mandatory": false,
+    "tables": {
+      "shifts": [
+        "shift_assignments",
+        "shift_changes",
+        "shift_runs"
+      ]
+    },
+    "subfeatures": []
+  },
   "slack": {
     "directory": "features/slack",
     "owner": null,

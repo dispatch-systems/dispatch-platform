@@ -954,6 +954,7 @@ dependencies = [
  "dispatch-routes",
  "dispatch-routes-contract",
  "dispatch-settings",
+ "dispatch-shifts",
  "dispatch-slack",
  "dispatch-team",
  "dispatch-timecard",
@@ -1337,6 +1338,17 @@ dependencies = [
  "libc",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "dispatch-shifts"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
+ "dispatch-cortex",
+ "rusqlite",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
