@@ -25,8 +25,10 @@ does HR Line see or change Dispatch Phone's own. Someone who texts both has a co
   name or number, and its Contacts, A to Z, with the numbers it blocked and Unblock; a
   conversation opens with its texts, its pictures and files, and their videos; answering it
   sends from HR Line's phones alone, with pictures added; Done, Next waiting, Retry, who else is
-  writing; and a number's Save contact (a name, HR Line's own), Copy number, and Block or Unblock,
-  on HR Line alone. New message texts a number first. Each is named as Driver Match knows the
+  writing; and a number's Save contact (a name, HR Line's own, saved in its phones' own contacts), Copy
+  number, and Block or Unblock, on HR Line alone. Its Contacts are its phones' contacts: a name
+  saved on its page goes to each of its phones' contacts, and a contact added, renamed or deleted
+  on a phone shows on its page. New message texts a number first. Each is named as Driver Match knows the
   number's person, else by the name HR Line saved, else by the number. Without Slack, Today's
   Routes, groups, a profile, conversations elsewhere, quick replies or GIFs, which are Dispatch
   Phone's own. Its phones offline show in its heading.
@@ -70,5 +72,8 @@ does HR Line see or change Dispatch Phone's own. Someone who texts both has a co
 - **Filed:** its phones' texts are filed on HR Line as they come, and those of a phone paired
   while HR Line's texts weren't yet, by the minute's upkeep
   ([Every line's texts filed](../../../communications/README.md#texts)).
-- **Stores:** nothing of its own: its phones, texts, saved names, blocks and the browsers told of
-  it are kept by Dispatch Phone, by their line; each member's Display choices by Settings.
+- **Stores:** nothing of its own: its phones, texts, blocks and the browsers told of it are kept
+  by Dispatch Phone, by their line, and its names by its phones' contacts, as Dispatch Phone
+  keeps each phone's ([Lines](../../../communications/README.md#texts)); each member's Display
+  choices by Settings. Its phones' app asks to read and change the phone's contacts as it's set
+  up.

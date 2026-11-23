@@ -34,6 +34,7 @@
     <string name="step_texting">Texting</string>
     <string name="step_texting_refused">Allow SMS in Permissions</string>
     <string name="step_phone_number">Phone number</string>
+    <string name="step_contacts">Contacts</string>
     <string name="step_notifications">Turn on notifications</string>
     <string name="step_battery">Allow background use</string>
     <!-- The unused-apps setting as Android 11 names it, so it can be found; later in values-v31 and values-v36. -->
@@ -44,6 +45,7 @@
     <string name="step_install_updates">Turn on Allow from this source</string>
     <string name="undone_texting">Texting not allowed</string>
     <string name="undone_phone_number">Phone number not allowed</string>
+    <string name="undone_contacts">Contacts not allowed</string>
     <string name="undone_notifications">Notifications off</string>
     <string name="undone_battery">Battery restricted</string>
     <string name="undone_unused_apps">Remove permissions if app isn\'t used on</string>

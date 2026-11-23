@@ -22,7 +22,11 @@ use crate::{
         live,
         logged::together,
         people::People,
-        phone::{numbers::normal, storage::Line},
+        phone::{
+            self,
+            numbers::normal,
+            storage::{Line, PhoneContactStore},
+        },
     },
 };
 use dispatch_core::{
@@ -152,7 +156,9 @@ pub fn open_driver(db: &Store, state: &State, dsp: &str, driver: &str) -> Result
 }
 
 /// Saves `name` for the number of the conversation `id` of the line `line`, as the member `by`,
-/// noted in the DSP's audit log as that line's, with the name it had before, if it had one.
+/// noted in the DSP's audit log as that line's, with the name it had before, if it had one: on
+/// Dispatch Phone's own line, as Dispatch keeps it; on another, in each of the line's phones'
+/// contacts, each woken to save it, and shown at once.
 pub fn save_contact(
     db: &Store,
     state: &State,
@@ -164,8 +170,22 @@ pub fn save_contact(
 ) -> Result<Conversation> {
     let number = contact_number(db, dsp, line, id)?;
     let saved = together(db, dsp, || {
-        let Some(before) = db.save_communications_contact(dsp, line, &number, name, by)? else {
-            return Ok(false);
+        let (before, phones) = match line {
+            None => (
+                db.save_communications_contact(dsp, &number, name, by)?,
+                Vec::new(),
+            ),
+            Some(line) => match db.phones_save_contact(dsp, line, &number, name, now())? {
+                Some((before, phones)) => {
+                    let changed = std::slice::from_ref(&number);
+                    db.communications_numbers_changed(dsp, Some(line), changed)?;
+                    (Some(before), phones)
+                }
+                None => (None, Vec::new()),
+            },
+        };
+        let Some(before) = before else {
+            return Ok(None);
         };
         db.audit_with(
             Some(by),
@@ -175,10 +195,13 @@ pub fn save_contact(
             Some(&shown(&number)),
             &[("name", before, Some(name.to_owned()))],
         )?;
-        Ok(true)
+        Ok(Some(phones))
     })?;
-    if saved {
+    if let Some(phones) = saved {
         live::changed_on(state, dsp, line);
+        for phone in &phones {
+            phone::live::queued_for(state, dsp, Some(phone));
+        }
     }
     one(db, state, dsp, line, id)
 }
@@ -213,7 +236,7 @@ pub fn add_to_person(
     } else {
         remove_phone(db, c, code, &number)?;
     }
-    db.communications_number_changed(dsp, &number)?;
+    db.communications_numbers_changed(dsp, None, std::slice::from_ref(&number))?;
     // Whose the number is decides where its texts are filed (`filing`): each day it texted, to be
     // filed again.
     let zone = zone(db, dsp)?;

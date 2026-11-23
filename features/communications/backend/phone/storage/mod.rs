@@ -1,13 +1,17 @@
 //! The phone side's storage, in each DSP's own database, by concern: its phones and the code that
-//! pairs the next one (`devices`), every text they relay and how Dispatch's went (`texts`), and the
-//! texts' pictures and files (`files`). Its tables are the `phones_` ones, which Communications
+//! pairs the next one (`devices`), every text they relay and how Dispatch's went (`texts`), the
+//! texts' pictures and files (`files`), and, for a line that keeps its contacts on its phones, each
+//! phone's contacts (`contacts`). Its tables are the `phones_` ones, which Communications
 //! adopted from Phones as they were (its migrations 7 and 8). Only this module writes SQL against
 //! them but `texts::storage`, which keeps the conversation each text is filed in, and what filing
 //! keeps beside it, on the text's own row (migration 9), and reads the rest of it.
+mod contacts;
 mod devices;
 mod files;
 mod texts;
 
+pub(crate) use contacts::LINE_CONTACTS;
+pub use contacts::{ContactsReport, PhoneContactStore, SAVE_WAIT_MS, Saving};
 pub use devices::{AppVersion, Device, DeviceStore, Line, PAIRING_MS, Pairing};
 pub(crate) use devices::{add_app_version_codes, add_health, add_lines, add_pairing_ids};
 pub(crate) use files::add_on_phone;

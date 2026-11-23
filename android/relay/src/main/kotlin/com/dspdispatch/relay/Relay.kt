@@ -3,6 +3,7 @@ package com.dspdispatch.relay
 import android.content.Context
 import androidx.annotation.StringRes
 import com.dspdispatch.relay.connection.Connection
+import com.dspdispatch.relay.contacts.Contacts
 import com.dspdispatch.relay.dispatch.AppVersion
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.PairRequest
@@ -12,6 +13,7 @@ import com.dspdispatch.relay.health.Lapses
 import com.dspdispatch.relay.pairing.Paired
 import com.dspdispatch.relay.pairing.PairingLink
 import com.dspdispatch.relay.pairing.Pairings
+import com.dspdispatch.relay.pairing.Standing
 import com.dspdispatch.relay.setup.Setup
 import com.dspdispatch.relay.texts.Gifs
 import com.dspdispatch.relay.texts.Texts
@@ -54,7 +56,8 @@ class Relay(private val context: Context) {
     val pairings = Pairings(context)
     val dispatch = Dispatch(http(), own)
     val connection = Connection(dispatch)
-    val setup = Setup(context)
+    val contacts = Contacts(context, dispatch)
+    val setup = Setup(context) { (pairings.standing.value as? Standing.Pairing)?.paired?.let(contacts::kept) == true }
 
     /** Where the relay tells of errors it didn't expect, and what last went wrong, for its health. */
     val lapses = Lapses(context)

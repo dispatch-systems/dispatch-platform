@@ -12,10 +12,11 @@ import kotlinx.coroutines.withContext
 
 /**
  * Set up: the steps the app needs of the phone, as last checked, the guided walk through those
- * undone, and whether Set up was finished. What only the person can say is done, and the walk
- * under way, are kept in the app's own storage.
+ * undone, and whether Set up was finished; the phone's contacts among them while its line keeps
+ * them on it ([contactsKept]). What only the person can say is done, and the walk under way, are
+ * kept in the app's own storage.
  */
-class Setup(private val context: Context) {
+class Setup(private val context: Context, private val contactsKept: () -> Boolean) {
     private val prefs = context.getSharedPreferences("setup", Context.MODE_PRIVATE)
     val probe = Probe(context)
 
@@ -45,7 +46,7 @@ class Setup(private val context: Context) {
      */
     suspend fun check(notify: Boolean = false): List<Item> {
         val facts = withContext(Dispatchers.IO) {
-            probe.read({ byHand(makerKey(it)) }, byHand(Step.CHAT_FEATURES.name), prefs.getBoolean(TEXTING_UNRESTRICTED, false))
+            probe.read({ byHand(makerKey(it)) }, byHand(Step.CHAT_FEATURES.name), prefs.getBoolean(TEXTING_UNRESTRICTED, false), contactsKept())
         }
         if (facts.texting) textingUnrestricted()
         val items = checklist(facts)

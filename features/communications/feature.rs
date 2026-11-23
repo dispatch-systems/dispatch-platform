@@ -86,6 +86,7 @@ pub const FEATURE: Feature = Feature {
             "phones_attempts",
             "phones_files",
             "phones_change",
+            "phones_contacts",
             "communications_push",
             "communications_line_push",
             "communications_origin_state",
@@ -270,6 +271,13 @@ pub const FEATURE: Feature = Feature {
                 apply: Sql(include_str!(
                     "migrations/dsp/0026_communications_work_phones_refiled.sql"
                 )),
+            },
+            // Each phone's contacts, for a line that keeps its contacts on its phones, and the
+            // names saved for it to save.
+            Migration {
+                id: 27,
+                name: "phones_contacts",
+                apply: Sql(include_str!("migrations/dsp/0027_phones_contacts.sql")),
             },
         ],
     }],

@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
 import com.dspdispatch.relay.Notifications
+import com.dspdispatch.relay.contacts.PhoneBook
 import com.dspdispatch.relay.relay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -53,6 +54,7 @@ class Fixes(private val activity: ComponentActivity) {
         when (fix) {
             Fix.ASK_TEXTING -> permissions.launch(Probe.TEXTING)
             Fix.ASK_PHONE_NUMBER -> permissions.launch(arrayOf(Manifest.permission.READ_PHONE_NUMBERS))
+            Fix.ASK_CONTACTS -> permissions.launch(PhoneBook.PERMISSIONS)
             Fix.ASK_NOTIFICATIONS -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 permissions.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
             }

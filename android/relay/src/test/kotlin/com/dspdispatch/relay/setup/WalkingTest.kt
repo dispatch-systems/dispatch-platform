@@ -118,6 +118,7 @@ class WalkingTest {
         Facts(
             texting = false,
             phoneNumber = true,
+            contacts = true,
             notificationsAllowed = true,
             notificationsOn = true,
             channelsOn = true,

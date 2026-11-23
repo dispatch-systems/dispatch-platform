@@ -477,9 +477,15 @@ queues a text for a phone.
   knows the number: work phones, drivers, filing again and the live day are Dispatch
   Phone's own. Each line saves its own names for numbers and blocks its own: Dispatch Phone's in
   `communications_contacts` and `communications_blocked`, by the number, as ever; another line's
-  beside them, in `communications_line_contacts` and `communications_line_blocked`, by the line
-  and the number. A name another line saves, or a block, never touches Dispatch Phone's, nor
-  Dispatch Phone's another's.
+  blocks beside them, in `communications_line_blocked`, by the line and the number. Another line
+  keeps its names on its phones, in each one's own contacts: a name saved on its page is handed
+  to each of its phones to save, and shown at once; what a phone says of its contacts, added,
+  renamed or deleted there, is what the page shows, each number by the name its line's phones
+  changed last, of those not removed ([the phones' protocol](api/phone/README.md)). A name saved
+  goes to the phones a line has then, and one paired later is handed the names its line shows, so
+  its phones start alike; what one phone's own contacts change isn't copied to another's. Saving
+  one while the line has no phone is refused `phones_none`. A name another line saves, or a
+  block, never touches Dispatch Phone's, nor Dispatch Phone's another's.
   Whom a conversation of another line is with: whoever Driver Match has the number for, else the
   name that line saved, else the number. Every read and write of a conversation by its ID is of
   one line: another line's, as Slack's on another line, isn't found
@@ -1119,6 +1125,10 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   Phone's own, as every one kept before is), one a number's for each line, and each change is
   noted with its line; another line's names, blocks and browsers are kept apart, by the line
   (`communications_line_contacts`, `communications_line_blocked`, `communications_line_push`),
+  its names since migration 27 by its phones instead (`phones_contacts`: each phone's contacts by
+  the number, with when each last changed, and each name saved at the DSP until the phone says it
+  saved it, and when it was last handed; HR Line's names saved before went to its phones then,
+  and stay in `communications_line_contacts`, which nothing reads now but the release before),
   and Dispatch Phone's stay in their tables as they were, so the release before the lines still
   reads and writes its own. The phone side's, as Phones made them before Dispatch Phone adopted them (its migrations
   7 and 8, which find them made on a database Phones migrated, and leave Phones' own records of

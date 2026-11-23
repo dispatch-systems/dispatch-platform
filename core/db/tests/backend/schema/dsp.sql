@@ -50,6 +50,7 @@ CREATE TABLE person_roles ( code TEXT PRIMARY KEY REFERENCES people(code), role 
 CREATE TABLE person_titles ( code TEXT PRIMARY KEY REFERENCES people(code), title TEXT NOT NULL, decided_at TEXT NOT NULL, actor_id TEXT );
 CREATE TABLE phones_attempts ( text_id TEXT NOT NULL REFERENCES phones_texts (id), attempt INTEGER NOT NULL, device_id TEXT NOT NULL REFERENCES phones_devices (id), PRIMARY KEY (text_id, attempt) );
 CREATE TABLE phones_change ( id INTEGER PRIMARY KEY CHECK (id = 1), last INTEGER NOT NULL );
+CREATE TABLE phones_contacts ( device_id TEXT NOT NULL, number TEXT NOT NULL, name TEXT NOT NULL, changed_at INTEGER NOT NULL, saved_at INTEGER, handed_at INTEGER, PRIMARY KEY (device_id, number) ) WITHOUT ROWID;
 CREATE TABLE phones_devices ( id TEXT PRIMARY KEY, name TEXT NOT NULL, number TEXT NOT NULL, model TEXT NOT NULL, app_version TEXT NOT NULL, key_sha256 TEXT NOT NULL UNIQUE, paired_at INTEGER NOT NULL, paired_by TEXT NOT NULL, last_seen_at INTEGER, removed_at INTEGER, stand_in INTEGER NOT NULL DEFAULT 0 CHECK (stand_in IN (0, 1)) , app_version_code INTEGER, health TEXT, line TEXT, texting INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE phones_files ( id TEXT PRIMARY KEY, text_id TEXT REFERENCES phones_texts (id), added_by TEXT, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT, added_at INTEGER NOT NULL , on_phone INTEGER NOT NULL DEFAULT 0, preview_sha256 TEXT, wanted_at INTEGER, handed_at INTEGER, fetched_at INTEGER, gone_at INTEGER);
 CREATE TABLE phones_pairings ( code_sha256 TEXT PRIMARY KEY, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, device_id TEXT REFERENCES phones_devices (id) , id TEXT, replaced_at INTEGER, line TEXT, line_name TEXT, line_texting INTEGER NOT NULL DEFAULT 0);
@@ -121,6 +122,7 @@ CREATE INDEX memberships_dsp_role ON memberships(dsp_id,role,user_id);
 CREATE INDEX memberships_role ON memberships(role_id);
 CREATE INDEX person_ids_code ON person_ids(code);
 CREATE INDEX person_phones_code ON person_phones(code);
+CREATE INDEX phones_contacts_saved ON phones_contacts (device_id, saved_at) WHERE saved_at IS NOT NULL;
 CREATE INDEX phones_files_text ON phones_files (text_id);
 CREATE UNIQUE INDEX phones_pairings_id ON phones_pairings (id);
 CREATE INDEX phones_texts_change ON phones_texts (change);

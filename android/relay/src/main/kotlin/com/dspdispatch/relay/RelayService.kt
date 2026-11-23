@@ -49,9 +49,12 @@ class RelayService : LifecycleService() {
                 // Null once the keystore lost what sealed it: the pairing's forgotten, to pair again.
                 val key = relay.pairings.key() ?: return@launch stopSelf()
                 launch { keepRunning("Relaying texts", relay.lapses) { relay.texts.run(paired, key) } }
+                launch { keepRunning("Keeping contacts", relay.lapses) { relay.contacts.run(paired, key) } }
                 keepRunning("Waiting on the outbox", relay.lapses) {
                     relay.connection.run(paired, key, { relay.checkup.now(paired) }) { outbox ->
                         relay.updates.heard(paired.site, outbox.app)
+                        // Its line keeping contacts on the phone, or no longer, changes Set up's steps.
+                        if (relay.contacts.heard(paired, outbox)) relay.setup.check(notify = true)
                         relay.texts.send(paired, outbox)
                     }
                 }

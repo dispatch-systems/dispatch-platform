@@ -292,7 +292,8 @@
         "POST /api/dispatch-phone/phone/files/{id}/gone",
         "POST /api/communications/phone/files/{id}/gone",
         "POST /api/dispatch-phone/phone/statuses",
-        "POST /api/communications/phone/statuses"
+        "POST /api/communications/phone/statuses",
+        "POST /api/communications/phone/contacts"
       ],
       "exposes": [],
       "env": [
@@ -341,6 +342,7 @@
         "communications_text_origins",
         "phones_attempts",
         "phones_change",
+        "phones_contacts",
         "phones_devices",
         "phones_files",
         "phones_pairings",
