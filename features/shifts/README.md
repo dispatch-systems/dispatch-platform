@@ -22,7 +22,9 @@ page.
   for the next collections, as Daily Performance's does. The roster answers for the signed-in
   account at that service area, so it is read only for an account that sees one company, the
   one whose short code is the DSP's abbreviation, and each row must name that service area. A
-  week naming no assignment is refused rather than taken to mean every shift was removed. The
+  roster naming no driver is refused as a read that failed. A week with nothing scheduled yet
+  is kept as read; one that lists nothing after listing shifts is refused
+  (`shifts_week_emptied`) rather than taken to mean every shift was removed. The
   week view's spreadsheet download is built in the page from this same roster: its "Shifts &
   Availability" sheet is these assignments. Its "Rostered Work Blocks", and drivers' emails and
   phones, are read but not kept.
