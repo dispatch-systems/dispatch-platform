@@ -272,13 +272,15 @@ const COMMANDS: &[Spec] = &[
         &[
             "api <method> <path>",
             "    [--dsp <dsp>] [--as <email>]",
-            "    [--data <json>]",
+            "    [--data <json>] [--dev]",
         ],
         "One signed-in call to the dev server npm run dev runs in the checkout: as the owner, or \
-         --as a demo account; --dsp opens a DSP by its name or id. The body goes to stdout and \
-         its HTTP status to stderr.",
+         --as a demo account; --dsp opens a DSP by its name or id. With --dev, run on Dev's host, \
+         it goes to Dev as the platform owner, through a 15-minute agent session minted there. \
+         The body goes to stdout and its HTTP status to stderr.",
     )
     .options(&["--dsp", "--as", "--data"])
+    .flags(&["--dev"])
     .arguments(2),
     spec(
         "shot",
@@ -309,12 +311,14 @@ const COMMANDS: &[Spec] = &[
         "browser",
         &[
             "browser <dev | production>",
-            "        --out <absolute-file>",
+            "        --out <absolute-file> [--write]",
         ],
         "Mint 15-minute, read-only dashboard access into a new private JSON file. Its parent \
-         directory must be private.",
+         directory must be private. --write mints an agent's, which acts as the platform owner, \
+         for Dev alone.",
     )
     .options(&["--out"])
+    .flags(&["--write"])
     .arguments(1),
     spec(
         "android",
@@ -830,7 +834,12 @@ fn run() -> Result<()> {
                 who: line.option("--as"),
                 data: line.option("--data"),
             };
-            match api::run(&line.root()?, call, &Native)? {
+            let done = if line.flag("--dev") {
+                api::run_dev(call, &Native)?
+            } else {
+                api::run(&line.root()?, call, &Native)?
+            };
+            match done {
                 true => Ok(()),
                 false => Err("The call failed.".into()),
             }
@@ -896,6 +905,7 @@ fn run() -> Result<()> {
                 &observation::dev_root()?,
                 target,
                 std::path::Path::new(output),
+                line.flag("--write"),
                 &Native,
             )?;
             println!("{}", serde_json::to_string(&summary)?);

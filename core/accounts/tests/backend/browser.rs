@@ -13,17 +13,19 @@ fn observation_credentials_expire_and_cannot_change_audience_or_account() {
     crate::testing::install(&[], &[]);
     let (root, mut db, _) = crate::testing::bootstrapped();
     let output = root.path().join("observation.json");
-    let metadata = mint(&db.config, &output, None).unwrap();
+    let metadata = mint(&db.config, &output, None, Access::Read).unwrap();
     let credential: Value = serde_json::from_slice(&fs::read(&output).unwrap()).unwrap();
     let raw = credential["token"].as_str().unwrap();
     assert!(metadata.get("token").is_none());
     assert_eq!(fs::metadata(&output).unwrap().mode() & 0o777, 0o600);
-    assert!(mint(&db.config, &output, None).is_err());
+    assert!(mint(&db.config, &output, None, Access::Read).is_err());
     let key_path = db.config.platform().join("platform.key");
     let rejected_output = root.path().join("unsafe.json");
     fs::set_permissions(&key_path, fs::Permissions::from_mode(0o604)).unwrap();
     assert_eq!(
-        mint(&db.config, &rejected_output, None).unwrap_err().code,
+        mint(&db.config, &rejected_output, None, Access::Read)
+            .unwrap_err()
+            .code,
         "private_observation_path_required"
     );
     fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600)).unwrap();
@@ -31,7 +33,9 @@ fn observation_credentials_expire_and_cannot_change_audience_or_account() {
     fs::rename(&key_path, &held_key).unwrap();
     symlink(&held_key, &key_path).unwrap();
     assert_eq!(
-        mint(&db.config, &rejected_output, None).unwrap_err().code,
+        mint(&db.config, &rejected_output, None, Access::Read)
+            .unwrap_err()
+            .code,
         "private_observation_path_required"
     );
     fs::remove_file(&key_path).unwrap();
@@ -94,7 +98,7 @@ fn observation_credentials_expire_and_cannot_change_audience_or_account() {
     assert_eq!(cookie_name(&db.config), "__Host-dispatch_observation_read");
     assert!(db.authenticate(raw, &Site::Admin).is_err());
     let secure_output = root.path().join("secure.json");
-    mint(&db.config, &secure_output, None).unwrap();
+    mint(&db.config, &secure_output, None, Access::Read).unwrap();
     let secure: Value = serde_json::from_slice(&fs::read(&secure_output).unwrap()).unwrap();
     let state = crate::State::new(db.config.clone()).unwrap();
     let mut request = Request::builder()
@@ -152,4 +156,41 @@ fn observation_credentials_expire_and_cannot_change_audience_or_account() {
         )
         .unwrap();
     assert!(db.authenticate(raw, &Site::Admin).is_err());
+}
+
+// An agent's session writes as the platform owner, so Production must never issue or honour
+// one, even one Dev's own key signed.
+#[test]
+fn an_agent_session_is_dev_only() {
+    crate::testing::install(&[], &[]);
+    let (root, mut db, _) = crate::testing::bootstrapped();
+    assert!(db.config.environment.is_preview());
+    let output = root.path().join("agent.json");
+    let metadata = mint(&db.config, &output, None, Access::Write).unwrap();
+    assert_eq!(metadata["readOnly"], false);
+    let credential: Value = serde_json::from_slice(&fs::read(&output).unwrap()).unwrap();
+    let raw = credential["token"].as_str().unwrap();
+    assert!(raw.starts_with(WRITE_PREFIX));
+    let auth = db.authenticate(raw, &Site::Admin).unwrap();
+    assert!(agent(&auth) && !read_only(&auth));
+    // What asks for a recent verification stays a person's.
+    assert_eq!(
+        db.ensure_recent(&auth).unwrap_err().code,
+        "agent_session_not_recent"
+    );
+
+    db.config.environment = crate::foundation::config::Environment::Production;
+    assert!(db.authenticate(raw, &Site::Admin).is_err());
+    assert_eq!(
+        mint(
+            &db.config,
+            &root.path().join("production.json"),
+            None,
+            Access::Write
+        )
+        .unwrap_err()
+        .code,
+        "agent_session_dev_only"
+    );
+    assert!(!root.path().join("production.json").exists());
 }

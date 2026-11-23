@@ -133,7 +133,8 @@ impl Store {
             site: site.clone(),
             scope,
         };
-        if raw.starts_with(super::browser::PREFIX) {
+        if raw.starts_with(super::browser::PREFIX) || raw.starts_with(super::browser::WRITE_PREFIX)
+        {
             return Ok(auth(super::browser::identity(self, raw, site)?, None));
         }
         if raw.starts_with(crate::support::browser::PREFIX) {

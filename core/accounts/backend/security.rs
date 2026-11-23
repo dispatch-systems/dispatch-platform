@@ -116,9 +116,10 @@ impl Store {
     }
 
     pub fn security_status(&self, a: &Auth) -> Result<SecurityStatus> {
-        if super::browser::read_only(a) {
+        if super::browser::read_only(a) || super::browser::agent(a) {
             // This service identity already passed the job lease and current reporter-access
-            // checks. It grants no account writes or fresh-verification authority.
+            // checks, or was issued on Dev's host. It grants no account writes or
+            // fresh-verification authority.
             return Ok(SecurityStatus {
                 enrolled: false,
                 required: false,
@@ -156,6 +157,8 @@ impl Store {
 
     pub fn ensure_recent(&self, a: &Auth) -> Result<()> {
         ensure(!super::browser::read_only(a), "observation_read_only", 403)?;
+        // What asks for a recent verification, as disabling or deleting a DSP, stays a person's.
+        ensure(!super::browser::agent(a), "agent_session_not_recent", 403)?;
         self.ensure_mfa(a)?;
         let status = self.security_status(a)?;
         if status.enrolled {

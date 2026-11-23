@@ -106,10 +106,14 @@ impl Grant for Session {
         let raw = if let Some(raw) = input.observation_token(&db.config)? {
             crate::accounts::browser::at_origin(&db.config, input)?;
             raw
+        } else if let Some(raw) = input.agent_token(&db.config)? {
+            crate::accounts::browser::at_origin(&db.config, input)?;
+            raw
         } else if support.is_empty() {
             let session = input.session_token(db.config.development);
             ensure(
-                !session.starts_with(crate::accounts::browser::PREFIX),
+                !session.starts_with(crate::accounts::browser::PREFIX)
+                    && !session.starts_with(crate::accounts::browser::WRITE_PREFIX),
                 "sign_in_required",
                 401,
             )?;
@@ -141,6 +145,7 @@ impl Grant for Session {
                 .lock()
                 .unwrap_or_else(|poison| poison.into_inner());
             trace.actor = Some(auth.user.id.clone());
+            trace.agent_session = crate::accounts::browser::agent(&auth);
             trace.account = Some(crypto::sign(
                 &db.key,
                 &format!("account:{}", auth.user.email.to_lowercase()),

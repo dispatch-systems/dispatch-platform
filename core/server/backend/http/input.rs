@@ -68,6 +68,10 @@ impl Input {
     ) -> Result<Option<&str>> {
         crate::accounts::browser::token(&self.headers, config)
     }
+    /// An agent's session on Dev, refused as an observation one is when malformed.
+    pub fn agent_token(&self, config: &crate::foundation::config::Config) -> Result<Option<&str>> {
+        crate::accounts::browser::write_token(&self.headers, config)
+    }
 }
 
 enum Payload {

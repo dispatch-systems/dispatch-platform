@@ -126,6 +126,9 @@ pub async fn pipeline(
     if let Some(origin) = admission_origin {
         fields["admissionOrigin"] = json!(origin);
     }
+    if context.agent_session {
+        fields["agentSession"] = json!(true);
+    }
     observability::event(level, "http.request", fields);
     let headers = response.headers_mut();
     headers.insert("x-request-id", request_id.parse().unwrap());

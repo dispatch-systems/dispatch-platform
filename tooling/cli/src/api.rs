@@ -1,11 +1,15 @@
 //! `dispatchdev api <method> <path>`: one signed-in call to the dev server `npm run dev` runs in
 //! the checkout, as the owner at the admin's address or as any demo account at its DSP's, with
 //! the session's CSRF token and, for a DSP's routes, its view. Sessions are kept in the
-//! checkout's scratch folder.
+//! checkout's scratch folder. With `--dev`, the call goes to Dev itself, from its host, as the
+//! platform owner, through an agent's session it mints there.
 use crate::{Result, Runner, require, workspace};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
+use std::{
+    os::unix::fs::DirBuilderExt,
+    path::{Path, PathBuf},
+};
 
 pub struct Call<'a> {
     pub method: &'a str,
@@ -235,6 +239,102 @@ pub fn run(root: &Path, call: Call<'_>, runner: &dyn Runner) -> Result<bool> {
         Err(_) => {}
     }
     Ok(reply.status < 400)
+}
+
+/// `call` to Dev, as the platform owner, printed as `run` prints a call to the dev server. Runs
+/// on Dev's host, whose installed backend mints the agent's session.
+pub fn run_dev(call: Call<'_>, runner: &dyn Runner) -> Result<bool> {
+    require(
+        call.who.is_none(),
+        "On Dev, a call is the platform owner's: --as is for the dev server.",
+    )?;
+    let dir = workspace::scratch(DEV_AGENT)?;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)?;
+    let (site, session) = dev_session(&crate::observation::dev_root()?, &dir, runner)?;
+    let reply = send(&site, &session, call, runner)?;
+    eprintln!("HTTP {}", reply.status);
+    match serde_json::from_str::<Value>(&reply.body) {
+        Ok(value) => println!("{}", serde_json::to_string_pretty(&value)?),
+        Err(_) if !reply.body.is_empty() => println!("{}", reply.body),
+        Err(_) => {}
+    }
+    Ok(reply.status < 400)
+}
+/// The scratch folder Dev's agent session is kept in, on Dev's host: its cookies and address.
+const DEV_AGENT: &str = "dev-agent";
+
+/// Where Dev answers and the agent's session there: kept from an earlier call while it lasts,
+/// or minted by the installed backend at `dev` and exchanged now. The credential lives in `dir`
+/// only until it's exchanged, and its token goes to curl in a file, never in its arguments.
+fn dev_session(dev: &Path, dir: &Path, runner: &dyn Runner) -> Result<(Site, Value)> {
+    let jar = dir.join("dev.cookies");
+    let kept = dir.join("origin");
+    let site = |origin: String| Site {
+        origin,
+        reach: vec![],
+        jar: jar.clone(),
+    };
+    if let Ok(origin) = std::fs::read_to_string(&kept) {
+        let site = site(origin.trim().to_owned());
+        let answer = site.curl(runner, &[&format!("{}/api/session", site.origin)])?;
+        if answer.status == 200 {
+            return dev_checked(site, &answer.body);
+        }
+    }
+    let _ = std::fs::remove_file(&jar);
+    let credential = dir.join(format!("credential-{}.json", std::process::id()));
+    let body = dir.join(format!("exchange-{}.json", std::process::id()));
+    let exchanged = (|| -> Result<(Site, Value)> {
+        crate::observation::run(dev, "dev", &credential, true, runner)?;
+        let minted: Value = serde_json::from_slice(&std::fs::read(&credential)?)?;
+        let origin = minted["origin"]
+            .as_str()
+            .ok_or("The credential names no address.")?
+            .to_owned();
+        workspace::write_private(&body, &json!({"token": minted["token"]}).to_string())?;
+        let site = site(origin);
+        let data = format!("@{}", body.to_str().ok_or("Non-UTF8 path")?);
+        let issued = site.curl(
+            runner,
+            &[
+                "-X",
+                "POST",
+                "-H",
+                &format!("origin: {}", site.origin),
+                "-H",
+                "content-type: application/json",
+                "--data-binary",
+                &data,
+                &format!("{}{}", site.origin, "/api/auth/observation"),
+            ],
+        )?;
+        require(
+            issued.status == 200,
+            &format!("Dev refused the agent session: HTTP {}.", issued.status),
+        )?;
+        workspace::write_private(&kept, &site.origin)?;
+        let answer = site.curl(runner, &[&format!("{}/api/session", site.origin)])?;
+        require(
+            answer.status == 200,
+            &format!("The session answered {}: {}", answer.status, answer.body),
+        )?;
+        dev_checked(site, &answer.body)
+    })();
+    let _ = std::fs::remove_file(&credential);
+    let _ = std::fs::remove_file(&body);
+    exchanged
+}
+/// The session Dev answered, refused unless it says it's Dev and may write.
+fn dev_checked(site: Site, body: &str) -> Result<(Site, Value)> {
+    let session: Value = serde_json::from_str(body)?;
+    require(
+        session["environment"] == "preview" && session["readOnly"] == false,
+        "That server is not Dev, or its session only reads.",
+    )?;
+    Ok((site, session))
 }
 
 pub(crate) fn request(server: &Server, call: Call<'_>, runner: &dyn Runner) -> Result<Answer> {
@@ -482,6 +582,93 @@ mod tests {
         .to_string();
         assert!(refused.contains("says it is Production"), "{refused}");
         assert_eq!(production.posted(), []);
+    }
+    /// Dev's host as an agent's call meets it: its backend minting a session, and Dev answering
+    /// curl, saying it is `environment`. Records every command's arguments.
+    struct DevHost {
+        environment: &'static str,
+        sent: RefCell<Vec<Vec<String>>>,
+    }
+    const TOKEN: &str = "agent-write:fixtureClaims:fixtureSignature";
+    impl Runner for DevHost {
+        fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+            self.sent
+                .borrow_mut()
+                .push(args.iter().map(|arg| (*arg).to_owned()).collect());
+            if args[0] == "bash" {
+                let expires = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_millis() as u64
+                    + 900_000;
+                let credential = json!({"origin": "https://dev.example", "token": TOKEN,
+                    "expiresAt": expires, "readOnly": false});
+                return Ok(format!("https://dev.example\n{credential}").into_bytes());
+            }
+            let url = args.last().unwrap();
+            let answer = if url.ends_with("/api/auth/observation") {
+                let at = args.iter().position(|arg| *arg == "--data-binary").unwrap();
+                let body = std::fs::read_to_string(args[at + 1].trim_start_matches('@'))?;
+                assert_eq!(
+                    serde_json::from_str::<Value>(&body)?,
+                    json!({"token": TOKEN})
+                );
+                json!({"ok": true})
+            } else {
+                json!({"csrf": "c", "environment": self.environment, "readOnly": false, "dsps": []})
+            };
+            Ok(format!("{answer}\n200").into_bytes())
+        }
+    }
+    #[test]
+    fn a_dev_call_mints_its_session_there_never_naming_the_token_and_only_on_dev() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(
+            dir.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
+        let host = DevHost {
+            environment: "preview",
+            sent: RefCell::new(vec![]),
+        };
+        let real = dir.path().canonicalize().unwrap();
+        let (site, _) = dev_session(Path::new("/dev-root"), &real, &host).unwrap();
+        assert_eq!(site.origin, "https://dev.example");
+        assert!(
+            host.sent
+                .borrow()
+                .iter()
+                .flatten()
+                .all(|arg| !arg.contains("fixtureClaims")),
+            "the token never appears in a command's arguments"
+        );
+        // Neither the credential nor the body that carried it stays behind.
+        let left: Vec<_> = std::fs::read_dir(&real)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| name.starts_with("credential-") || name.starts_with("exchange-"))
+            .collect();
+        assert_eq!(left, Vec::<String>::new());
+
+        let elsewhere = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(
+            elsewhere.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
+        let production = DevHost {
+            environment: "production",
+            sent: RefCell::new(vec![]),
+        };
+        let refused = dev_session(
+            Path::new("/dev-root"),
+            &elsewhere.path().canonicalize().unwrap(),
+            &production,
+        )
+        .err()
+        .unwrap()
+        .to_string();
+        assert!(refused.contains("not Dev"), "{refused}");
     }
     #[test]
     fn the_record_names_where_the_server_listens() {
