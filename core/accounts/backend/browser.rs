@@ -97,6 +97,25 @@ pub fn agent(auth: &Auth) -> bool {
 pub fn cookie_name(config: &Config) -> &'static str {
     Access::Read.cookie(config)
 }
+/// The cookie that ends `access`'s session in this browser.
+fn expired(access: Access, config: &Config) -> String {
+    format!(
+        "{}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{}",
+        access.cookie(config),
+        secure(config)
+    )
+}
+/// The cookie that ends an agent's session in this browser, as signing out does.
+pub fn expire_agent(config: &Config) -> String {
+    expired(Access::Write, config)
+}
+fn secure(config: &Config) -> &'static str {
+    if config.origin.starts_with("https://") {
+        "; Secure"
+    } else {
+        ""
+    }
+}
 
 /// Whether a cookie of `access`'s names is sent. Presence matters even when a value is empty
 /// or malformed: never regain human authority.
@@ -241,19 +260,22 @@ pub fn exchange(db: &Store, input: &Input, raw: &str) -> Result<crate::server::h
             .unwrap_or_else(|poison| poison.into_inner());
         trace.actor = Some(user.id);
     }
-    let secure = if db.config.origin.starts_with("https://") {
-        "; Secure"
-    } else {
-        ""
-    };
     let seconds = (value.expires_at - now()).max(0) / 1000;
+    // The other access's session ends here, so the one just exchanged is the one used: an
+    // observation cookie left beside an agent's would keep the tab read only.
+    let other = match access {
+        Access::Read => Access::Write,
+        Access::Write => Access::Read,
+    };
     Ok(crate::server::http::input::Reply::json(
         json!({"ok":true,"readOnly":access == Access::Read,"expiresAt":value.expires_at}),
     )
     .cookie(format!(
-        "{}={raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age={seconds}{secure}",
-        access.cookie(&db.config)
-    )))
+        "{}={raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age={seconds}{}",
+        access.cookie(&db.config),
+        secure(&db.config)
+    ))
+    .cookie(expired(other, &db.config)))
 }
 
 fn private_existing(path: &Path, directory: bool) -> Result<()> {

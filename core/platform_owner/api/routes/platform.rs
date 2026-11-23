@@ -357,12 +357,12 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformOwner) -> 
             v::fields(b, &["feature", "enabled"])?;
             let feature = v::text(b, "feature", 1, 40)?.to_owned();
             let enabled = v::boolean(b, "enabled")?;
-            let result = DspFeatures::from(db.set_feature(
-                &dsp,
-                &feature,
-                enabled,
-                owner.user.id.as_str(),
-            )?);
+            let changed = if crate::accounts::browser::agent(&owner) {
+                db.set_feature_as_agent(&dsp, &feature, enabled, owner.user.id.as_str())?
+            } else {
+                db.set_feature(&dsp, &feature, enabled, owner.user.id.as_str())?
+            };
+            let result = DspFeatures::from(changed);
             let mut cancelled = Vec::new();
             // Each collection's owning feature stops only its own jobs.
             for provider in Provider::all() {

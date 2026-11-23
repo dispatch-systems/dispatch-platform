@@ -295,6 +295,8 @@ test('an agent session on Dev acts as the platform owner, marked in the log', as
   assert.equal(issued.value.readOnly, false);
   const cookie = issued.headers.get('set-cookie')!.split(';')[0]!;
   assert.match(cookie, /^dispatch_agent_write=/);
+  // An observation cookie in the same tab ends, so the tab is not left read only.
+  assert.match(issued.headers.get('set-cookie')!, /dispatch_observation_read=; [^,]*Max-Age=0/);
   const agent = { ...canonical, cookie };
   const session = await f.request('/api/session', undefined, agent);
   assert.equal(session.status, 200, session.body);
@@ -316,6 +318,29 @@ test('an agent session on Dev acts as the platform owner, marked in the log', as
     'the switch is marked as an agent session',
   );
   assert(!f.logs().includes(credential.token), 'tokens must not enter request logs');
+  // Nor may it switch on what reads a provider live, as Live Route Data does, on an account
+  // Dev shares with Production; switching it off is allowed.
+  const off = await f.request(
+    `/api/platform/dsps/${dsp}/features`,
+    { feature: 'live_route_data', enabled: false },
+    { ...agent, 'x-csrf-token': session.value.csrf },
+  );
+  assert.equal(off.status, 200, off.body);
+  const live = await f.request(
+    `/api/platform/dsps/${dsp}/features`,
+    { feature: 'live_route_data', enabled: true },
+    { ...agent, 'x-csrf-token': session.value.csrf },
+  );
+  assert.equal(live.status, 403, live.body);
+  assert.equal(live.value.error, 'agent_live_reads_refused');
+  // Signing out ends it in the browser.
+  const out = await f.request(
+    '/api/auth/logout',
+    {},
+    { ...agent, 'x-csrf-token': session.value.csrf },
+  );
+  assert.equal(out.status, 200, out.body);
+  assert.match(out.headers.get('set-cookie')!, /dispatch_agent_write=; [^,]*Max-Age=0/);
   // A person's cookie holding it, or a duplicate of it, signs nobody in.
   for (const misplaced of [
     `dispatch_session=${credential.token}`,

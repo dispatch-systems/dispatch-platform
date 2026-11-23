@@ -218,5 +218,5 @@ fn revoke_all(db: &Store, user: &User, input: &Input) -> Result<Reply> {
             "",
         )
     })?;
-    Ok(Reply::signed_out(user.state.config.development))
+    Ok(Reply::signed_out(&user.state.config))
 }
