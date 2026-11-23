@@ -31,7 +31,7 @@ with `{"error": "<code>", "message": "…"}`: the app acts on the code, never th
 ## Presence
 
 A phone is online while it checked in within the last two minutes (`ONLINE_MS`). Waiting on the
-outbox, reporting texts and reporting statuses check in, and pairing counts as the first; sending
+outbox, reporting texts, statuses and contacts check in, and pairing counts as the first; sending
 or fetching a file's bytes doesn't. Dispatch notes a check-in at most every thirty seconds
 (`SEEN_MS`), so when it last saw a phone may be that much earlier. So the app waits on its outbox
 again as each wait ends, which keeps it online.
@@ -42,7 +42,8 @@ again as each wait ends, which keeps it online.
   else `request_too_large` (413) or `request_timeout` (408). A batch within the counts below can
   still be larger: the app splits a batch by its size too.
 - **A batch:** 1 to 100 texts reported, or statuses, in one call; the outbox answers at most 100
-  at once (`MOST_TEXTS`).
+  at once (`MOST_TEXTS`), and at most 100 names to save (`MOST_CONTACTS`). Contacts are reported
+  1 to 200 at once (`MOST_CONTACTS_REPORTED`).
 - **A text** (`LIMITS`, which answering from Dispatch is held to too): a body of at most 10,000
   characters, and at most 10 pictures or files, each at most 20 MiB.
 - **A file's bytes:** one upload, `Content-Type: application/octet-stream` with its
@@ -83,10 +84,10 @@ old.
 
 ### `GET /api/communications/phone/outbox`
 
-Waits up to 20 seconds (`WAIT`) for the texts Dispatch has for this phone, or the videos it keeps
-that someone is playing, and answers as soon as it has any, or with none once the wait ends; it
-wakes as a text is queued for the phone, as someone plays one of its videos, and as the phone is
-removed.
+Waits up to 20 seconds (`WAIT`) for the texts Dispatch has for this phone, the videos it keeps
+that someone is playing, or the names saved for it to save, and answers as soon as it has any, or
+with none once the wait ends; it wakes as a text is queued for the phone, as someone plays one of
+its videos, as a name is saved for it, and as the phone is removed.
 
 - `?version=1.4.0&versionCode=14`: the app's own, which the phone says with each wait, both or
   neither (an app older than this never says them): `version` at most 40 characters
@@ -124,6 +125,20 @@ minutes (`WANT_MS`) and whose bytes haven't come, each answered once each time i
 not again while the phone was told of it within the last 40 seconds (`FETCH_WAIT_MS`). The
 app sends each one's bytes (`POST /api/communications/phone/files/{id}`), or, holding it no more,
 says so (`POST /api/communications/phone/files/{id}/gone`). An app older than this ignores it.
+
+With them too, for a phone of a line that keeps its contacts on its phones (every line but
+Dispatch Phone's own), `"contacts": [{ "number": "+14255550199", "name": "Dana Reyes", "at":
+1793041515267 }]`: the names someone at the DSP saved for numbers on that line that this phone
+hasn't yet said it saved, oldest first, at most 100 at once (`MOST_CONTACTS`), each handed once
+each time it's saved, and again only once 40 seconds passed with no word of it (`SAVE_WAIT_MS`),
+as a phone that can't save contacts yet never says it did. `number` is written as Dispatch writes
+it ([Limits](#limits)), `name` is 1 to 80 characters (`NAME_MOST`), and `at` is when it was
+saved, which the app says back once it saved it in the phone's contacts
+([reporting contacts](#post-apicommunicationsphonecontacts)). It's `[]` while there are none, and
+left out for a phone of Dispatch Phone's own line, whose names Dispatch keeps itself: so it says
+too whether the phone's line keeps its contacts on the phone. An app older than this ignores it.
+A phone paired to such a line is handed the names its line shows as it pairs, so its phones start
+alike.
 
 And, while the server hands out the app, its latest version,
 `"app": { "version": "1.4.0", "versionCode": 14 }`, left out while it hands out none. The app
@@ -281,6 +296,33 @@ delivered counts from any attempt, as it proves the text got there, from the pho
 or, for an earlier attempt Retry moved to another phone, the phone that had it; and sent counts
 after a failure only Dispatch's own `phones_offline`, as the phone sent it after all. A status of
 a text that isn't this phone's is ignored.
+
+### `POST /api/communications/phone/contacts`
+
+What changed of the phone's contacts, for a phone of a line that keeps its contacts on its phones
+alone, else refused `phones_contacts_not_kept` (409): the names it saved as the outbox handed them,
+and each number's name as the phone's own contacts changed, since what it last said, by the
+numbers Dispatch takes alone:
+
+```json
+{
+  "saved": [{ "number": "+14255550199", "at": 1793041515267 }],
+  "changed": [{ "number": "+14255550123", "name": "Sam Ortiz" }],
+  "removed": ["+14255550142"]
+}
+```
+
+- `saved`: each name the outbox handed, by its `number` and `at`, once it's in the phone's
+  contacts. `changed`: a number's name as the phone's contacts now have it, one the phone holds
+  that it didn't, or named anew. `removed`: a number the phone's contacts no longer hold.
+- Each optional, 1 to 200 among them (`MOST_CONTACTS_REPORTED`); `number` as Dispatch writes it,
+  `name` 1 to 80 characters. An entry of a number Dispatch doesn't take, or a name out of
+  bounds, is ignored, so one entry never holds back the rest.
+
+Answers `{ "ok": true }`. Reporting is idempotent: a number named again as it was, or removed
+again, changes nothing. What the phone says of a number is its name from then on, as it stands
+on the phone, over one saved at the DSP before; a `saved` counts only while no newer name was
+saved for that number since, which the outbox hands in its place.
 
 ### `GET /api/communications/phone/app`
 

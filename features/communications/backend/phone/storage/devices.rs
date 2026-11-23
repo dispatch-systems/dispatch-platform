@@ -1,6 +1,9 @@
 //! The DSP's phones, each by the SHA-256 of the key it was given, and the code that pairs the next
 //! one, by its own: pairing, checking in, renaming and removing, and the demo's stand-in phone.
-use super::texts::{self, Reported, TextStore};
+use super::{
+    contacts,
+    texts::{self, Reported, TextStore},
+};
 use crate::{
     api::types::PairingStatus,
     backend::phone::{model::Health, numbers::normal},
@@ -171,9 +174,9 @@ pub trait DeviceStore {
     fn phones_health(&self, dsp: &str, device: &str, health: &Health) -> Result<()>;
     /// Renames the phone `id` of the line `line`: refused as `phones_not_found` for another's.
     fn phones_rename(&self, dsp: &str, line: Option<&str>, id: &str, name: &str) -> Result<Device>;
-    /// Removes the phone `id` of the line `line`: its key works no more, and the texts still
-    /// waiting on it fail, as no phone would send them. The phone as it was, and the texts that
-    /// failed. Refused as `phones_not_found` for another line's.
+    /// Removes the phone `id` of the line `line`: its key works no more, the texts still waiting on
+    /// it fail, as no phone would send them, and its contacts are let go of. The phone as it was,
+    /// and the texts that failed. Refused as `phones_not_found` for another line's.
     fn phones_remove(
         &self,
         dsp: &str,
@@ -199,7 +202,8 @@ pub trait DeviceStore {
         id: &str,
         at: i64,
     ) -> Result<PairingStatus>;
-    /// Pairs a phone by the code `code_sha256`, giving it the key `key_sha256`: refused as
+    /// Pairs a phone by the code `code_sha256`, giving it the key `key_sha256`, and, of a line other
+    /// than Dispatch Phone's own, the names its line shows to save: refused as
     /// `phones_pairing_invalid` for a code used, replaced, expired or unknown.
     fn phones_pair(
         &self,
@@ -300,6 +304,7 @@ impl DeviceStore for Store {
                 "UPDATE phones_devices SET removed_at=? WHERE id=?",
                 params![at, id],
             )?;
+            contacts::forget(&db, id)?;
             texts::orphaned(&db, id, at)
         })?;
         Ok((device, failed))
@@ -406,6 +411,9 @@ impl DeviceStore for Store {
                 "UPDATE phones_pairings SET used_at=?, device_id=? WHERE code_sha256=?",
                 params![at, id, code_sha256],
             )?;
+            if let Some(line) = line {
+                contacts::hand_line(&db, line, &id)?;
+            }
             Ok(())
         })?;
         drop(db);

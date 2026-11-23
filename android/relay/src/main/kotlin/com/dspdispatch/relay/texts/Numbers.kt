@@ -14,17 +14,26 @@ object Numbers {
     private const val NATIONAL = 10
 
     /** Whether Dispatch takes [raw], as the provider writes it, as a number. */
-    fun accepted(raw: String): Boolean {
+    fun accepted(raw: String): Boolean = normal(raw) != null
+
+    /**
+     * [raw] as Dispatch writes it: `+1` and ten digits in North America, `+` and its digits with
+     * its country code, a short code's digits alone; null for one Dispatch doesn't take.
+     */
+    fun normal(raw: String): String? {
         val number = raw.trim()
-        if (number.isEmpty() || number.length > MOST) return false
-        if (!number.all { it in '0'..'9' || it in PUNCTUATION }) return false
+        if (number.isEmpty() || number.length > MOST) return null
+        if (!number.all { it in '0'..'9' || it in PUNCTUATION }) return null
         val plus = number.startsWith('+')
         val bare = number.all { it in '0'..'9' }
-        val digits = number.count { it in '0'..'9' }
-        return (digits == 10 && !plus) ||
-            (digits == 11 && number.first { it in '0'..'9' } == '1') ||
-            (digits in 8..15 && plus) ||
-            (digits in 3..7 && bare)
+        val digits = number.filter { it in '0'..'9' }
+        return when {
+            digits.length == 10 && !plus -> "+1$digits"
+            digits.length == 11 && digits.first() == '1' -> "+$digits"
+            digits.length in 8..15 && plus -> "+$digits"
+            digits.length in 3..7 && bare -> digits
+            else -> null
+        }
     }
 
     /**

@@ -13,7 +13,8 @@ use crate::backend::{
         live,
         model::{EXPIRY_MS, ID_MOST, Status, Text, WANT_MS},
         storage::{
-            AppVersion, Device, DeviceStore, FileStore, MOST_TEXTS, StatusReport, TextStore,
+            AppVersion, Device, DeviceStore, FileStore, MOST_TEXTS, PhoneContactStore,
+            SAVE_WAIT_MS, Saving, StatusReport, TextStore,
         },
     },
     storage::DOMAIN,
@@ -48,13 +49,17 @@ const VERSION_CODE_MOST: usize = 2_100_000_000;
 /// The texts Dispatch has for the phone, each to send from its number to `number`, with its
 /// pictures to fetch first, never started once it `expires`. A text tried again comes again with a
 /// later `attempt`, and a later expiry. With them, the videos the phone keeps that someone is
-/// playing, by their IDs, whose bytes it sends; and the app's latest version, while the server hands
-/// one out, so the app offers to update within a wait.
+/// playing, by their IDs, whose bytes it sends; for a phone of a line that keeps its contacts on
+/// its phones, the names saved for it to save in its contacts, none for Dispatch Phone's own; and
+/// the app's latest version, while the server hands one out, so the app offers to update within a
+/// wait.
 #[derive(Serialize)]
 struct Outbox {
     texts: Vec<Outgoing>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     wanted: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    contacts: Option<Vec<Contact>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     app: Option<Latest>,
 }
@@ -70,6 +75,23 @@ impl Latest {
         Self {
             version: app.version,
             version_code: app.version_code,
+        }
+    }
+}
+/// A name saved for a number, for the phone to save in its contacts, and when it was saved, which
+/// it says back once it has.
+#[derive(Serialize)]
+struct Contact {
+    number: String,
+    name: String,
+    at: i64,
+}
+impl Contact {
+    fn of(saving: Saving) -> Self {
+        Self {
+            number: saving.number,
+            name: saving.name,
+            at: saving.at,
         }
     }
 }
@@ -136,6 +158,8 @@ struct Snapshot {
     texts: Vec<(Text, i64)>,
     outdated: Vec<(Text, i64)>,
     wanted: Vec<String>,
+    /// The names for the phone to save, for a phone of a line that keeps its contacts on it.
+    contacts: Option<Vec<Saving>>,
     app: Option<App>,
 }
 impl Snapshot {
@@ -148,12 +172,20 @@ impl Snapshot {
             texts,
             outdated,
             wanted: db.phones_wanted(&caller.dsp, &caller.device.id, now() - WANT_MS)?,
+            contacts: match caller.device.line {
+                Some(_) => Some(db.phones_contact_savings(
+                    &caller.dsp,
+                    &caller.device.id,
+                    now() - SAVE_WAIT_MS,
+                )?),
+                None => None,
+            },
             app: app::latest(&db.config),
         })
     }
 }
-/// Waits, up to twenty seconds, for texts Dispatch has for the phone, or videos it keeps that someone
-/// is playing, each handed out once each time it's asked for: checking in, as it does, and noting
+/// Waits, up to twenty seconds, for texts Dispatch has for the phone, videos it keeps that someone
+/// is playing, each handed out once each time it's asked for, or names saved for it to save: checking in, as it does, and noting
 /// the app it runs and how it says it stands once either changed.
 pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
     State::polling(waiting(state, input, access)).await
@@ -223,6 +255,7 @@ async fn waiting(state: Arc<State>, input: Input, access: Phone) -> Result<Reply
             texts,
             outdated,
             wanted,
+            contacts,
             app,
         } = match first.take() {
             Some(snapshot) => snapshot,
@@ -250,11 +283,23 @@ async fn waiting(state: Arc<State>, input: Input, access: Phone) -> Result<Reply
                 })
                 .await?;
         }
-        let ready = !texts.is_empty() || !wanted.is_empty();
+        let saving = contacts.as_ref().filter(|savings| !savings.is_empty());
+        if let Some(savings) = saving {
+            let (asked, handed) = (input.clone(), savings.clone());
+            // Bookkeeping, as a video's: no cached read depends on when a name was handed out.
+            state
+                .run_bookkeeping(move |db| {
+                    let caller = access.authorize(db, &asked)?;
+                    db.phones_contacts_handed(&caller.dsp, &caller.device.id, &handed, now())
+                })
+                .await?;
+        }
+        let ready = !texts.is_empty() || !wanted.is_empty() || saving.is_some();
         if ready || (slot.is_some() && tokio::time::Instant::now() >= until) {
             return Reply::of(&Outbox {
                 texts: texts.into_iter().map(Outgoing::of).collect(),
                 wanted,
+                contacts: contacts.map(|savings| savings.into_iter().map(Contact::of).collect()),
                 app: app.map(Latest::of),
             });
         }

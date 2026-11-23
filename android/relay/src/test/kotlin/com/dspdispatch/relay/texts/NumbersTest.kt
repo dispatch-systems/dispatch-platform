@@ -31,6 +31,26 @@ class NumbersTest {
     }
 
     @Test
+    fun writesEachNumberAsDispatchDoes() {
+        // Dispatch's own cases (numbers.rs).
+        for ((raw, kept) in listOf(
+            "(206) 555-0148" to "+12065550148",
+            "206.555.0148" to "+12065550148",
+            "+1 206 555 0148" to "+12065550148",
+            "12065550148" to "+12065550148",
+            "+44 20 7946 0958" to "+442079460958",
+            "+2065550148" to "+2065550148",
+            " 72166 " to "72166",
+            "" to null,
+            "call me" to null,
+            "555-01" to null,
+            "22065550148" to null,
+        )) {
+            assertEquals(raw, kept, Numbers.normal(raw))
+        }
+    }
+
+    @Test
     fun knowsANumberHoweverItsWritten() {
         assertTrue(Numbers.same("+14255550199", "(425) 555-0199"))
         assertTrue(Numbers.same("+1 425 555 0199", "14255550199"))
