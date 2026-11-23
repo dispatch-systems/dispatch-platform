@@ -1,13 +1,15 @@
 //! The address a DSP's phones talk to, `/api/communications/phone`, on the DSP's own address, by
 //! concern: who a call comes from (`access`), pairing by a code (`pairing`), the texts a phone
 //! reports (`texts`), waiting on the texts Dispatch has for it, and the videos it keeps that
-//! someone plays, and saying how they went (`outbox`), with how it stands (`health`), and their
-//! pictures' bytes (`files`). No browser calls these: a request carrying a cookie, or at another
+//! someone plays, and saying how they went (`outbox`), with how it stands (`health`), their
+//! pictures' bytes (`files`), and, for a line that keeps its contacts on its phones, what changed
+//! of a phone's contacts (`contacts`). No browser calls these: a request carrying a cookie, or at another
 //! address than a DSP's, is refused. What a call brings is filed as it's kept, in the same write
 //! (`texts::filing::changing`). The app itself (`app`), its details and its APK, is anyone's at the
 //! DSP's address, a browser's too, as a phone downloads it before it's paired. The protocol, call by call, is `README.md` beside them.
 mod access;
 mod app;
+mod contacts;
 mod files;
 mod health;
 mod outbox;
@@ -74,5 +76,11 @@ pub(in crate::api) fn routes() -> Vec<Route> {
     ]
     .into_iter()
     .flatten()
+    // Newer than the phones' old address, at the new one alone.
+    .chain([async_post(
+        "/api/communications/phone/contacts",
+        Phone,
+        contacts::contacts,
+    )])
     .collect()
 }

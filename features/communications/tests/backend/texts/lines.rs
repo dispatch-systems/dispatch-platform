@@ -5,7 +5,8 @@
 //! weren't filed has those it kept filed, and texts a number first, on its own line alone; another
 //! line's page, waiting or answering, goes on with Dispatch Phone off and is refused once its own
 //! line is; the minute's upkeep files and fails each line's texts only while its own line is on;
-//! and what was kept before the lines were is Dispatch Phone's, left as it was.
+//! what was kept before the lines were is Dispatch Phone's, left as it was; and the names another
+//! line saved before its phones kept them go to its phones.
 use super::{
     contacts, filing,
     model::Filed,
@@ -19,7 +20,7 @@ use crate::backend::{
     model::ConversationKind,
     phone::{
         model::{Direction, EXPIRY_MS, Outgoing, PHONE_OFFLINE},
-        storage::{DeviceStore, Line, Reported, TextStore as _},
+        storage::{DeviceStore, Line, PhoneContactStore, Reported, TextStore as _},
     },
     push::storage::{Address, PushStore, Subscription},
     support::{self, filed, migrate, phoned, phones, started, texted, texted_on, today},
@@ -733,7 +734,8 @@ async fn what_was_kept_before_the_lines_is_dispatch_phones_own_and_left_as_it_wa
                 address: Address::Admin,
             };
             db.keep_communications_push(&at, Some(DESK.id), &browser)?;
-            db.save_communications_contact(&at, Some(DESK.id), JORDAN, "Jordan Ellis", "me")?;
+            support::pair_to(db, &at, DESK, "+12065550111");
+            db.phones_save_contact(&at, DESK.id, JORDAN, "Jordan Ellis", now())?;
             let filed = Filed::Number(JORDAN.to_owned());
             let theirs = db.open_communications_text(&at, Some(DESK.id), &filed)?;
             Ok((theirs.id, db.communications_contacts(&at, None)?))
@@ -742,4 +744,32 @@ async fn what_was_kept_before_the_lines_is_dispatch_phones_own_and_left_as_it_wa
         .unwrap();
     assert_ne!(theirs.0, "txt_kept");
     assert_eq!(theirs.1, [(JORDAN.to_owned(), "Jordan".to_owned())]);
+}
+
+#[tokio::test]
+async fn the_names_another_line_saved_before_its_phones_kept_them_go_to_its_phones() {
+    let (_root, state, dsp) = started();
+    let phone = desk(&state, &dsp).await;
+    let at = dsp.clone();
+    let (shown, handed) = state
+        .run(move |db| {
+            // As the release before kept them: by the line, apart from its phones.
+            db.dsp(&at)?.0.execute_batch(
+                "INSERT INTO communications_line_contacts VALUES \
+                 ('front_desk','+14255550199','Jordan','me',1000), \
+                 ('elsewhere','+14255550123','Sam','me',1000); \
+                 INSERT INTO communications_contacts VALUES ('+14255550142','Kim','me',1000);",
+            )?;
+            // Taken twice, as a restart cut short may: the second changes nothing.
+            migrate(db, &at, &[27, 27]);
+            Ok((
+                db.communications_contacts(&at, Some(DESK.id))?,
+                db.phones_contact_savings(&at, &phone, now())?,
+            ))
+        })
+        .await
+        .unwrap();
+    assert_eq!(shown, [(JORDAN.to_owned(), "Jordan".to_owned())]);
+    let handed: Vec<_> = handed.iter().map(|each| (&*each.name, each.at)).collect();
+    assert_eq!(handed, [("Jordan", 1000)]);
 }
