@@ -43,7 +43,10 @@ test("A name saved on HR Line goes to its phone, and the phone's contacts are wh
       .map((each) => [each.number, each.person.name]);
   assert.deepEqual(await shown(), [[JORDAN, 'Jordan Ellis']]);
   const changed = await reported({
-    changed: [{ number: '(425) 555-0123', name: ' Sam Ortiz ' }, { number: 'Carrier', name: 'X' }],
+    changed: [
+      { number: '(425) 555-0123', name: ' Sam Ortiz ' },
+      { number: 'Carrier', name: 'X' },
+    ],
     removed: [JORDAN],
   });
   assert.equal(changed.status, 200, changed.body);
@@ -54,6 +57,10 @@ test("A name saved on HR Line goes to its phone, and the phone's contacts are wh
   // Malformed, or of none, it's refused; and a phone of Dispatch Phone's keeps no contacts.
   assert.equal((await reported({})).status, 400);
   assert.equal((await reported({ changed: [{ number: SAM }] })).status, 400);
-  const theirs = await f.request('/api/communications/phone/contacts', { removed: [SAM] }, dispatch.key);
+  const theirs = await f.request(
+    '/api/communications/phone/contacts',
+    { removed: [SAM] },
+    dispatch.key,
+  );
   assert.equal(theirs.value.error, 'phones_contacts_not_kept', theirs.body);
 });

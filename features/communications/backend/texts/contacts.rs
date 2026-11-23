@@ -171,7 +171,10 @@ pub fn save_contact(
     let number = contact_number(db, dsp, line, id)?;
     let saved = together(db, dsp, || {
         let (before, phones) = match line {
-            None => (db.save_communications_contact(dsp, &number, name, by)?, Vec::new()),
+            None => (
+                db.save_communications_contact(dsp, &number, name, by)?,
+                Vec::new(),
+            ),
             Some(line) => match db.phones_save_contact(dsp, line, &number, name, now())? {
                 Some((before, phones)) => {
                     let changed = std::slice::from_ref(&number);

@@ -64,11 +64,20 @@ fn a_name_saved_waits_on_each_phone_until_it_says_it_saved_it() {
         name: "Dana".into(),
         at: 5_000,
     };
-    assert_eq!(savings, [saving.clone()]);
+    assert_eq!(savings, std::slice::from_ref(&saving));
     db.phones_contacts_handed(&dsp, &first, &savings, 7_000)
         .unwrap();
-    assert!(db.phones_contact_savings(&dsp, &first, 6_999).unwrap().is_empty());
-    assert_eq!(db.phones_contact_savings(&dsp, &first, 7_000).unwrap().len(), 1);
+    assert!(
+        db.phones_contact_savings(&dsp, &first, 6_999)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        db.phones_contact_savings(&dsp, &first, 7_000)
+            .unwrap()
+            .len(),
+        1
+    );
     // Saved anew before the phone said it saved the first, the first's word counts for nothing.
     db.phones_save_contact(&dsp, DESK.id, DANA, "Dana Reyes", 8_000)
         .unwrap();
@@ -89,8 +98,17 @@ fn a_name_saved_waits_on_each_phone_until_it_says_it_saved_it() {
         .phones_contacts_reported(&dsp, &first, &saved, 9_000)
         .unwrap();
     assert!(moved.is_empty(), "its name didn't change");
-    assert!(db.phones_contact_savings(&dsp, &first, 9_000).unwrap().is_empty());
-    assert_eq!(db.phones_contact_savings(&dsp, &second, 9_000).unwrap().len(), 1);
+    assert!(
+        db.phones_contact_savings(&dsp, &first, 9_000)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        db.phones_contact_savings(&dsp, &second, 9_000)
+            .unwrap()
+            .len(),
+        1
+    );
     assert_eq!(shown(&db, &dsp), [pair(DANA, "Dana Reyes")]);
 }
 
@@ -110,7 +128,12 @@ fn what_a_phone_says_of_its_contacts_is_what_the_line_shows() {
         removed: removed.iter().map(|number| (*number).to_owned()).collect(),
     };
     let moved = db
-        .phones_contacts_reported(&dsp, &first, &report(&[(DANA, "Dana"), (SAM, "Sam")], &[]), 2_000)
+        .phones_contacts_reported(
+            &dsp,
+            &first,
+            &report(&[(DANA, "Dana"), (SAM, "Sam")], &[]),
+            2_000,
+        )
         .unwrap();
     assert_eq!(moved, [DANA, SAM]);
     assert_eq!(shown(&db, &dsp), [pair(SAM, "Sam"), pair(DANA, "Dana")]);
@@ -128,7 +151,11 @@ fn what_a_phone_says_of_its_contacts_is_what_the_line_shows() {
         .unwrap();
     db.phones_contacts_reported(&dsp, &first, &report(&[(SAM, "Sam O")], &[]), 6_000)
         .unwrap();
-    assert!(db.phones_contact_savings(&dsp, &first, 6_000).unwrap().is_empty());
+    assert!(
+        db.phones_contact_savings(&dsp, &first, 6_000)
+            .unwrap()
+            .is_empty()
+    );
     // Removed from both, it shows no more; removed again, nothing moves.
     db.phones_contacts_reported(&dsp, &second, &report(&[], &[DANA, SAM]), 7_000)
         .unwrap();
@@ -172,10 +199,16 @@ fn a_phone_paired_is_handed_its_lines_names_and_one_removed_takes_its_own() {
         app_version: "1.0.0",
     };
     let theirs = db.phones_pair(&dsp, "own", "c", &pairing, 3_000).unwrap();
-    assert!(db.phones_contact_savings(&dsp, &theirs.id, 3_000).unwrap().is_empty());
+    assert!(
+        db.phones_contact_savings(&dsp, &theirs.id, 3_000)
+            .unwrap()
+            .is_empty()
+    );
     // Removing both, the line shows none of their names.
-    db.phones_remove(&dsp, Some(DESK.id), &first, 4_000).unwrap();
+    db.phones_remove(&dsp, Some(DESK.id), &first, 4_000)
+        .unwrap();
     assert_eq!(shown(&db, &dsp), [pair(DANA, "Dana")]);
-    db.phones_remove(&dsp, Some(DESK.id), &second, 4_000).unwrap();
+    db.phones_remove(&dsp, Some(DESK.id), &second, 4_000)
+        .unwrap();
     assert!(shown(&db, &dsp).is_empty());
 }

@@ -29,10 +29,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "phone",
-            "number"
-          ]
+          "columnNames": ["phone", "number"]
         }
       }
     ],
