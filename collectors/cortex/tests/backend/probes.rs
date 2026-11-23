@@ -1520,7 +1520,6 @@ struct Received {
     url: String,
     method: String,
     headers: serde_json::Map<String, Value>,
-    post: Option<String>,
     bytes: Vec<u8>,
 }
 /// Every request the tab makes for `window`, or until it has been quiet six seconds after a
@@ -1635,7 +1634,6 @@ async fn capture_scheduling(
             url,
             method: s(request, "method").to_owned(),
             headers: request["headers"].as_object().cloned().unwrap_or_default(),
-            post: request["postData"].as_str().map(str::to_owned),
             bytes,
         });
     }
@@ -1651,8 +1649,8 @@ async fn capture_scheduling(
 
 // What a collector reading Amazon's Scheduling needs to know: signs in, opens the week's
 // calendar for the service area, and takes every response it receives; then asks each of the
-// application's JSON reads again from this process over plain HTTP with the browser's session,
-// bare and with the page's own headers; then presses the page's download, and each label in
+// application's JSON GET reads again from this process over plain HTTP with the browser's
+// session, bare and with the page's own headers, sending nothing else again; then presses the page's download, and each label in
 // DISPATCH_BENCHMARK_PRESSES after (JSON regexes), saying what appeared and what downloaded.
 // Prints masked addresses, statuses, sizes, header names and shapes; bodies and downloads are
 // saved under DISPATCH_BENCHMARK_OUTPUT, private, the operator's to delete.
@@ -1736,7 +1734,8 @@ async fn probe_scheduling_page() -> Result<()> {
                 "controls":survey_scheduling_page(driver, json!({"action":"controls"})).await?})
         );
         // The same reads with no page: the browser's cookies and user agent, then the page's
-        // own headers as well.
+        // own headers as well. Only GETs: another method may change what Amazon holds, so the
+        // page's are never sent again.
         let http = Http::signed_in(&driver.browser, &origin, &crate::HOSTS).await?;
         let skipped = [
             "cookie", "user-agent", "accept", "accept-language", "accept-encoding", "referer",
@@ -1744,7 +1743,7 @@ async fn probe_scheduling_page() -> Result<()> {
         ];
         for received in loaded
             .iter()
-            .filter(|r| serde_json::from_slice::<Value>(&r.bytes).is_ok())
+            .filter(|r| r.method == "GET" && serde_json::from_slice::<Value>(&r.bytes).is_ok())
             .take(20)
         {
             let own: Vec<(String, String)> = received
@@ -1762,28 +1761,13 @@ async fn probe_scheduling_page() -> Result<()> {
             let mut outcomes = Vec::new();
             for headers in [Vec::new(), own.clone()] {
                 let started = Instant::now();
-                let outcome = if received.method == "GET" {
-                    http.json_text(&received.url, &headers, &week, 32 * 1024 * 1024)
-                        .await
-                        .map_err(|refusal| match refusal {
-                            dispatch_core::collection::browser::http::Refusal::Unavailable => "unavailable".to_owned(),
-                            dispatch_core::collection::browser::http::Refusal::Unreadable(label) => label.to_owned(),
-                        })
-                } else {
-                    let map: serde_json::Map<String, Value> = headers
-                        .iter()
-                        .map(|(k, v)| (k.clone(), json!(v)))
-                        .chain(received.headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("content-type")).map(|(k, v)| (k.clone(), v.clone())))
-                        .collect();
-                    http.post(
-                        &received.url,
-                        &map,
-                        received.post.clone().unwrap_or_default(),
-                        Duration::from_secs(30),
-                    )
+                let outcome = http
+                    .json_text(&received.url, &headers, &week, 32 * 1024 * 1024)
                     .await
-                    .map_err(|error| error.code)
-                };
+                    .map_err(|refusal| match refusal {
+                        dispatch_core::collection::browser::http::Refusal::Unavailable => "unavailable".to_owned(),
+                        dispatch_core::collection::browser::http::Refusal::Unreadable(label) => label.to_owned(),
+                    });
                 outcomes.push(match outcome {
                     Ok(text) => json!({"headers":headers.len(),"ok":true,"bytes":text.len(),
                         "same":serde_json::from_str::<Value>(&text).map(|v| digest(&canonical(&v).to_string()) == expected).unwrap_or(false),

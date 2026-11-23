@@ -32,8 +32,8 @@ fn reply(body: Value) -> Response<String> {
 async fn the_week_is_read_at_the_service_area_every_assignment_with_its_driver() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{FIXTURE}:{}", listener.local_addr().unwrap().port());
-    // What the stand-in answers: the week, a row of another service area, a roster naming no
-    // assignment, an error, or a session Amazon ended.
+    // What the stand-in answers: the week, a row of another service area, a week with no shift
+    // yet, a roster naming no driver, an error, or a session Amazon ended.
     let scenario = Arc::new(Mutex::new("week"));
     let answers = scenario.clone();
     let app = Router::new().route(
@@ -63,7 +63,8 @@ async fn the_week_is_read_at_the_service_area_every_assignment_with_its_driver()
             match *answers.lock().unwrap() {
                 "week" => reply(json!({"data":week,"meta":{},"error":null})),
                 "elsewhere" => reply(json!({"data":[driver("A1FIXTURE00003", "area-2", json!({}))],"error":null})),
-                "empty" => reply(json!({"data":[driver("A1FIXTURE00002", "area-1", json!({}))],"error":null})),
+                "unscheduled" => reply(json!({"data":[driver("A1FIXTURE00002", "area-1", json!({}))],"error":null})),
+                "none" => reply(json!({"data":[],"error":null})),
                 "error" => reply(json!({"data":[],"error":{"message":"failed"}})),
                 _ => Response::builder()
                     .status(302)
@@ -93,9 +94,12 @@ async fn the_week_is_read_at_the_service_area_every_assignment_with_its_driver()
             ("m-3", "2026-11-17", "A1FIXTURE00001"),
         ]
     );
+    *scenario.lock().unwrap() = "unscheduled";
+    let (assignments, drivers) = roster(&http, &origin, "area-1", week).await.unwrap();
+    assert_eq!((assignments.len(), drivers), (0, 1));
     for (what, code) in [
         ("elsewhere", cortex::codes::CORTEX_SCOPE_MISMATCH.as_str()),
-        ("empty", cortex::codes::CORTEX_SOURCE_CHANGED.as_str()),
+        ("none", cortex::codes::CORTEX_SOURCE_CHANGED.as_str()),
         ("error", cortex::codes::CORTEX_SOURCE_CHANGED.as_str()),
         ("ended", "verification_required"),
     ] {

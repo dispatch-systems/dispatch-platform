@@ -107,6 +107,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'driver_profiles',
       'daily_performance',
       'vans',
+      'shifts',
       'timecard.meal_breaks',
     ),
     changed: [
@@ -117,6 +118,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       { feature: 'driver_profiles', enabled: false },
       { feature: 'daily_performance', enabled: false },
       { feature: 'vans', enabled: false },
+      { feature: 'shifts', enabled: false },
       { feature: 'timecard.meal_breaks', enabled: false },
     ],
   });
@@ -138,6 +140,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'driver_profiles',
       'daily_performance',
       'vans',
+      'shifts',
     ),
     changed: [
       { feature: 'cortex', enabled: true },
@@ -155,6 +158,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'driver_profiles',
       'daily_performance',
       'vans',
+      'shifts',
     ),
     changed: [{ feature: 'routes', enabled: true }],
   });
@@ -181,6 +185,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'driver_profiles',
       'daily_performance',
       'vans',
+      'shifts',
       'documents',
       'slack',
       'communications',

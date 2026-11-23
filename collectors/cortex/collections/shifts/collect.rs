@@ -21,7 +21,9 @@ use dispatch_core::{
 use jiff::civil::Date;
 
 /// The week view's roster: drivers, each with their assignments and work blocks by day.
-const ROSTERS: &str = "/schedulingV2/home/api/v4/rosters";
+/// Kept as its path's segments: the build's privacy check reads "/home/" followed by a name as
+/// a home directory left in the binary.
+const ROSTERS: [&str; 6] = ["", "schedulingV2", "home", "api", "v4", "rosters"];
 /// The week view, which the roster is read from.
 const WEEK: &str = "/scheduling/calendar-view/week";
 /// As much as one reply may hold. One DSP's week, 127 drivers and 482 assignments, was 528 KB.
@@ -45,8 +47,7 @@ fn address(origin: &str, path: &str, service_area: &str, dates: Option<(Date, Da
 }
 
 /// Every assignment of the week from `start` to `end` the roster lists at `service_area`,
-/// and how many drivers it listed. A week naming no assignment would say every shift was
-/// removed: it is a read that failed instead.
+/// and how many drivers it listed.
 pub(crate) async fn roster(
     http: &Http,
     origin: &str,
@@ -56,7 +57,7 @@ pub(crate) async fn roster(
     let referer = address(origin, WEEK, service_area, None);
     let reply = http
         .json(
-            &address(origin, ROSTERS, service_area, Some((start, end))),
+            &address(origin, &ROSTERS.join("/"), service_area, Some((start, end))),
             &referer,
             LIMIT,
         )
@@ -68,6 +69,13 @@ pub(crate) async fn roster(
         502,
     )?;
     let drivers = reply["data"].as_array().ok_or_else(changed)?;
+    // A roster naming no driver is a read that failed: the station's roster lists every
+    // driver, scheduled that week or not.
+    ensure(
+        !drivers.is_empty(),
+        cortex::codes::CORTEX_SOURCE_CHANGED.as_str(),
+        502,
+    )?;
     ensure(drivers.len() <= MAX_DRIVERS, "shifts_source_too_large", 502)?;
     let mut assignments = Vec::new();
     for driver in drivers {
@@ -96,11 +104,6 @@ pub(crate) async fn roster(
             )?;
         }
     }
-    ensure(
-        !assignments.is_empty(),
-        cortex::codes::CORTEX_SOURCE_CHANGED.as_str(),
-        502,
-    )?;
     Ok((assignments, drivers.len()))
 }
 

@@ -15,6 +15,8 @@ pub const MAX_ASSIGNMENTS: usize = 20_000;
 pub const MAX_DRIVERS: usize = 5_000;
 /// The largest assignment kept as Amazon sent it.
 const MAX_ROW_BYTES: usize = 16 * 1024;
+/// The longest note kept. One DSP's longest was 68 characters.
+const MAX_NOTE: usize = 2000;
 /// The latest a shift may start or last, in minutes: two days.
 const MAX_MINUTES: i64 = 2 * 24 * 60;
 
@@ -195,7 +197,7 @@ impl Assignment {
             reason: code(&item["mappingReason"]),
             status: code(&item["mappingStatus"]).ok_or_else(invalid)?,
             state: code(&item["state"]),
-            comment: text(&item["comment"], 2000),
+            comment: note(&item["comment"])?,
             created_at: item["shiftMappingCreationTime"]
                 .as_i64()
                 .filter(|at| *at > 0),
@@ -209,6 +211,28 @@ fn text(value: &Value, max: usize) -> Option<String> {
     let value = value.as_str()?.trim();
     (!value.is_empty() && value.chars().count() <= max && !value.chars().any(char::is_control))
         .then(|| value.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+/// The note the DSP gave an assignment, as written, its lines kept: none when empty. One that
+/// can't be kept whole fails the row, rather than reading as no note and losing its history.
+fn note(value: &Value) -> Result<Option<String>> {
+    let text = match value {
+        Value::Null => return Ok(None),
+        Value::String(text) => text.replace("\r\n", "\n"),
+        _ => return Err(Error::new("shifts_row_invalid", 502)),
+    };
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    ensure(
+        text.chars().count() <= MAX_NOTE
+            && !text
+                .chars()
+                .any(|c| c.is_control() && c != '\n' && c != '\t'),
+        "shifts_row_invalid",
+        502,
+    )?;
+    Ok(Some(text.to_owned()))
 }
 /// One of Amazon's codes: capitals, digits and underscores.
 fn code(value: &Value) -> Option<String> {

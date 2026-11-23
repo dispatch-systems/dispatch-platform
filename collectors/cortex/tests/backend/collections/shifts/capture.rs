@@ -55,6 +55,13 @@ fn an_assignment_reads_bounded_and_stays_at_its_service_area_and_day() {
         )
     );
     assert_eq!(assignment.row, item);
+    // A note keeps its lines, so a change to one is a change.
+    let mut noted = item.clone();
+    noted["comment"] = json!(" Training\r\nride ");
+    assert_eq!(
+        read(noted).unwrap().comment.as_deref(),
+        Some("Training\nride")
+    );
     let with = |key: &str, value: Value| {
         let mut item = item.clone();
         item[key] = value;
@@ -73,6 +80,12 @@ fn an_assignment_reads_bounded_and_stays_at_its_service_area_and_day() {
     assert_eq!(with("mappingId", Value::Null), "shifts_row_invalid");
     assert_eq!(with("startTimeMax", json!(500)), "shifts_row_invalid");
     assert_eq!(with("durationMin", json!(-1)), "shifts_row_invalid");
+    // A note that can't be kept whole fails the row rather than reading as none.
+    assert_eq!(
+        with("comment", json!("x".repeat(2001))),
+        "shifts_row_invalid"
+    );
+    assert_eq!(with("comment", json!(7)), "shifts_row_invalid");
 }
 
 #[test]

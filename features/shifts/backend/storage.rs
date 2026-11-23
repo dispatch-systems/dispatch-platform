@@ -148,7 +148,8 @@ pub trait ShiftsStore {
     fn shifts_db(&self, dsp: &str) -> Result<DspLease<'_>>;
     /// Adds a collected week to what it keeps: each assignment as the week now lists it, and
     /// a change for each one added, changed or no longer listed since the week's last read. A
-    /// read older than the week's newest kept one changes nothing.
+    /// read older than the week's newest kept one, or a job's already published, changes
+    /// nothing; one listing nothing of a week that listed shifts is refused.
     fn publish_shifts(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()>;
 }
 impl ShiftsStore for Store {
@@ -164,6 +165,13 @@ impl ShiftsStore for Store {
         let collected_at = at(capture.finished_at);
         let db = self.shifts_db(dsp)?;
         db.transaction(|| {
+            // A job recovered after its publication committed collects again: it is published.
+            if db
+                .one("SELECT job_id FROM shift_runs WHERE job_id=?", [job])?
+                .is_some()
+            {
+                return Ok(());
+            }
             let newer = db.count(
                 "SELECT count(*) FROM shift_runs WHERE service_area_id=? AND week_start=? \
                  AND collected_at>?",
@@ -192,6 +200,13 @@ impl ShiftsStore for Store {
                 .into_iter()
                 .map(|kept| (kept.mapping_id.clone(), kept))
                 .collect();
+            // A week that lists nothing after listing shifts, as a roster answering before its
+            // assignments do, would log every shift removed: the read is refused instead.
+            ensure(
+                !capture.assignments.is_empty() || !kept.values().any(|kept| kept.listed),
+                "shifts_week_emptied",
+                502,
+            )?;
             let log = |mapping_id: &str,
                        fields: &Fields,
                        change: &str,

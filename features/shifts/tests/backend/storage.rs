@@ -23,9 +23,23 @@ fn each_run_adds_to_the_week_logging_every_assignment_added_changed_or_removed()
     // A driver's name follows the roster, and changes no shift.
     next.assignments[2].driver_name = Some("Renamed Example".into());
     store.publish_shifts(&dsp, "job-2", &next).unwrap();
-    // A read older than the week's newest arrives last, and changes nothing.
+    // A read older than the week's newest arrives last, and changes nothing; nor does a job
+    // recovered after its publication committed, collecting again.
     let late = week(&store, &dsp, 1_790_900_000_000);
     store.publish_shifts(&dsp, "job-late", &late).unwrap();
+    let again = week(&store, &dsp, 1_791_000_000_000);
+    store.publish_shifts(&dsp, "job-2", &again).unwrap();
+    // A read listing nothing of a week that listed shifts is refused, not taken as every
+    // shift removed.
+    let mut emptied = week(&store, &dsp, 1_791_100_000_000);
+    emptied.assignments.clear();
+    assert_eq!(
+        store
+            .publish_shifts(&dsp, "job-3", &emptied)
+            .unwrap_err()
+            .code,
+        "shifts_week_emptied"
+    );
 
     let db = store.shifts_db(&dsp).unwrap();
     let changes: Vec<(String, String, String)> = db
