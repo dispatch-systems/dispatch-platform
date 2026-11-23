@@ -72,6 +72,9 @@ observation credential.
 An agent session is Dev's alone: the backend refuses to mint or honour one anywhere else, and the
 CLI never asks Production for one. It may do what the platform owner may, except what asks for a
 recent verification (disabling, deleting or backing up a DSP, account security), which it refuses
-with `agent_session_not_recent`. Every request it makes is marked `"agentSession": true` in the
+with `agent_session_not_recent`, or switching on a feature that reads a provider live, as Live
+Route Data does, which it refuses with `agent_live_reads_refused`; switching one off is allowed.
+Signing out ends its cookie, and exchanging one in a tab ends the observation cookie there.
+Every request it makes is marked `"agentSession": true` in the
 server's request log; the activity log names the platform owner. Dev shares Production's Cortex
-account, so collect sparingly, and keep Dev's Live Route Data off.
+account, so collect sparingly.
