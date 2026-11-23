@@ -333,6 +333,27 @@ test('an agent session on Dev acts as the platform owner, marked in the log', as
   );
   assert.equal(live.status, 403, live.body);
   assert.equal(live.value.error, 'agent_live_reads_refused');
+  // Nor sign the owner's own sessions out, which asks a person's recent verification.
+  const revoked = await f.request(
+    '/api/auth/security/sessions/revoke-others',
+    {},
+    { ...agent, 'x-csrf-token': session.value.csrf },
+  );
+  assert.equal(revoked.status, 403, revoked.body);
+  assert.equal(revoked.value.error, 'agent_session_not_recent');
+  assert.equal((await f.request('/api/session', undefined, owner.headers)).status, 200);
+  // A public route it reaches is marked too.
+  await f.request('/api/auth/forgot-password', { email: 'nobody@example.com' }, agent);
+  assert.ok(
+    f
+      .logs()
+      .split('\n')
+      .some(
+        (line) =>
+          line.includes('"agentSession":true') && line.includes('/api/auth/forgot-password'),
+      ),
+    'a public route reached with it is marked',
+  );
   // Signing out ends it in the browser.
   const out = await f.request(
     '/api/auth/logout',

@@ -81,6 +81,9 @@ pub async fn pipeline(
         let mut context = trace.lock().unwrap_or_else(|poison| poison.into_inner());
         context.request_id = Some(request_id.clone());
         context.route = Some(route);
+        // Any request carrying an agent's cookie is marked, whichever route it reaches and
+        // whether or not that route asks who is signed in.
+        context.agent_session = crate::accounts::browser::agent_cookie(request.headers());
     }
     let agent = request.uri().path().starts_with("/api/v1/");
     let mut custom_audience = super::assets::Audience::default();

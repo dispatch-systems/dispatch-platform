@@ -131,6 +131,10 @@ fn sent(headers: &HeaderMap, access: Access) -> bool {
         })
     })
 }
+/// Whether an agent's cookie is sent, valid or not: what the request log marks.
+pub fn agent_cookie(headers: &HeaderMap) -> bool {
+    sent(headers, Access::Write)
+}
 /// Whether an observation cookie is sent.
 pub fn present(headers: &HeaderMap) -> bool {
     sent(headers, Access::Read)
