@@ -211,6 +211,28 @@ impl Store {
         enabled: bool,
         actor: &str,
     ) -> Result<SwitchedFeatures> {
+        self.switch_feature(dsp, id, enabled, actor, false)
+    }
+    /// `set_feature`, as an agent's session on Dev asks it: refused when it would switch on a
+    /// feature that reads a provider live, as those reads go on until someone switches it off,
+    /// on an account Dev may share with Production.
+    pub fn set_feature_as_agent(
+        &self,
+        dsp: &str,
+        id: &str,
+        enabled: bool,
+        actor: &str,
+    ) -> Result<SwitchedFeatures> {
+        self.switch_feature(dsp, id, enabled, actor, true)
+    }
+    fn switch_feature(
+        &self,
+        dsp: &str,
+        id: &str,
+        enabled: bool,
+        actor: &str,
+        agent: bool,
+    ) -> Result<SwitchedFeatures> {
         let feature = find(id).ok_or_else(|| crate::Error::new("feature_not_found", 404))?;
         ensure(
             self.owns_feature(dsp, feature.owner)?,
@@ -222,6 +244,11 @@ impl Store {
             self.find_dsp(dsp)?;
             let plan = plan::plan(self.switches(dsp)?, feature, enabled)?;
             let changed = plan.changed;
+            ensure(
+                !agent || !changed.iter().any(|(f, on)| *on && reads_live(f)),
+                "agent_live_reads_refused",
+                403,
+            )?;
             for (f, on) in &changed {
                 ensure(self.owns_feature(dsp, f.owner)?, "feature_not_found", 404)?;
                 self.platform.exec(

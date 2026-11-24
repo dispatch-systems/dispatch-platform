@@ -25,10 +25,16 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
     let config = Config::load()?;
-    if command == "observation-session" {
+    // An agent's session acts as the platform owner, and only on Dev: mint refuses it elsewhere.
+    let access = match command {
+        "observation-session" => Some(dispatch_core::accounts::browser::Access::Read),
+        "agent-session" => Some(dispatch_core::accounts::browser::Access::Write),
+        _ => None,
+    };
+    if let Some(access) = access {
         ensure(
             (2..=3).contains(&args.len()),
-            "usage_observation_session_output_optional_owner",
+            "usage_session_output_optional_owner",
             400,
         )?;
         println!(
@@ -36,7 +42,8 @@ pub async fn run() -> Result<()> {
             dispatch_core::accounts::browser::mint(
                 &config,
                 Path::new(&args[1]),
-                args.get(2).map(String::as_str)
+                args.get(2).map(String::as_str),
+                access
             )?
         );
         return Ok(());

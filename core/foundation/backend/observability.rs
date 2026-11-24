@@ -9,6 +9,8 @@ pub struct RequestContext {
     pub account: Option<String>,
     pub route: Option<&'static str>,
     pub bulk: bool,
+    /// Whether an agent's session on Dev made the request, which its event marks.
+    pub agent_session: bool,
     /// What an agent's request notes of its call as it goes, in the agents' piece's own
     /// terms, handed back to it once the request is answered.
     pub agent: Option<Box<dyn std::any::Any + Send>>,

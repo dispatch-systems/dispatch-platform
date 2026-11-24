@@ -1,5 +1,7 @@
-//! Host-authorized observation access. Credentials travel through private files and captured
-//! subprocess output; the command's only public output is its origin, expiry and access mode.
+//! Host-authorized dashboard access: observation, which only reads, on Dev or Production; and an
+//! agent's, which acts as the platform owner, on Dev alone. Credentials travel through private
+//! files and captured subprocess output; the command's only public output is its origin, expiry
+//! and access mode.
 use crate::{Result, Runner, require};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -60,7 +62,13 @@ fn output_parent(output: &Path) -> Result<&Path> {
 
 /// Source only the installed host's config. Tracing, config output and backend diagnostics
 /// are suppressed; neither an inherited shell setting nor a failure can print a secret.
-fn mint_script(active: &str, config: &str, environment: &str, origin: Option<&str>) -> String {
+fn mint_script(
+    active: &str,
+    config: &str,
+    environment: &str,
+    origin: Option<&str>,
+    command: &str,
+) -> String {
     let origin_check = origin.map_or_else(
         || "case \"${DISPATCH_ORIGIN:-}\" in https://*) ;; *) exit 1 ;; esac".into(),
         |origin| format!("[ \"${{DISPATCH_ORIGIN:-}}\" = {} ]", quote(origin)),
@@ -76,7 +84,7 @@ fn mint_script(active: &str, config: &str, environment: &str, origin: Option<&st
          trap 'rm -f -- \"$observation_file\"; rmdir -- \"$observation_private\"' EXIT HUP INT TERM\n\
          DISPATCH_ARTIFACT_ROOT=\"$observation_active\" \
          \"$observation_active/services/rust/dispatch-backend\" \
-         observation-session \"$observation_file\" >/dev/null\n\
+         {command} \"$observation_file\" >/dev/null\n\
          printf '%s\\n' \"$DISPATCH_ORIGIN\"\n\
          cat -- \"$observation_file\"\n",
         environment = quote(environment),
@@ -89,12 +97,28 @@ pub fn dev_root() -> Result<PathBuf> {
 }
 
 /// Mint access for the Dev installed at `dev` or for Production, then save it without replacing
-/// anything. The returned summary deliberately cannot contain the exchange credential.
-pub fn run(dev: &Path, target: &str, output: &Path, runner: &dyn Runner) -> Result<Value> {
+/// anything: an agent's, which writes, for Dev alone. The returned summary deliberately cannot
+/// contain the exchange credential.
+pub fn run(
+    dev: &Path,
+    target: &str,
+    output: &Path,
+    write: bool,
+    runner: &dyn Runner,
+) -> Result<Value> {
     let (environment, origin) = match target {
         "dev" => ("preview", None),
         "production" => ("production", Some("https://admin.dspdispatch.com")),
         _ => return Err("The browser target is dev or production.".into()),
+    };
+    require(
+        !write || target == "dev",
+        "Write access is for Dev alone; Production is read only.",
+    )?;
+    let (command, prefix) = if write {
+        ("agent-session", "agent-write:")
+    } else {
+        ("observation-session", "observation-read:")
     };
     let parent = output_parent(output)?;
     let bytes = if target == "dev" {
@@ -105,6 +129,7 @@ pub fn run(dev: &Path, target: &str, output: &Path, runner: &dyn Runner) -> Resu
             &quote(config.to_str().ok_or("Non-UTF8 Dev path")?),
             environment,
             origin,
+            command,
         );
         runner.command(&["bash", "--noprofile", "--norc", "-c", &script], None, 60)
     } else {
@@ -113,6 +138,7 @@ pub fn run(dev: &Path, target: &str, output: &Path, runner: &dyn Runner) -> Resu
             "\"$HOME/dispatch-platform/public/config/platform.env\"",
             environment,
             origin,
+            command,
         );
         let remote = format!("bash --noprofile --norc -c {}", quote(&script));
         runner.command(
@@ -150,7 +176,7 @@ pub fn run(dev: &Path, target: &str, output: &Path, runner: &dyn Runner) -> Resu
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
     let token = credential
         .token
-        .strip_prefix("observation-read:")
+        .strip_prefix(prefix)
         .and_then(|rest| rest.split_once(':'));
     let valid_token = token.is_some_and(|(claims, signature)| {
         !claims.is_empty()
@@ -167,7 +193,7 @@ pub fn run(dev: &Path, target: &str, output: &Path, runner: &dyn Runner) -> Resu
         credential.origin == configured_origin
             && configured_origin.starts_with("https://")
             && origin.is_none_or(|expected| configured_origin == expected)
-            && credential.read_only
+            && credential.read_only != write
             && valid_token
             && credential.expires_at > now
             && credential.expires_at <= now + 900_000 + 30_000,
@@ -188,6 +214,6 @@ pub fn run(dev: &Path, target: &str, output: &Path, runner: &dyn Runner) -> Resu
     Ok(json!({
         "origin": credential.origin,
         "expiresAt": credential.expires_at,
-        "readOnly": true,
+        "readOnly": !write,
     }))
 }

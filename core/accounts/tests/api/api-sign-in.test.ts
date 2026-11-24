@@ -278,3 +278,115 @@ test('host-issued observation sign-in cannot mutate or fall back to a human sess
   assert.equal((await f.request('/api/session', undefined, headers)).status, 401);
   assert.equal((await exchange()).status, 401);
 });
+
+// Protects what an agent tests Dev with: the host-issued session acts as the platform owner,
+// each request it makes marked in the request log, and its token never passes as a person's.
+test('an agent session on Dev acts as the platform owner, marked in the log', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const canonical = { host: new URL(f.env.DISPATCH_ORIGIN!).host };
+  const output = path.join(f.root, 'agent.json');
+  const metadata = JSON.parse(f.cli(['agent-session', output]));
+  assert.equal(metadata.readOnly, false);
+  const credential = JSON.parse(fs.readFileSync(output, 'utf8'));
+  const issued = await f.request('/api/auth/observation', { token: credential.token }, canonical);
+  assert.equal(issued.status, 200, issued.body);
+  assert.equal(issued.value.readOnly, false);
+  const cookie = issued.headers.get('set-cookie')!.split(';')[0]!;
+  assert.match(cookie, /^dispatch_agent_write=/);
+  // An observation cookie in the same tab ends, so the tab is not left read only.
+  assert.match(issued.headers.get('set-cookie')!, /dispatch_observation_read=; [^,]*Max-Age=0/);
+  const agent = { ...canonical, cookie };
+  const session = await f.request('/api/session', undefined, agent);
+  assert.equal(session.status, 200, session.body);
+  assert.equal(session.value.user.id, owner.session.user.id);
+  assert.equal(session.value.readOnly, false);
+  const dsp = owner.session.dsps[0].id;
+  const switched = await f.request(
+    `/api/platform/dsps/${dsp}/features`,
+    { feature: 'uniforms', enabled: false },
+    { ...agent, 'x-csrf-token': session.value.csrf },
+  );
+  assert.equal(switched.status, 200, switched.body);
+  const marked = f
+    .logs()
+    .split('\n')
+    .filter((line) => line.includes('"agentSession":true'));
+  assert.ok(
+    marked.some((line) => line.includes('/api/platform/dsps/{id}/features')),
+    'the switch is marked as an agent session',
+  );
+  assert(!f.logs().includes(credential.token), 'tokens must not enter request logs');
+  // Nor may it switch on what reads a provider live, as Live Route Data does, on an account
+  // Dev shares with Production; switching it off is allowed.
+  const off = await f.request(
+    `/api/platform/dsps/${dsp}/features`,
+    { feature: 'live_route_data', enabled: false },
+    { ...agent, 'x-csrf-token': session.value.csrf },
+  );
+  assert.equal(off.status, 200, off.body);
+  const live = await f.request(
+    `/api/platform/dsps/${dsp}/features`,
+    { feature: 'live_route_data', enabled: true },
+    { ...agent, 'x-csrf-token': session.value.csrf },
+  );
+  assert.equal(live.status, 403, live.body);
+  assert.equal(live.value.error, 'agent_live_reads_refused');
+  // Nor sign the owner's own sessions out, which asks a person's recent verification.
+  const revoked = await f.request(
+    '/api/auth/security/sessions/revoke-others',
+    {},
+    { ...agent, 'x-csrf-token': session.value.csrf },
+  );
+  assert.equal(revoked.status, 403, revoked.body);
+  assert.equal(revoked.value.error, 'agent_session_not_recent');
+  assert.equal((await f.request('/api/session', undefined, owner.headers)).status, 200);
+  // A public route it reaches is marked too.
+  await f.request('/api/auth/forgot-password', { email: 'nobody@example.com' }, agent);
+  assert.ok(
+    f
+      .logs()
+      .split('\n')
+      .some(
+        (line) =>
+          line.includes('"agentSession":true') && line.includes('/api/auth/forgot-password'),
+      ),
+    'a public route reached with it is marked',
+  );
+  // A forged cookie of its name marks nothing.
+  const before = f
+    .logs()
+    .split('\n')
+    .filter((line) => line.includes('"agentSession":true')).length;
+  await f.request(
+    '/api/auth/forgot-password',
+    { email: 'nobody@example.com' },
+    { ...canonical, cookie: 'dispatch_agent_write=agent-write:forged:forged' },
+  );
+  assert.equal(
+    f
+      .logs()
+      .split('\n')
+      .filter((line) => line.includes('"agentSession":true')).length,
+    before,
+    'a forged cookie is not marked',
+  );
+  // Signing out ends it in the browser.
+  const out = await f.request(
+    '/api/auth/logout',
+    {},
+    { ...agent, 'x-csrf-token': session.value.csrf },
+  );
+  assert.equal(out.status, 200, out.body);
+  assert.match(out.headers.get('set-cookie')!, /dispatch_agent_write=; [^,]*Max-Age=0/);
+  // A person's cookie holding it, or a duplicate of it, signs nobody in.
+  for (const misplaced of [
+    `dispatch_session=${credential.token}`,
+    `${cookie}; ${cookie}`,
+    `__Host-dispatch_agent_write=${credential.token}`,
+  ]) {
+    const answer = await f.request('/api/session', undefined, { ...canonical, cookie: misplaced });
+    assert.equal(answer.status, 401, misplaced.split('=')[0]!);
+  }
+});

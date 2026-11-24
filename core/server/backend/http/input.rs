@@ -68,6 +68,10 @@ impl Input {
     ) -> Result<Option<&str>> {
         crate::accounts::browser::token(&self.headers, config)
     }
+    /// An agent's session on Dev, refused as an observation one is when malformed.
+    pub fn agent_token(&self, config: &crate::foundation::config::Config) -> Result<Option<&str>> {
+        crate::accounts::browser::write_token(&self.headers, config)
+    }
 }
 
 enum Payload {
@@ -87,7 +91,7 @@ enum Payload {
 pub struct Reply {
     value: Payload,
     status: u16,
-    cookie: Option<String>,
+    cookies: Vec<String>,
     /// Whether the browser keeps it: see [`Reply::kept`].
     kept: bool,
 }
@@ -96,7 +100,7 @@ impl Reply {
         Self {
             value,
             status,
-            cookie: None,
+            cookies: Vec::new(),
             kept: false,
         }
     }
@@ -150,12 +154,15 @@ impl Reply {
     pub fn signed_in(raw: &str, development: bool, lifetime: SessionLifetime) -> Self {
         Self::ok().cookie(session_cookie(raw, lifetime.seconds(), development))
     }
-    /// `{"ok":true}` that also ends the browser's session.
-    pub fn signed_out(development: bool) -> Self {
-        Self::ok().cookie(session_cookie("", 0, development))
+    /// `{"ok":true}` that also ends the browser's session, and an agent's on Dev.
+    pub fn signed_out(config: &crate::foundation::config::Config) -> Self {
+        Self::ok()
+            .cookie(session_cookie("", 0, config.development))
+            .cookie(crate::accounts::browser::expire_agent(config))
     }
+    /// Sets `cookie`, beside any other this reply sets.
     pub fn cookie(mut self, cookie: String) -> Self {
-        self.cookie = Some(cookie);
+        self.cookies.push(cookie);
         self
     }
     /// Kept by the browser, as its address names the version of what it answers, so another
@@ -223,10 +230,10 @@ impl IntoResponse for Reply {
             )
                 .into_response(),
         };
-        if let Some(cookie) = self.cookie
-            && let Ok(value) = cookie.parse()
-        {
-            response.headers_mut().insert("set-cookie", value);
+        for cookie in self.cookies {
+            if let Ok(value) = cookie.parse() {
+                response.headers_mut().append("set-cookie", value);
+            }
         }
         if self.kept {
             let headers = response.headers_mut();

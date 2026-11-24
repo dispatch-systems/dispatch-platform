@@ -1,5 +1,7 @@
-//! Short-lived observation sessions issued only by an operator on the server host.
-//! These are separate from human sessions and never confer write or fresh-auth authority.
+//! Short-lived sessions issued only by an operator on the server host, separate from human
+//! sessions and never conferring fresh-auth authority: observation, which only reads, on Dev
+//! or Production; and an agent's, which acts as the platform owner to test changes, on Dev
+//! alone.
 use super::{Auth, UserRow};
 use crate::{
     Error, Result,
@@ -25,10 +27,51 @@ use std::{
 };
 
 pub const PREFIX: &str = "observation-read:";
+/// An agent's session on Dev, which may change what the platform owner may.
+pub const WRITE_PREFIX: &str = "agent-write:";
 pub const EXCHANGE: &str = "/api/auth/observation";
 const LIFETIME: i64 = 15 * 60 * 1000;
 const COOKIE: &str = "dispatch_observation_read";
 const SECURE_COOKIE: &str = "__Host-dispatch_observation_read";
+const WRITE_COOKIE: &str = "dispatch_agent_write";
+const SECURE_WRITE_COOKIE: &str = "__Host-dispatch_agent_write";
+
+/// What a host-issued session lets its holder do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Access {
+    /// Read, on Dev or Production.
+    Read,
+    /// Act as the platform owner, on Dev alone: an agent testing a change.
+    Write,
+}
+impl Access {
+    fn prefix(self) -> &'static str {
+        match self {
+            Self::Read => PREFIX,
+            Self::Write => WRITE_PREFIX,
+        }
+    }
+    /// Its cookie's name at a plain address, and at an HTTPS one.
+    fn cookies(self) -> [&'static str; 2] {
+        match self {
+            Self::Read => [COOKIE, SECURE_COOKIE],
+            Self::Write => [WRITE_COOKIE, SECURE_WRITE_COOKIE],
+        }
+    }
+    fn cookie(self, config: &Config) -> &'static str {
+        self.cookies()[usize::from(config.origin.starts_with("https://"))]
+    }
+    /// The access `raw` was issued with, by its prefix.
+    fn of(raw: &str) -> Option<Self> {
+        [Self::Read, Self::Write]
+            .into_iter()
+            .find(|access| raw.starts_with(access.prefix()))
+    }
+}
+/// Writes only where agents may: Dev, never Production.
+fn allowed(access: Access, config: &Config) -> bool {
+    access == Access::Read || config.environment.is_preview()
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -46,24 +89,57 @@ struct Claims {
 pub fn read_only(auth: &Auth) -> bool {
     auth.raw.starts_with(PREFIX) || crate::support::browser::read_only(auth)
 }
+/// Whether `auth` is an agent's session, which the request log marks.
+pub fn agent(auth: &Auth) -> bool {
+    auth.raw.starts_with(WRITE_PREFIX)
+}
 
 pub fn cookie_name(config: &Config) -> &'static str {
+    Access::Read.cookie(config)
+}
+/// The cookie that ends `access`'s session in this browser.
+fn expired(access: Access, config: &Config) -> String {
+    format!(
+        "{}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{}",
+        access.cookie(config),
+        secure(config)
+    )
+}
+/// The cookie that ends an agent's session in this browser, as signing out does.
+pub fn expire_agent(config: &Config) -> String {
+    expired(Access::Write, config)
+}
+fn secure(config: &Config) -> &'static str {
     if config.origin.starts_with("https://") {
-        SECURE_COOKIE
+        "; Secure"
     } else {
-        COOKIE
+        ""
     }
 }
 
-/// Presence matters even when a value is empty or malformed: never regain human authority.
-pub fn present(headers: &HeaderMap) -> bool {
+/// Whether a cookie of `access`'s names is sent. Presence matters even when a value is empty
+/// or malformed: never regain human authority.
+fn sent(headers: &HeaderMap, access: Access) -> bool {
     headers.get_all("cookie").iter().any(|header| {
         header.as_bytes().split(|byte| *byte == b';').any(|part| {
             let name = part.split(|byte| *byte == b'=').next().unwrap_or_default();
             let name = name.trim_ascii();
-            name == COOKIE.as_bytes() || name == SECURE_COOKIE.as_bytes()
+            access
+                .cookies()
+                .iter()
+                .any(|cookie| name == cookie.as_bytes())
         })
     })
+}
+/// Whether the request carries an agent's session this server signed and still honours: what
+/// the request log marks, on any route. A cookie of that name alone, forged or expired, is not.
+pub fn agent_request(headers: &HeaderMap, key: &[u8], config: &Config) -> bool {
+    matches!(write_token(headers, config), Ok(Some(raw))
+        if signed(key, config, raw).is_ok_and(|(_, access)| access == Access::Write))
+}
+/// Whether an observation cookie is sent.
+pub fn present(headers: &HeaderMap) -> bool {
+    sent(headers, Access::Read)
 }
 
 /// A misplaced observation credential still cannot enable a public mutation route.
@@ -84,14 +160,27 @@ pub fn token<'a>(headers: &'a HeaderMap, config: &Config) -> Result<Option<&'a s
         ensure(!restricted_request(headers), "sign_in_required", 401)?;
         return Ok(None);
     }
+    cookie_token(headers, config, Access::Read).map(Some)
+}
+/// An agent's session cookie, refused as an observation one is when duplicated, under the
+/// other name, or not an agent's. None when there is none.
+pub fn write_token<'a>(headers: &'a HeaderMap, config: &Config) -> Result<Option<&'a str>> {
+    if !sent(headers, Access::Write) {
+        return Ok(None);
+    }
+    cookie_token(headers, config, Access::Write).map(Some)
+}
+fn cookie_token<'a>(headers: &'a HeaderMap, config: &Config, access: Access) -> Result<&'a str> {
     let mut found = None;
     for header in headers.get_all("cookie") {
         for part in header.to_str().map_err(|_| invalid())?.split(';') {
             let part = part.trim();
             let (name, value) = part.split_once('=').unwrap_or((part, ""));
-            if name == COOKIE || name == SECURE_COOKIE {
+            if access.cookies().contains(&name) {
                 ensure(
-                    name == cookie_name(config) && found.is_none() && value.starts_with(PREFIX),
+                    name == access.cookie(config)
+                        && found.is_none()
+                        && value.starts_with(access.prefix()),
                     "sign_in_required",
                     401,
                 )?;
@@ -99,7 +188,7 @@ pub fn token<'a>(headers: &'a HeaderMap, config: &Config) -> Result<Option<&'a s
             }
         }
     }
-    found.map(Some).ok_or_else(invalid)
+    found.ok_or_else(invalid)
 }
 
 /// The loopback health-check alias is not this credential's canonical browser audience.
@@ -117,19 +206,26 @@ fn invalid() -> Error {
     Error::new("sign_in_required", 401)
 }
 
-fn claims(db: &Store, raw: &str, site: &Site) -> Result<Claims> {
+fn claims(db: &Store, raw: &str, site: &Site) -> Result<(Claims, Access)> {
+    ensure(site == &Site::Admin, "sign_in_required", 401)?;
+    signed(&db.key, &db.config, raw)
+}
+/// The claims `raw` carries, when this server's key signed them for its own address and
+/// environment, and they are current. Who they name is checked apart, against the accounts.
+fn signed(key: &[u8], config: &Config, raw: &str) -> Result<(Claims, Access)> {
+    let access = Access::of(raw).ok_or_else(invalid)?;
     ensure(
-        site == &Site::Admin && raw.len() <= 2048,
+        raw.len() <= 2048 && allowed(access, config),
         "sign_in_required",
         401,
     )?;
     let (encoded, signature) = raw
-        .strip_prefix(PREFIX)
+        .strip_prefix(access.prefix())
         .and_then(|raw| raw.split_once(':'))
         .ok_or_else(invalid)?;
-    let unsigned = format!("{PREFIX}{encoded}");
+    let unsigned = format!("{}{encoded}", access.prefix());
     ensure(
-        crypto::equal(&crypto::sign(&db.key, &unsigned), signature),
+        crypto::equal(&crypto::sign(key, &unsigned), signature),
         "sign_in_required",
         401,
     )?;
@@ -137,8 +233,8 @@ fn claims(db: &Store, raw: &str, site: &Site) -> Result<Claims> {
         .map_err(|_| invalid())?;
     let at = now();
     ensure(
-        value.origin == db.config.origin
-            && value.environment == db.config.environment.as_str()
+        value.origin == config.origin
+            && value.environment == config.environment.as_str()
             && value.issued_at <= at
             && value.expires_at > at
             && value.expires_at.checked_sub(value.issued_at) == Some(LIFETIME)
@@ -150,7 +246,7 @@ fn claims(db: &Store, raw: &str, site: &Site) -> Result<Claims> {
         "sign_in_required",
         401,
     )?;
-    Ok(value)
+    Ok((value, access))
 }
 
 fn owner(db: &Store, value: &Claims) -> Result<PublicUser> {
@@ -161,13 +257,13 @@ fn owner(db: &Store, value: &Claims) -> Result<PublicUser> {
 }
 
 pub(crate) fn identity(db: &Store, raw: &str, site: &Site) -> Result<PublicUser> {
-    owner(db, &claims(db, raw, site)?)
+    owner(db, &claims(db, raw, site)?.0)
 }
 
 /// Exchanges the operator credential without writing a login/session row or an audit visit.
 pub fn exchange(db: &Store, input: &Input, raw: &str) -> Result<crate::server::http::input::Reply> {
     at_origin(&db.config, input)?;
-    let value = claims(db, raw, &input.site)?;
+    let (value, access) = claims(db, raw, &input.site)?;
     let user = owner(db, &value)?;
     {
         let mut trace = input
@@ -176,19 +272,22 @@ pub fn exchange(db: &Store, input: &Input, raw: &str) -> Result<crate::server::h
             .unwrap_or_else(|poison| poison.into_inner());
         trace.actor = Some(user.id);
     }
-    let secure = if db.config.origin.starts_with("https://") {
-        "; Secure"
-    } else {
-        ""
-    };
     let seconds = (value.expires_at - now()).max(0) / 1000;
+    // The other access's session ends here, so the one just exchanged is the one used: an
+    // observation cookie left beside an agent's would keep the tab read only.
+    let other = match access {
+        Access::Read => Access::Write,
+        Access::Write => Access::Read,
+    };
     Ok(crate::server::http::input::Reply::json(
-        json!({"ok":true,"readOnly":true,"expiresAt":value.expires_at}),
+        json!({"ok":true,"readOnly":access == Access::Read,"expiresAt":value.expires_at}),
     )
     .cookie(format!(
-        "{}={raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age={seconds}{secure}",
-        cookie_name(&db.config)
-    )))
+        "{}={raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age={seconds}{}",
+        access.cookie(&db.config),
+        secure(&db.config)
+    ))
+    .cookie(expired(other, &db.config)))
 }
 
 fn private_existing(path: &Path, directory: bool) -> Result<()> {
@@ -209,8 +308,10 @@ fn private_existing(path: &Path, directory: bool) -> Result<()> {
 }
 
 /// Uses only existing host storage, through a read-only SQLite connection. The bearer is
-/// written to a new private file; stdout receives only non-secret metadata.
-pub fn mint(config: &Config, output: &Path, email: Option<&str>) -> Result<Value> {
+/// written to a new private file; stdout receives only non-secret metadata. An agent's
+/// session is minted on Dev alone.
+pub fn mint(config: &Config, output: &Path, email: Option<&str>, access: Access) -> Result<Value> {
+    ensure(allowed(access, config), "agent_session_dev_only", 403)?;
     ensure(
         output.is_absolute() && output.file_name().is_some(),
         "absolute_observation_output_required",
@@ -248,11 +349,17 @@ pub fn mint(config: &Config, output: &Path, email: Option<&str>) -> Result<Value
         expires_at: issued_at + LIFETIME,
         nonce: crypto::token()?,
     };
-    let unsigned = format!("{PREFIX}{}", B64.encode(serde_json::to_vec(&value)?));
+    let unsigned = format!(
+        "{}{}",
+        access.prefix(),
+        B64.encode(serde_json::to_vec(&value)?)
+    );
     let token = format!("{unsigned}:{}", crypto::sign(&key, &unsigned));
-    let metadata = json!({"origin":config.origin,"expiresAt":value.expires_at,"readOnly":true});
-    let credential =
-        json!({"origin":config.origin,"token":token,"expiresAt":value.expires_at,"readOnly":true});
+    let read_only = access == Access::Read;
+    let metadata =
+        json!({"origin":config.origin,"expiresAt":value.expires_at,"readOnly":read_only});
+    let credential = json!({"origin":config.origin,"token":token,
+        "expiresAt":value.expires_at,"readOnly":read_only});
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)

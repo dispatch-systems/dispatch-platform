@@ -52,3 +52,29 @@ this access as read-only.
 Browser observation does not authorize a Production change. Use the normal task approval
 and release workflow for writes, and use a fixture preview for testing interactions that
 change data.
+
+## Acting on Dev
+
+To test a change on Dev, an agent may act there as the platform owner. On Dev's host:
+
+```sh
+dispatchdev api --dev GET /api/platform/dsps
+dispatchdev api --dev POST /api/platform/dsps/<id>/features --data '{"feature":"<id>","enabled":true}'
+dispatchdev api --dev POST /api/dsp/collectors/<collection>/collect --dsp <dsp> --data '{...}'
+```
+
+`--dev` mints a 15-minute agent session with the installed backend's `agent-session`, exchanges it
+at `/api/auth/observation` and keeps its cookie in the private scratch folder `dev-agent`; the
+token goes to curl in a private file and is deleted once exchanged. `dispatchdev browser dev
+--write --out <file>` mints one for an Incognito tab instead, redeemed the same way as an
+observation credential.
+
+An agent session is Dev's alone: the backend refuses to mint or honour one anywhere else, and the
+CLI never asks Production for one. It may do what the platform owner may, except what asks for a
+recent verification (disabling, deleting or backing up a DSP, account security), which it refuses
+with `agent_session_not_recent`, or switching on a feature that reads a provider live, as Live
+Route Data does, which it refuses with `agent_live_reads_refused`; switching one off is allowed.
+Signing out ends its cookie, and exchanging one in a tab ends the observation cookie there.
+Every request it makes is marked `"agentSession": true` in the
+server's request log; the activity log names the platform owner. Dev shares Production's Cortex
+account, so collect sparingly.

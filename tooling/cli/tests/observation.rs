@@ -88,7 +88,8 @@ fn dev_mints_using_installed_config_saves_private_access_and_cleans_host_tempora
     .unwrap();
     fs::set_permissions(&backend, fs::Permissions::from_mode(0o700)).unwrap();
     let output = root.path().join("session.json");
-    let summary = observation::run(&root.path().join("dev"), "dev", &output, &Native).unwrap();
+    let summary =
+        observation::run(&root.path().join("dev"), "dev", &output, false, &Native).unwrap();
     assert_eq!(
         serde_json::from_slice::<Value>(&fs::read(&output).unwrap()).unwrap(),
         expected
@@ -118,7 +119,7 @@ fn dev_mints_using_installed_config_saves_private_access_and_cleans_host_tempora
     )
     .unwrap();
     let mismatched = root.path().join("mismatched.json");
-    let error = observation::run(&root.path().join("dev"), "dev", &mismatched, &Native)
+    let error = observation::run(&root.path().join("dev"), "dev", &mismatched, false, &Native)
         .unwrap_err()
         .to_string();
     assert!(error.contains("unexpected origin"));
@@ -150,7 +151,7 @@ fn production_rejects_wrong_host_writable_or_expired_credentials_without_saving_
         change("extra", json!("secret")),
     ] {
         let host = Host::new(bad);
-        let error = observation::run(&dev, "production", &output, &host)
+        let error = observation::run(&dev, "production", &output, false, &host)
             .unwrap_err()
             .to_string();
         assert!(!error.contains("fixtureClaims"));
@@ -158,7 +159,7 @@ fn production_rejects_wrong_host_writable_or_expired_credentials_without_saving_
         assert!(!output.exists());
     }
     let host = Host::new(valid.clone());
-    observation::run(&dev, "production", &output, &host).unwrap();
+    observation::run(&dev, "production", &output, false, &host).unwrap();
     assert_eq!(
         serde_json::from_slice::<Value>(&fs::read(&output).unwrap()).unwrap(),
         valid
@@ -188,7 +189,7 @@ fn unsafe_destinations_are_refused_before_minting_and_existing_files_are_preserv
         root.path().join("missing/session.json"),
         root.path().join("public/../session.json"),
     ] {
-        assert!(observation::run(&dev, "production", &output, &host).is_err());
+        assert!(observation::run(&dev, "production", &output, false, &host).is_err());
     }
     assert_eq!(host.calls.load(Ordering::SeqCst), 0);
     assert_eq!(fs::read_to_string(existing).unwrap(), "keep this");
@@ -204,10 +205,66 @@ fn failed_mints_hide_subprocess_diagnostics_and_do_not_save_credentials() {
     }
     let root = private_root();
     let output = root.path().join("session.json");
-    let error = observation::run(&root.path().join("dev"), "production", &output, &Failed)
-        .unwrap_err()
-        .to_string();
+    let error = observation::run(
+        &root.path().join("dev"),
+        "production",
+        &output,
+        false,
+        &Failed,
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("Could not mint production browser access"));
     assert!(!error.contains("sensitive-credential"));
     assert!(!output.exists());
+}
+
+// Writing acts as the platform owner: only Dev's installed backend mints it, and Production is
+// never asked for one.
+#[test]
+fn write_access_is_minted_by_devs_agent_session_and_never_asked_of_production() {
+    let root = private_root();
+    let dev = root.path().join("dev");
+    let active = dev.join(".build");
+    fs::create_dir_all(active.join("services/rust")).unwrap();
+    fs::create_dir(dev.join("config")).unwrap();
+    fs::write(
+        dev.join("config/platform.env"),
+        "DISPATCH_ENVIRONMENT=preview\nDISPATCH_ORIGIN=https://dispatchdev.example\n",
+    )
+    .unwrap();
+    let mut expected = credential("https://dispatchdev.example");
+    expected["token"] = json!("agent-write:fixtureClaims:fixtureSignature");
+    expected["readOnly"] = json!(false);
+    let backend = active.join("services/rust/dispatch-backend");
+    fs::write(
+        &backend,
+        format!(
+            "#!/bin/bash\nset -eu\n[ \"$1\" = agent-session ]\nprintf '%s' '{expected}' > \"$2\"\n"
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&backend, fs::Permissions::from_mode(0o700)).unwrap();
+    let output = root.path().join("agent.json");
+    let summary = observation::run(&dev, "dev", &output, true, &Native).unwrap();
+    assert_eq!(summary["readOnly"], false);
+    // A read-only credential where writing was asked for is refused, and not saved.
+    let read = root.path().join("read.json");
+    fs::write(
+        &backend,
+        format!(
+            "#!/bin/bash\nset -eu\nprintf '%s' '{}' > \"$2\"\n",
+            credential("https://dispatchdev.example")
+        ),
+    )
+    .unwrap();
+    assert!(observation::run(&dev, "dev", &read, true, &Native).is_err());
+    assert!(!read.exists());
+
+    let host = Host::new(credential("https://admin.dspdispatch.com"));
+    let error = observation::run(&dev, "production", &root.path().join("p.json"), true, &host)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("Dev alone"), "{error}");
+    assert_eq!(host.calls.load(Ordering::SeqCst), 0);
 }
