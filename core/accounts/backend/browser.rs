@@ -131,9 +131,11 @@ fn sent(headers: &HeaderMap, access: Access) -> bool {
         })
     })
 }
-/// Whether an agent's cookie is sent, valid or not: what the request log marks.
-pub fn agent_cookie(headers: &HeaderMap) -> bool {
-    sent(headers, Access::Write)
+/// Whether the request carries an agent's session this server signed and still honours: what
+/// the request log marks, on any route. A cookie of that name alone, forged or expired, is not.
+pub fn agent_request(headers: &HeaderMap, key: &[u8], config: &Config) -> bool {
+    matches!(write_token(headers, config), Ok(Some(raw))
+        if signed(key, config, raw).is_ok_and(|(_, access)| access == Access::Write))
 }
 /// Whether an observation cookie is sent.
 pub fn present(headers: &HeaderMap) -> bool {
@@ -205,9 +207,15 @@ fn invalid() -> Error {
 }
 
 fn claims(db: &Store, raw: &str, site: &Site) -> Result<(Claims, Access)> {
+    ensure(site == &Site::Admin, "sign_in_required", 401)?;
+    signed(&db.key, &db.config, raw)
+}
+/// The claims `raw` carries, when this server's key signed them for its own address and
+/// environment, and they are current. Who they name is checked apart, against the accounts.
+fn signed(key: &[u8], config: &Config, raw: &str) -> Result<(Claims, Access)> {
     let access = Access::of(raw).ok_or_else(invalid)?;
     ensure(
-        site == &Site::Admin && raw.len() <= 2048 && allowed(access, &db.config),
+        raw.len() <= 2048 && allowed(access, config),
         "sign_in_required",
         401,
     )?;
@@ -217,7 +225,7 @@ fn claims(db: &Store, raw: &str, site: &Site) -> Result<(Claims, Access)> {
         .ok_or_else(invalid)?;
     let unsigned = format!("{}{encoded}", access.prefix());
     ensure(
-        crypto::equal(&crypto::sign(&db.key, &unsigned), signature),
+        crypto::equal(&crypto::sign(key, &unsigned), signature),
         "sign_in_required",
         401,
     )?;
@@ -225,8 +233,8 @@ fn claims(db: &Store, raw: &str, site: &Site) -> Result<(Claims, Access)> {
         .map_err(|_| invalid())?;
     let at = now();
     ensure(
-        value.origin == db.config.origin
-            && value.environment == db.config.environment.as_str()
+        value.origin == config.origin
+            && value.environment == config.environment.as_str()
             && value.issued_at <= at
             && value.expires_at > at
             && value.expires_at.checked_sub(value.issued_at) == Some(LIFETIME)

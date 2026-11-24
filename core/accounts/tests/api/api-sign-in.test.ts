@@ -354,6 +354,24 @@ test('an agent session on Dev acts as the platform owner, marked in the log', as
       ),
     'a public route reached with it is marked',
   );
+  // A forged cookie of its name marks nothing.
+  const before = f
+    .logs()
+    .split('\n')
+    .filter((line) => line.includes('"agentSession":true')).length;
+  await f.request(
+    '/api/auth/forgot-password',
+    { email: 'nobody@example.com' },
+    { ...canonical, cookie: 'dispatch_agent_write=agent-write:forged:forged' },
+  );
+  assert.equal(
+    f
+      .logs()
+      .split('\n')
+      .filter((line) => line.includes('"agentSession":true')).length,
+    before,
+    'a forged cookie is not marked',
+  );
   // Signing out ends it in the browser.
   const out = await f.request(
     '/api/auth/logout',
