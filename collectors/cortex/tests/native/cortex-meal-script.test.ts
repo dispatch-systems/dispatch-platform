@@ -441,6 +441,43 @@ test('meal.js still needs the id the page gives each stop; the response has none
   assert.equal(page.take().itinerary.deliveryCoverage, 'complete');
 });
 
+test("a stop the driver never picked up is outside the route's count", () => {
+  const props = finished();
+  const [candidate] = read(props, href()).candidates;
+  const unpicked = {
+    stopId: 'stop-0',
+    sequenceNumber: null as number | null,
+    tasks: [
+      {
+        taskId: 'unpicked',
+        taskType: 'DROP_OFF',
+        taskState: 'PICKUP_FAILED',
+        executionStatus: 'NOT_STARTED',
+        actualExecutionTime: null,
+        transporterId: null,
+      },
+    ],
+  };
+  props.itineraryDetails.stops.unshift(unpicked as never);
+  const rendered = read(props, href(scope.date, true), candidate).itinerary;
+  const page = hooked({ 'itinerary-1': { status: 200, body: response(props) } });
+  page.expect(candidate);
+  page.request();
+  for (const itinerary of [rendered, page.take().itinerary]) {
+    assert.equal(itinerary.deliveryCoverage, 'complete');
+    assert.deepEqual(
+      itinerary.meals.map((m: any) => [m.lastDeliveryStop, m.firstDeliveryStop]),
+      [[1, 2]],
+    );
+  }
+  // In the route's order, it is a stop the count misses.
+  unpicked.sequenceNumber = 3;
+  assert.equal(
+    read(props, href(scope.date, true), candidate).itinerary.deliveryCoverage,
+    'unavailable',
+  );
+});
+
 test('a delivery the page cannot account for leaves both its time and its stop out', () => {
   const props = finished();
   const [candidate] = read(props, href()).candidates;
