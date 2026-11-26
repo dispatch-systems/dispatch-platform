@@ -209,9 +209,30 @@ fn an_itinerarys_response_bounds_each_meal_with_the_deliveries_around_it() {
             Some(1)
         ]]
     );
+    // A package the driver never picked up is a stop outside the route's order, which the
+    // route's stop count leaves out.
+    let unpicked = json!({"sequenceNumber":null,"tasks":[{"taskId":"unpicked",
+        "taskType":"DROP_OFF","taskState":"PICKUP_FAILED","executionStatus":"NOT_STARTED",
+        "actualExecutionTime":null,"transporterId":null}]});
+    let mut failed = response.clone();
+    failed["itineraryDetails"]["stops"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, unpicked.clone());
+    let itinerary = read(&candidate, &failed).unwrap();
+    assert_eq!(itinerary.delivery_coverage, Coverage::Complete);
+    assert_eq!(
+        bounds(&itinerary),
+        [[
+            Some(START - 60000),
+            Some(START + 1_860_000),
+            Some(1),
+            Some(2)
+        ]]
+    );
     // Conflicting copies of one task cannot bound a meal, so coverage is lost, as it is when
     // a removed task may lie closer than the delivery chosen, another driver delivered, or
-    // the route does not hold every stop it counts.
+    // the route does not hold every stop it counts, or holds one more in its order.
     let mut cases = Vec::new();
     let mut conflicting = response.clone();
     conflicting["itineraryDetails"]["stops"][1]["tasks"][0]["actualExecutionTime"] =
@@ -227,6 +248,9 @@ fn an_itinerarys_response_bounds_each_meal_with_the_deliveries_around_it() {
     let mut short = response.clone();
     short["itineraryDetails"]["stopProgress"]["total"] = json!(3);
     cases.push(short);
+    let mut sequenced = failed.clone();
+    sequenced["itineraryDetails"]["stops"][0]["sequenceNumber"] = json!(3);
+    cases.push(sequenced);
     for (index, response) in cases.iter().enumerate() {
         let itinerary = read(&candidate, response).unwrap();
         assert_eq!(

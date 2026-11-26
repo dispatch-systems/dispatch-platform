@@ -272,8 +272,20 @@ struct Details<'a> {
     inactive_tasks: Option<&'a RawValue>,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Stop {
+    #[serde(default)]
+    sequence_number: Value,
     tasks: Vec<Task>,
+}
+impl Stop {
+    /// A stop of packages the driver never picked up: Cortex lists it outside the route's
+    /// order, and its stop count leaves it out.
+    fn never_picked_up(&self) -> bool {
+        self.sequence_number.is_null()
+            && !self.tasks.is_empty()
+            && (self.tasks.iter()).all(|task| task.task_state == "PICKUP_FAILED")
+    }
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -391,7 +403,8 @@ pub(crate) fn detail(
     }
     // unknownStops records unplanned dwell locations, not missing delivery tasks. It does not
     // invalidate the independently counted delivery evidence of the stops' tasks.
-    let mut complete = whole(&d.stop_progress["total"]) == Some(stops.len() as f64);
+    let counted = stops.iter().filter(|stop| !stop.never_picked_up()).count();
+    let mut complete = whole(&d.stop_progress["total"]) == Some(counted as f64);
     // Each task once, by its id, as it was first seen, and the deliveries among them in the
     // order they came: the place in the route, from 0, of the stop that first held each.
     let mut seen: HashMap<&str, [&Value; 3]> = HashMap::new();

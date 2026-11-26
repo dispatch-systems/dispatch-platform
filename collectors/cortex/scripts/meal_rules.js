@@ -119,8 +119,16 @@
     // unknownStops records unplanned dwell locations (enter/exit coordinates
     // and times), not missing delivery tasks. It does not invalidate the
     // independently counted stops[].tasks delivery evidence.
+    // A stop of packages the driver never picked up is listed outside the route's order,
+    // and Cortex's stop count leaves it out.
+    const neverPickedUp = (stop) =>
+      stop.sequenceNumber == null &&
+      Array.isArray(stop.tasks) &&
+      stop.tasks.length > 0 &&
+      stop.tasks.every((task) => task.taskState === 'PICKUP_FAILED');
     let complete =
-      Number.isInteger(d.stopProgress?.total) && d.stops.length === d.stopProgress.total;
+      Number.isInteger(d.stopProgress?.total) &&
+      d.stops.filter((stop) => !neverPickedUp(stop)).length === d.stopProgress.total;
     const observations = new Map(),
       stopIds = new Set(),
       deliveries = new Map();
