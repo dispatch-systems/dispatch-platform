@@ -91,9 +91,10 @@ test('simultaneous manual requests from separate sessions reserve one DSP sync',
     password: 'require-verification',
     securityAnswers: ['one', 'two', 'three', 'four', 'five'],
   });
+  // Each source's job waits for verification, so the sync stays in progress.
   await owner.post('/api/dsp/connections/cortex', {
     username: 'fixture-user',
-    password: 'fixture-password',
+    password: 'require-verification',
   });
   await owner.post('/api/dsp/profile', {
     name: dsp.name,
@@ -148,7 +149,6 @@ test('simultaneous manual requests from separate sessions reserve one DSP sync',
   await otherSession.select(other.id);
   const independent = await otherSession.post('/api/dsp/jobs', { requestId: 'independent' });
   assert.equal(independent.status, 202);
-  // Cancel the queued Flex job first so it cannot start as Paycom stops.
   for (const job of [...accepted.jobs].reverse())
     assert.equal((await owner.post(`/api/dsp/jobs/${job.id}/cancel`)).status, 200);
   const restarted = await owner.post('/api/dsp/jobs/meal-breaks', {

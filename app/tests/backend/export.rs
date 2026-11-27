@@ -626,8 +626,12 @@ fn typescript_contracts_match_the_rust_types() {
         "an owner's api/generated/ is out of date: run `npm run contracts:generate`"
     );
 }
-/// A collector that only supplies capabilities, under its id.
-struct StandIn(&'static str, &'static [Capability]);
+/// A collector that only supplies capabilities and collections, under its id.
+pub(crate) struct StandIn(
+    pub(crate) &'static str,
+    pub(crate) &'static [Capability],
+    pub(crate) &'static [Collection],
+);
 impl Collector for StandIn {
     fn id(&self) -> &'static str {
         self.0
@@ -639,16 +643,16 @@ impl Collector for StandIn {
         self.1
     }
     fn collections(&self) -> &'static [Collection] {
-        &[]
+        self.2
     }
     fn database(&self) -> Kind {
-        unreachable!("a stand-in only supplies capabilities")
+        unreachable!("a stand-in only supplies capabilities and collections")
     }
     fn migrations(&self) -> &'static [Migrations] {
         &[]
     }
     fn seed(&self, _: &str) -> String {
-        unreachable!("a stand-in only supplies capabilities")
+        unreachable!("a stand-in only supplies capabilities and collections")
     }
     fn marker(&self) -> Option<&'static str> {
         None
@@ -657,10 +661,10 @@ impl Collector for StandIn {
         &[]
     }
     fn network(&self) -> browseros::NetworkPolicy {
-        unreachable!("a stand-in only supplies capabilities")
+        unreachable!("a stand-in only supplies capabilities and collections")
     }
     fn validate_credentials(&self, _: &serde_json::Value) -> dispatch_core::Result<()> {
-        unreachable!("a stand-in only supplies capabilities")
+        unreachable!("a stand-in only supplies capabilities and collections")
     }
     fn driver<'a>(
         &self,
@@ -668,13 +672,13 @@ impl Collector for StandIn {
         _: &'a Path,
         _: Option<&'a str>,
     ) -> Pending<'a, Box<dyn browser::Driver>> {
-        unreachable!("a stand-in only supplies capabilities")
+        unreachable!("a stand-in only supplies capabilities and collections")
     }
     fn fixture(&self, _: &str, _: &serde_json::Value) -> dispatch_core::Result<Collected> {
-        unreachable!("a stand-in only supplies capabilities")
+        unreachable!("a stand-in only supplies capabilities and collections")
     }
     fn progress(&self, _: &serde_json::Value) -> &'static str {
-        unreachable!("a stand-in only supplies capabilities")
+        unreachable!("a stand-in only supplies capabilities and collections")
     }
 }
 #[test]
@@ -685,6 +689,7 @@ fn a_capability_is_named_by_the_first_collector_listed_that_supplies_it() {
             id: "photos",
             label: "a photo source",
         }],
+        &[],
     );
     let beta = StandIn(
         "beta",
@@ -698,6 +703,7 @@ fn a_capability_is_named_by_the_first_collector_listed_that_supplies_it() {
                 label: "a notes source",
             },
         ],
+        &[],
     );
     let labels = capability_labels(&[&alpha, &beta]);
     assert_eq!(labels["photos"], "a photo source");

@@ -399,7 +399,7 @@ fn status_reads_allow_a_viewer_date_ahead_of_the_dsp_but_collection_does_not() {
 }
 
 #[test]
-fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
+fn a_manual_sync_holds_its_providers_until_their_jobs_stop_and_keeps_its_date() {
     install();
     let (_root, db, id, actor) = fixture();
     enable(&db, &id, paycom::PROVIDER);
@@ -426,21 +426,27 @@ fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
         assert_eq!(viewed["flex"]["active"], true);
         assert_eq!(viewed["paycom"]["active"], false);
         assert_eq!(viewed["flex"]["collectedAt"], Value::Null);
+        // A request from Cortex waits for the batch's Cortex job; one from Paycom alone, whose
+        // job finished, is queued.
         for rejected in [
-            db.enqueue_timecards(&id, Some(&actor), "employees"),
-            db.enqueue_paycom_date(&id, Some(&actor), "timecard", "2026-01-12"),
             db.enqueue_meals(&id, Some(&actor), "flex-only", &scope),
             db.enqueue_meal_sync(&id, &actor, "other-day", "2026-01-12"),
         ] {
             assert_eq!(rejected.unwrap_err().code, "sync_in_progress");
         }
+        let timecards = db
+            .enqueue_timecards(&id, Some(&actor), &format!("during-{status}"))
+            .unwrap();
+        assert_eq!(timecards["status"], "queued");
+        db.cancel(s(&timecards, "id"), &id).unwrap();
         // Retrying an accepted request returns its jobs without starting another sync.
+        let before = jobs(&db, &id).len();
         let replay = db
             .enqueue_meal_sync(&id, &actor, "original", "2026-01-11")
             .unwrap();
         assert_eq!(replay["jobs"][0]["id"], paycom);
         assert_eq!(replay["jobs"][1]["id"], flex);
-        assert_eq!(jobs(&db, &id).len(), 2);
+        assert_eq!(jobs(&db, &id).len(), before);
     }
     for status in ["succeeded", "failed", "cancelled"] {
         common::set_job_status(&db, flex, status).unwrap();
@@ -450,7 +456,7 @@ fn manual_sync_lock_and_original_date_follow_the_entire_batch() {
             false
         );
         let next = db
-            .enqueue_timecards(&id, Some(&actor), &format!("after-{status}"))
+            .enqueue_meals(&id, Some(&actor), &format!("after-{status}"), &scope)
             .unwrap();
         assert_eq!(next["status"], "queued");
         db.cancel(s(&next, "id"), &id).unwrap();

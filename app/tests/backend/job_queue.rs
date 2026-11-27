@@ -128,3 +128,55 @@ fn queued_jobs_beyond_unknown_and_ineligible_pages_remain_claimable() {
         250
     );
 }
+
+#[test]
+fn a_dsp_runs_one_job_of_each_provider_at_a_time() {
+    crate::install();
+    let (_root, mut store) = dispatch_core::testing::store();
+    store.config.browser_capacity = 3;
+    let jobs: Vec<String> = [
+        dispatch_paycom::PROVIDER,
+        dispatch_cortex::PROVIDER,
+        dispatch_cortex::PROVIDER,
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, provider)| {
+        let id = store
+            .insert_job("dsp", None, &format!("job-{i}"), provider.job_kind(), 1, &json!({}))
+            .unwrap();
+        store
+            .jobs
+            .exec(
+                "UPDATE jobs SET created_at=? WHERE id=?",
+                [format!("2026-01-0{}", i + 1), id.clone()],
+            )
+            .unwrap();
+        id
+    })
+    .collect();
+    let claim = |owner: &str| {
+        store
+            .claim_job(owner, |_, _| true)
+            .unwrap()
+            .map(|job| job.id)
+    };
+    assert_eq!(claim("worker-a").as_ref(), Some(&jobs[0]));
+    assert_eq!(
+        claim("worker-b").as_ref(),
+        Some(&jobs[1]),
+        "Cortex runs while Paycom does"
+    );
+    assert_eq!(claim("worker-c"), None, "the next Cortex job waits for the first");
+    // The database holds it too: a second running job of one provider is refused.
+    let refused = store
+        .jobs
+        .0
+        .execute("UPDATE jobs SET status='running' WHERE id=?", [&jobs[2]])
+        .unwrap_err();
+    assert_eq!(
+        refused.sqlite_error().map(|error| error.extended_code),
+        Some(rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE),
+        "{refused}"
+    );
+}
