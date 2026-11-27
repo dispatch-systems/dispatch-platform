@@ -9,4 +9,4 @@ CREATE INDEX jobs_created ON jobs(created_at DESC);
 CREATE INDEX jobs_dsp ON jobs(dsp_id,created_at DESC);
 CREATE INDEX jobs_dsp_completed ON jobs(dsp_id,completed_at);
 CREATE INDEX live_reads_dsp ON live_reads(reader,dsp_id,at);
-CREATE UNIQUE INDEX one_active_dsp ON jobs(dsp_id) WHERE status IN ('running','waiting_verification');
+CREATE UNIQUE INDEX one_active_provider ON jobs(dsp_id,substr(kind,1,instr(kind,'.')-1)) WHERE status IN ('running','waiting_verification');
