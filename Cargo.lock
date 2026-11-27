@@ -730,7 +730,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 2.0.119",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -961,7 +961,7 @@ dependencies = [
  "dispatch-uniforms",
  "dispatch-vans",
  "dispatch-weekly-scorecard",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "libc",
  "reqwest",
  "rusqlite",
@@ -1008,7 +1008,7 @@ dependencies = [
  "futures-util",
  "hkdf",
  "image",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jpeg-decoder",
  "libc",
  "p256",
@@ -1031,7 +1031,7 @@ dependencies = [
  "dispatch-core",
  "dispatch-documents-contract",
  "futures-util",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1057,7 +1057,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "icu_collator",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-tzdb 1.0.0",
  "lettre",
  "libc",
@@ -1090,7 +1090,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "hmac",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jpeg-decoder",
  "jpeg-encoder",
  "png",
@@ -1111,7 +1111,7 @@ dependencies = [
  "dispatch-core",
  "dispatch-cortex",
  "dispatch-daily-performance-contract",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1156,7 +1156,7 @@ name = "dispatch-driver-match"
 version = "0.0.0"
 dependencies = [
  "dispatch-core",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1189,7 +1189,7 @@ dependencies = [
  "dispatch-core",
  "dispatch-cortex",
  "dispatch-dvic-contract",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1221,7 +1221,7 @@ dependencies = [
  "dispatch-shared",
  "flate2",
  "fs2",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "libc",
  "regex",
  "reqwest",
@@ -1241,7 +1241,7 @@ dependencies = [
  "dispatch-cortex",
  "dispatch-routes",
  "dispatch-routes-contract",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1266,7 +1266,7 @@ dependencies = [
  "dispatch-slack-contract",
  "dispatch-timecard-contract",
  "dispatch-weekly-scorecard-contract",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "reqwest",
  "rmcp",
  "rusqlite",
@@ -1288,7 +1288,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "html5ever",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "libc",
  "rusqlite",
  "scraper",
@@ -1308,7 +1308,7 @@ dependencies = [
  "dispatch-cortex",
  "dispatch-routes-contract",
  "flate2",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1413,7 +1413,7 @@ dependencies = [
  "dispatch-paycom",
  "dispatch-routes-contract",
  "dispatch-timecard-contract",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1468,7 +1468,7 @@ dependencies = [
  "dispatch-core",
  "dispatch-cortex",
  "dispatch-weekly-scorecard-contract",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1653,9 +1653,9 @@ checksum = "c6e8948ce679d00a02a94739ea185595dca7118ed04feb991127e443bd3d761f"
 
 [[package]]
 name = "fast_image_resize"
-version = "6.1.0"
+version = "6.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9c50201dc184ba6553da1695aac20a042efffbe2d84542cee31917c86c3ab1e"
+checksum = "f056f6b866ac980e0ebf973c6579170fa03285cb79d448435bd4d8fa2a74b511"
 dependencies = [
  "cfg-if",
  "document-features",
@@ -2403,12 +2403,12 @@ dependencies = [
 
 [[package]]
 name = "jiff"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5d126d72eb017f10b302e73bdeca446bea405ee449af4d9e7866d6b082d83e"
+checksum = "c5e77cbfb9fff4798e283c2d69dff39fc2c45e7da017e5ce95b654e46ea41236"
 dependencies = [
  "jiff-core 1.0.1",
- "jiff-static 1.0.1",
+ "jiff-static 1.0.2",
  "jiff-tzdb 1.0.0",
  "log",
  "portable-atomic",
@@ -2449,9 +2449,9 @@ dependencies = [
 
 [[package]]
 name = "jiff-static"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0127e9bde3c6130d6169e7d8d68676e4be69c4bf7573c308b6f960a5089c428"
+checksum = "e9067a0b23e5be3147d56b2dcf652b18e6b1364caca93fb157653b6fbcab23a9"
 dependencies = [
  "jiff-core 1.0.1",
  "proc-macro2",
@@ -4419,9 +4419,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "1.2.1+spec-1.1.0"
+version = "1.2.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5755c51863cdac711f1956baf8eb9588e060755f7d3c4c979e70ea1e1f32cd7"
+checksum = "5426cb1b964690d913f6c5c1a1ae0b42f428ec506bb4d452876d7a209c9bca3b"
 dependencies = [
  "indexmap 2.14.2",
  "serde_core",
@@ -4443,9 +4443,9 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.1.5+spec-1.1.0"
+version = "1.1.7+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
+checksum = "0bb28d6e049a9766c3bd91a8326e6179f5b132dec87906bb97018ef7a2f3431a"
 dependencies = [
  "winnow",
 ]
@@ -5254,9 +5254,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.7.2"
+version = "9.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18d355ef4ea6fc9eaad04cae82d07c1329f643a5f94d10f35fc55b265f577829"
+checksum = "2d8dbe089cf6b0448b78f5fc50139ab5aaa40d08ac07cdc1baf2c13add35fcce"
 dependencies = [
  "constant_time_eq",
  "crc32fast",
