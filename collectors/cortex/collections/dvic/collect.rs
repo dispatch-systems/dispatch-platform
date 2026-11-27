@@ -302,7 +302,7 @@ impl Driver {
         let weeks: Vec<_> = request
             .weeks
             .iter()
-            .map(|week| {
+            .map(|week| async move {
                 list_week(
                     http,
                     turn,
@@ -312,12 +312,23 @@ impl Driver {
                     &self.origin,
                     run.metrics,
                 )
+                .await
+                // A week that failed fails the listing: the weeks not yet asked for are not.
+                .inspect_err(|_| turn.stop())
             })
             .collect();
         let lists: Vec<_> = stream::iter(weeks).buffered(DOWNLOADS).collect().await;
-        let mut listed = Vec::new();
+        let (mut listed, mut failure) = (Vec::new(), None::<Error>);
         for list in lists {
-            listed.extend(list?);
+            match list {
+                Ok(list) => listed.extend(list),
+                // The week that failed the listing names why, not the weeks it stopped.
+                Err(error) if failure.as_ref().is_none_or(gate::stopped) => failure = Some(error),
+                Err(_) => {}
+            }
+        }
+        if let Some(error) = failure {
+            return Err(error);
         }
         turn.finished();
         Ok(listed)

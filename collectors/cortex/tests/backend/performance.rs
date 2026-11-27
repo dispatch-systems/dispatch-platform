@@ -136,10 +136,12 @@ fn a_reply_too_long_is_the_source_too_large() {
 }
 /// Cortex's data API for a read's datasets, each answered with a row naming it. With
 /// `held`, each answer takes a moment of the test's clock, so those asked together
-/// overlap. `throttles` asks once for a cooldown of so many seconds.
+/// overlap. `throttles` asks once for a cooldown of so many seconds; `fails` is not found,
+/// at once.
 struct Stand {
     held: bool,
     throttles: Option<(&'static str, u64)>,
+    fails: Option<&'static str>,
     asked: std::sync::Mutex<std::collections::HashMap<String, usize>>,
     /// The stand-in tells when a throttled dataset is asked again before its delay passed.
     throttled_until: std::sync::Mutex<Option<tokio::time::Instant>>,
@@ -173,6 +175,9 @@ async fn answer(
         *count += 1;
         *count
     };
+    if stand.fails == Some(dataset.as_str()) {
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    }
     let answering = stand.answering.fetch_add(1, Ordering::SeqCst) + 1;
     stand.most_at_once.fetch_max(answering, Ordering::SeqCst);
     if stand.held {
@@ -207,11 +212,12 @@ fn allowed() -> crate::connection::gate::Authority {
     Box::new(|| Box::pin(async { Ok(()) }))
 }
 /// Every dataset of a week read as `read_all` reads them, fourteen lanes at once, at the
-/// gate of a stand-in playing `held` and `throttles`, for as long as `authority` allows: the
-/// rows each read, in order, or the first error a lane met.
+/// gate of a stand-in playing `held`, `throttles` and `fails`, for as long as `authority`
+/// allows: the rows each read, in order, or the first error a lane met.
 async fn read_week(
     held: bool,
     throttles: Option<(&'static str, u64)>,
+    fails: Option<&'static str>,
     authority: crate::connection::gate::Authority,
 ) -> (
     std::sync::Arc<Stand>,
@@ -222,6 +228,7 @@ async fn read_week(
     let stand = std::sync::Arc::new(Stand {
         held,
         throttles,
+        fails,
         asked: Default::default(),
         throttled_until: Default::default(),
         early: AtomicBool::new(false),
@@ -287,7 +294,7 @@ async fn read_week(
 #[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test(start_paused = true)]
 async fn a_throttled_dataset_is_read_again_once_the_account_cooled_and_the_week_comes_whole() {
-    let (stand, gate, read) = read_week(true, Some(("d05", 7)), allowed()).await;
+    let (stand, gate, read) = read_week(true, Some(("d05", 7)), None, allowed()).await;
     let read = read.unwrap();
     assert_eq!(
         read,
@@ -310,7 +317,7 @@ async fn a_throttled_dataset_is_read_again_once_the_account_cooled_and_the_week_
 // has passed, and leaves the cooldown with the gate for the job's next attempt.
 #[tokio::test]
 async fn a_cooldown_longer_than_a_read_waits_fails_it_promptly_as_throttled() {
-    let (stand, gate, read) = read_week(false, Some(("d00", 600)), allowed()).await;
+    let (stand, gate, read) = read_week(false, Some(("d00", 600)), None, allowed()).await;
     assert_eq!(read.unwrap_err().code, "cortex_throttled");
     assert_eq!(stand.asked("d00"), 1);
     assert!(gate.cooling());
@@ -323,6 +330,7 @@ async fn a_read_no_longer_its_jobs_sends_nothing() {
     let (stand, gate, read) = read_week(
         false,
         None,
+        None,
         Box::new(|| Box::pin(async { Err(Error::new("job_cancelled", 409)) })),
     )
     .await;
@@ -331,4 +339,14 @@ async fn a_read_no_longer_its_jobs_sends_nothing() {
         assert_eq!(stand.asked(dataset), 0, "{dataset}");
     }
     assert!(!gate.cooling());
+}
+
+// Once a dataset fails, the read has: datasets still waiting their place at the gate are not
+// asked for, those already asked drain, and the read names the dataset's failure.
+#[tokio::test]
+async fn once_a_dataset_failed_none_waiting_at_the_gate_is_asked() {
+    let (stand, _, read) = read_week(true, None, Some("d00"), allowed()).await;
+    assert_eq!(read.unwrap_err().code, "performance_api_unreadable");
+    let asked: usize = DATASETS.iter().map(|dataset| stand.asked(dataset)).sum();
+    assert_eq!(asked, 4);
 }

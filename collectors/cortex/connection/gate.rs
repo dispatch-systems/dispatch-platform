@@ -11,6 +11,7 @@ use crate as cortex;
 use dispatch_core::{
     Error, Result,
     collection::browser::{Pending, Run, http::WireError},
+    ensure,
     foundation::observability,
 };
 use serde_json::json;
@@ -205,6 +206,9 @@ pub(crate) struct Turn {
     /// Whether it asked anything, and whether Cortex throttled any of it.
     asked: AtomicBool,
     throttled: AtomicBool,
+    /// Whether what it reads for failed already, so that a request waiting its place is not
+    /// sent.
+    stopped: AtomicBool,
 }
 /// What a turn has waited on throttling: the cooldowns its requests waited out together
 /// are spent once.
@@ -228,7 +232,12 @@ impl Turn {
             }),
             asked: AtomicBool::new(false),
             throttled: AtomicBool::new(false),
+            stopped: AtomicBool::new(false),
         }
+    }
+    /// What it reads for has failed: nothing it has not yet sent is sent.
+    pub(crate) fn stop(&self) {
+        self.stopped.store(true, Ordering::SeqCst);
     }
     /// What `send` answered once admitted: asked again after each throttle while the turn
     /// lasts. `endpoint`, fixed and without identifiers, is what a throttle is logged as.
@@ -246,11 +255,16 @@ impl Turn {
         for _ in 0..ROUNDS {
             let admitted = self.admitted().await?;
             // A request that waited may no longer be the reader's to send.
+            ensure(!self.stopped.load(Ordering::SeqCst), STOPPED, 409)?;
             (self.authority)().await?;
             let answer = send().await;
-            drop(admitted);
             match answer {
-                Err(error) if error.status == Some(429) => self.throttled(endpoint, &error),
+                // The cooldown is the gate's before the place is free, so no request
+                // admitted in its place goes out unaware of it.
+                Err(error) if error.status == Some(429) => {
+                    self.throttled(endpoint, &error);
+                    drop(admitted);
+                }
                 answer => return Ok(answer),
             }
         }
@@ -276,6 +290,7 @@ impl Turn {
     /// A cooldown under way, or passed unobserved, waited out within the turn's budget; the
     /// gate then admits fewer at once.
     async fn cooled(&self) -> Result<()> {
+        ensure(!self.stopped.load(Ordering::SeqCst), STOPPED, 409)?;
         let Some(until) = self.gate.cooldown() else {
             return Ok(());
         };
@@ -297,16 +312,23 @@ impl Turn {
         Ok(())
     }
     fn throttled(&self, endpoint: &'static str, error: &WireError) {
+        self.throttled.store(true, Ordering::Relaxed);
+        self.gate
+            .throttled(error.retry_after.unwrap_or(PAUSE).min(MAX_COOLDOWN));
         observability::event(
             "warn",
             "cortex.read_throttled",
             json!({"endpoint":endpoint,"downloads":self.gate.width(),
                 "retryAfterMs":error.retry_after.map(|d|d.as_millis().min(u64::MAX as u128) as u64)}),
         );
-        self.throttled.store(true, Ordering::Relaxed);
-        self.gate
-            .throttled(error.retry_after.unwrap_or(PAUSE).min(MAX_COOLDOWN));
     }
+}
+/// What a request a stopped turn did not send fails with: never a read's own error, which
+/// the request that failed it gives.
+const STOPPED: &str = "cortex_read_stopped";
+/// Whether `error` is only a request a stopped turn did not send.
+pub(crate) fn stopped(error: &Error) -> bool {
+    error.code == STOPPED
 }
 fn throttled() -> Error {
     Error::new(cortex::codes::CORTEX_THROTTLED.as_str(), 502)

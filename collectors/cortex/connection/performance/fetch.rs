@@ -187,8 +187,8 @@ impl From<Error> for Failed {
     }
 }
 /// `read` of each index below `count`, `lanes` at once, each lane taking the next index as it
-/// finishes one: what each lane read, by index, or the error it met. Once a read failed the
-/// whole has, so no lane takes another; reads already asked drain.
+/// finishes one: what each lane read, by index, or the error the first read to fail met.
+/// Once a read failed the whole has, so no lane takes another; reads already asked drain.
 async fn in_lanes<T, F, Fut>(count: usize, lanes: usize, read: F) -> Vec<Result<Vec<(usize, T)>>>
 where
     F: Fn(usize) -> Fut,
@@ -205,10 +205,9 @@ where
             }
             match read(index).await {
                 Ok(value) => read_here.push((index, value)),
-                Err(error) => {
-                    failed.store(true, Ordering::SeqCst);
-                    return Err(error);
-                }
+                // Only the first failure is the read's: those after it follow from it.
+                Err(error) if !failed.swap(true, Ordering::SeqCst) => return Err(error),
+                Err(_) => break,
             }
         }
         Ok(read_here)
@@ -386,7 +385,10 @@ impl Driver {
             let read = &reads[index];
             let dataset = read.dataset;
             let url = api.address(dataset, station, &read.from, &read.to);
-            let rows = read_rows(http, turn, &url, referer, dataset.id, run.metrics).await?;
+            let rows = read_rows(http, turn, &url, referer, dataset.id, run.metrics)
+                .await
+                // Nothing of the read it failed is asked for after it.
+                .inspect_err(|_| turn.stop())?;
             if !answered.swap(true, Ordering::SeqCst) && close {
                 self.browser.close().await;
             }
