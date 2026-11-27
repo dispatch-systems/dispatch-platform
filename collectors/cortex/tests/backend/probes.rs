@@ -1920,7 +1920,7 @@ async fn probe_scheduling_page() -> Result<()> {
 // Where Cortex sends the photos it lists for associates it keeps none of: opens a copy of a
 // DSP's saved session, asks for each address `DISPATCH_BENCHMARK_PHOTOS` names, comma
 // separated, as the roster does, and prints only its status and the host and masked address
-// it is sent to.
+// it is sent to, then the size and kind of what the photo host serves there.
 #[tokio::test]
 #[ignore = "requires an explicitly selected DSP copy with a saved Cortex session"]
 async fn probe_photo_redirects() -> Result<()> {
@@ -1939,6 +1939,7 @@ async fn probe_photo_redirects() -> Result<()> {
     )?;
     let session: SignedIn = serde_json::from_value(saved["session"].clone())?;
     let http = Http::with_session(&session, &crate::HOSTS)?;
+    let downloads = Http::detached(&session.origin, &crate::PHOTO_HOSTS)?;
     let referer = format!("{}/workforce", session.origin);
     let photos = std::env::var("DISPATCH_BENCHMARK_PHOTOS")
         .map_err(|_| Error::new("benchmark_configuration_required", 400))?;
@@ -1949,7 +1950,16 @@ async fn probe_photo_redirects() -> Result<()> {
         eprintln!(
             "PHOTO {}",
             match sent {
-                Ok(to) => json!({"host":to.host_str(),"to":masked_url(to.as_str())}),
+                Ok(to) => {
+                    // What the photo host then serves, by size and kind alone.
+                    let served = match downloads.download(to.as_str(), None, 16 << 20).await {
+                        Ok(download) => json!({"bytes":download.body.as_ref().map(Vec::len),
+                            "format":download.body.as_deref().and_then(crate::associates::PhotoFormat::of)}),
+                        Err(Refusal::Unavailable) => json!("unavailable"),
+                        Err(Refusal::Unreadable(label)) => json!(label),
+                    };
+                    json!({"host":to.host_str(),"to":masked_url(to.as_str()),"served":served})
+                }
                 Err(error) => json!({"status":error.status,"refusal":match error.refusal {
                     Refusal::Unavailable => "unavailable",
                     Refusal::Unreadable(label) => label,
