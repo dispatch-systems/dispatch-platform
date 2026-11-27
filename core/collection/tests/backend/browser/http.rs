@@ -33,3 +33,33 @@ fn retry_after_accepts_seconds_and_http_dates_without_guessing_a_delay() {
     assert!(retry_after(Some(&date)).is_some_and(|delay| !delay.is_zero()));
     assert_eq!(retry_after(None), None);
 }
+
+// A cookie a reply sets again replaces what an earlier reply set of it, so a client kept long
+// holds no more than the cookies it was sent; one sent expired is kept as removed, and one
+// for a domain the address isn't in is never kept.
+#[test]
+fn a_cookie_set_again_replaces_what_was_set_of_it() {
+    use reqwest::{cookie::CookieStore, header::HeaderValue};
+    let carried = Carried {
+        jar: reqwest::cookie::Jar::default(),
+        set: Mutex::default(),
+    };
+    let url = Url::parse("https://logistics.amazon.com/operations/execution").unwrap();
+    for value in ["one", "two", "three"] {
+        let header = HeaderValue::from_str(&format!(
+            "session-token={value}; Domain=.amazon.com; Path=/"
+        ))
+        .unwrap();
+        carried.set_cookies(&mut [&header].into_iter(), &url);
+    }
+    let removed = HeaderValue::from_static("x-old=1; Domain=.amazon.com; Path=/; Max-Age=0");
+    let foreign = HeaderValue::from_static("other=1; Domain=.example.com; Path=/");
+    carried.set_cookies(&mut [&removed, &foreign].into_iter(), &url);
+    let set = carried.set.lock().unwrap();
+    let kept: Vec<(&str, bool)> = set
+        .iter()
+        .map(|replied| (replied.cookie.name.as_str(), replied.removed))
+        .collect();
+    assert_eq!(kept, [("session-token", false), ("x-old", true)]);
+    assert_eq!(set[0].cookie.value, "three");
+}

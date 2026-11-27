@@ -994,6 +994,14 @@ impl State {
                 .await
         }
         .await;
+        // No browser could be admitted: the job goes back to wait for one, so its session
+        // goes too, rather than stay busy where the job's next start would find it.
+        if let Err(error) = &started
+            && error.is_any(crate::Code::ADMISSION_BUSY)
+        {
+            self.browsers.revoke_current(session).await;
+            return started.map(drop);
+        }
         let persisted = self.browser_result(session, &started, authority).await;
         persisted?;
         started.map(drop)

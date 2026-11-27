@@ -183,6 +183,12 @@ pub struct Cookie {
     pub path: String,
     pub secure: bool,
 }
+impl Cookie {
+    /// Whether it is the same cookie as `other`: the same name on the same domain and path.
+    fn same(&self, other: &Cookie) -> bool {
+        (&self.name, &self.domain, &self.path) == (&other.name, &other.domain, &other.path)
+    }
+}
 impl SignedIn {
     /// What `browser` holds for the provider at `origin`, one of its `hosts`: its cookies
     /// on the hosts' cookie domains, and its user agent.
@@ -219,8 +225,8 @@ impl SignedIn {
     }
 }
 
-/// The cookies a client carries, and every cookie its replies set since, in the order they
-/// came: what `Http::session` answers the session as the replies left it.
+/// The cookies a client carries, and the last each reply set of each cookie since: what
+/// `Http::session` answers the session as the replies left it.
 struct Carried {
     jar: Jar,
     set: Mutex<Vec<Replied>>,
@@ -234,7 +240,12 @@ impl CookieStore for Carried {
     fn set_cookies(&self, headers: &mut dyn Iterator<Item = &HeaderValue>, url: &Url) {
         let headers: Vec<&HeaderValue> = headers.collect();
         if let Ok(mut set) = self.set.lock() {
-            set.extend(headers.iter().filter_map(|header| replied(header, url)));
+            for replied in headers.iter().filter_map(|header| replied(header, url)) {
+                // A cookie set again replaces what was set of it before, so a client kept
+                // long holds no more than the cookies it was sent.
+                set.retain(|kept| !kept.cookie.same(&replied.cookie));
+                set.push(replied);
+            }
         }
         self.jar.set_cookies(&mut headers.into_iter(), url);
     }
@@ -521,10 +532,7 @@ impl Http {
             if !self.hosts.cookie(cookie.domain.trim_start_matches('.')) {
                 continue;
             }
-            session.cookies.retain(|kept| {
-                (&kept.name, &kept.domain, &kept.path)
-                    != (&cookie.name, &cookie.domain, &cookie.path)
-            });
+            session.cookies.retain(|kept| !kept.same(cookie));
             if !removed {
                 session.cookies.push(cookie.clone());
             }
