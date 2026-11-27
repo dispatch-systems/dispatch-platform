@@ -22,8 +22,8 @@ read so, as with no key on the list's page, names why (`fallback`) and is read w
 meals are asked of the application's own API action, as
 its pages ask, or read as moves inside an application whose action declines, each response
 withheld from the page so nothing renders. A day's routes are read first with no page, with the
-browser's session: every read signed here with the key Cortex gives the list's own page, and
-downloaded gzipped four at a time; a key Cortex refuses, or a session it keeps sending to sign
+browser's session: every read signed here with the key Cortex gives the list's own page, both
+lists asked at once, and downloaded gzipped four at a time; a key Cortex refuses, or a session it keeps sending to sign
 in, has the page asked for its key once more, and the browser closes once the day is read whole.
 A throttled native read (HTTP 429) pauses new requests while in-flight reads drain, keeps
 successful responses for that attempt, and retries only what is missing after Retry-After
@@ -34,7 +34,8 @@ that start together ask for four at once between them, and a throttle either mee
 Each throttled round narrows what the gate admits next, from four at a time to two, then one,
 also when the throttled read ended on a long cooldown or was cancelled; three reads in a row
 that meet no throttle widen it a step. A
-read asks for at most twelve rounds and waits on throttling for at most two minutes; a longer
+read asks for at most twelve rounds and waits on throttling for at most two minutes, a cooldown
+both lists wait out together counted once; a longer
 cooldown fails promptly and stays with the gate for a later scheduled attempt. The cooldown stays with the gate
 across cancellation; throttling never asks the browser to
 sign or discover again, and its fixed endpoint and status are logged without identifiers.

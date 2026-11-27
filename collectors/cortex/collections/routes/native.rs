@@ -5,11 +5,11 @@
 //! a key the list's page holds in its state (`hmacSession`). The page is read for it once,
 //! and once more when Cortex refuses a signature made with it or keeps sending the session
 //! to sign in; a page without a key, or one that sends the session to sign in itself, ends
-//! the read. The lists come first, each asked again while Cortex is briefly unavailable or
-//! redirects; then every itinerary the list names, a few at a time, each asked for gzipped,
-//! decoded and checked for its driver once, away from the threads serving requests.
-//! Whatever failed is asked once more; what Cortex throttled is asked again after each
-//! cooldown, fewer at a time. Every request waits its place at the account's gate
+//! the read. The lists come first, both at once, each asked again while Cortex is briefly
+//! unavailable or redirects; then every itinerary the list names, a few at a time, each asked
+//! for gzipped, decoded and checked for its driver once, away from the threads serving
+//! requests. Whatever failed is asked once more; what Cortex throttled is asked again after
+//! each cooldown, fewer at a time. Every request waits its place at the account's gate
 //! (`connection::gate`), which every reader of the account on this server shares, so a
 //! throttle one of them meets cools and narrows them all. A day is read whole, both lists
 //! and every itinerary, or not at all.
@@ -257,6 +257,13 @@ fn passing(failure: &Failure) -> bool {
     }
 }
 
+/// What a read may still spend waiting on throttling, and until when it waits already:
+/// requests that wait out one cooldown together, as both lists may, spend it once.
+struct RetryBudget {
+    remaining: Duration,
+    waited: Option<Instant>,
+}
+
 /// What a read meets of the account's throttling: its gate, which every reader of the account
 /// shares, and the requests Cortex throttled during this read.
 struct Throttle {
@@ -300,17 +307,21 @@ impl Throttle {
     }
     /// Whether a throttle was observed, including one whose delay passed while in-flight
     /// requests drained. A healthy read has no timer or added wait.
-    async fn wait(&self, budget: &Mutex<Duration>) -> std::result::Result<bool, Failure> {
+    async fn wait(&self, budget: &Mutex<RetryBudget>) -> std::result::Result<bool, Failure> {
         let Some(until) = self.gate.cooldown() else {
             return Ok(false);
         };
-        let delay = until.saturating_duration_since(Instant::now());
         {
-            let mut remaining = budget.lock().expect("route retry budget");
-            if delay > *remaining {
+            let mut budget = budget.lock().expect("route retry budget");
+            // Only what this wait adds to one under way is spent.
+            let now = Instant::now();
+            let from = budget.waited.map_or(now, |waited| waited.max(now));
+            let delay = until.saturating_duration_since(from);
+            if delay > budget.remaining {
                 return Err(self.failure());
             }
-            *remaining = remaining.saturating_sub(delay);
+            budget.remaining -= delay;
+            budget.waited = Some(from.max(until));
         }
         sleep_until(until).await;
         self.gate.cooled(until);
@@ -529,7 +540,10 @@ impl Native {
             refused: AtomicU64::new(0),
         });
         let throttle = self.throttle.as_ref().expect("the read's throttle");
-        let retry_budget = Mutex::new(RETRY_BUDGET);
+        let retry_budget = Mutex::new(RetryBudget {
+            remaining: RETRY_BUDGET,
+            waited: None,
+        });
         throttle.wait(&retry_budget).await?;
         check().await.map_err(Failure::Stopped)?;
         let mut asked_again = false;
@@ -620,7 +634,7 @@ struct Reading<'a> {
     referer: String,
     historical: &'static str,
     throttle: &'a Throttle,
-    retry_budget: &'a Mutex<Duration>,
+    retry_budget: &'a Mutex<RetryBudget>,
     check: &'a Check,
     /// What the reader kept of the day, when this read may reuse settled routes' itineraries.
     kept: Option<&'a Kept>,
@@ -650,7 +664,16 @@ impl Reading<'_> {
     async fn day(&self, mode: Mode, started_at: i64) -> std::result::Result<Capture, Failure> {
         let scope = self.scope;
         let lists = self.lists();
-        let text = self.list(SUMMARIES, &lists).await?;
+        // Neither list depends on the other: both are asked at once, and the first to fail
+        // ends the read.
+        let (text, routes) = futures_util::future::try_join(
+            self.list(SUMMARIES, &lists),
+            self.list(
+                ROUTE_SUMMARIES,
+                &[lists.as_slice(), &[("statsFromSummaries", "true")]].concat(),
+            ),
+        )
+        .await?;
         let bytes = CaptureBudget::new(text.len())?;
         let summaries = parsed(&text)?;
         // A list that is not one would list no itinerary, and replace the day with none.
@@ -659,14 +682,8 @@ impl Reading<'_> {
             "cortex_content_incomplete",
             502,
         )?;
-        let text = self
-            .list(
-                ROUTE_SUMMARIES,
-                &[lists.as_slice(), &[("statsFromSummaries", "true")]].concat(),
-            )
-            .await?;
-        bytes.add(text.len())?;
-        let route_summaries = parsed(&text)?;
+        bytes.add(routes.len())?;
+        let route_summaries = parsed(&routes)?;
         ensure(
             route_summaries["rmsRouteSummaries"].is_array(),
             "cortex_content_incomplete",
