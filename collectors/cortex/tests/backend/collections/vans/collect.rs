@@ -47,8 +47,8 @@ fn page(vans: Value, key: Value) -> Response<String> {
 async fn the_fleet_is_read_page_after_page_each_van_once() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{FIXTURE}:{}", listener.local_addr().unwrap().port());
-    // What the stand-in answers: a fleet of two pages, a key naming its own page, a fleet
-    // naming no van, or a session Amazon ended.
+    // What the stand-in answers: a fleet of two pages, one throttled once first, a key naming
+    // its own page, a fleet naming no van, or a session Amazon ended.
     let scenario = Arc::new(Mutex::new("paged"));
     let answers = scenario.clone();
     let app = Router::new().route(
@@ -64,7 +64,19 @@ async fn the_fleet_is_read_page_after_page_each_van_once() {
                 "ACTIVE,MAINTENANCE,PENDING,INACTIVE"
             );
             let key = query.get("continuationKey").map(String::as_str);
-            match (*answers.lock().unwrap(), key) {
+            let answer = {
+                let mut answer = answers.lock().unwrap();
+                if *answer == "throttled" {
+                    *answer = "paged";
+                    return Response::builder()
+                        .status(429)
+                        .header("retry-after", "0")
+                        .body(String::new())
+                        .unwrap();
+                }
+                *answer
+            };
+            match (answer, key) {
                 ("paged", None) => page(
                     json!([row("1FTBW3XM5LKA00101", "CDV 101"), {"vin":null}]),
                     json!("second"),
@@ -89,17 +101,23 @@ async fn the_fleet_is_read_page_after_page_each_van_once() {
     );
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let http = Http::detached(&origin, &cortex::HOSTS).unwrap();
-    let (vans, unread) = fleet(&http, &origin).await.unwrap();
-    assert_eq!(unread, 1);
-    assert_eq!(
-        vans.iter()
-            .map(|van| (van.vin.as_str(), van.name.as_deref()))
-            .collect::<Vec<_>>(),
-        [
-            ("1FTBW3XM5LKA00101", Some("CDV 101")),
-            ("7FCTGAAA1NN000214", Some("EDV 214"))
-        ]
-    );
+    let turn = Turn::of(&origin, "c-1", Box::new(|| Box::pin(async { Ok(()) })));
+    // A page Cortex throttles is asked for again once the account has cooled.
+    for first in ["paged", "throttled"] {
+        *scenario.lock().unwrap() = first;
+        let (vans, unread) = fleet(&http, &turn, &origin).await.unwrap();
+        assert_eq!(unread, 1, "{first}");
+        assert_eq!(
+            vans.iter()
+                .map(|van| (van.vin.as_str(), van.name.as_deref()))
+                .collect::<Vec<_>>(),
+            [
+                ("1FTBW3XM5LKA00101", Some("CDV 101")),
+                ("7FCTGAAA1NN000214", Some("EDV 214"))
+            ],
+            "{first}"
+        );
+    }
     for (what, code) in [
         ("again", cortex::codes::CORTEX_SOURCE_CHANGED.as_str()),
         ("empty", cortex::codes::CORTEX_SOURCE_CHANGED.as_str()),
@@ -107,7 +125,7 @@ async fn the_fleet_is_read_page_after_page_each_van_once() {
     ] {
         *scenario.lock().unwrap() = what;
         assert_eq!(
-            fleet(&http, &origin).await.unwrap_err().code,
+            fleet(&http, &turn, &origin).await.unwrap_err().code,
             code,
             "{what}"
         );

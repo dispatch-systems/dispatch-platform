@@ -7,6 +7,7 @@ use crate as cortex;
 use crate::connection::{
     Driver,
     companies::{COMPANIES, refusal, sole_company},
+    gate::{self, Turn},
 };
 use dispatch_core::{
     Error, Result,
@@ -41,19 +42,23 @@ fn address(origin: &str, key: Option<&str>) -> String {
     format!("{origin}{VEHICLES}?{}", query.finish())
 }
 
-/// Every van the fleet lists, each VIN once, page after page, and how many rows named no VIN.
-/// A fleet naming no van would say every van left: it is a page that failed instead.
-pub(crate) async fn fleet(http: &Http, origin: &str) -> Result<(Vec<Van>, usize)> {
+/// Every van the fleet lists, each VIN once, page after page as `turn` admits each, and how
+/// many rows named no VIN. A fleet naming no van would say every van left: it is a page that
+/// failed instead.
+pub(crate) async fn fleet(http: &Http, turn: &Turn, origin: &str) -> Result<(Vec<Van>, usize)> {
     let referer = format!("{origin}/fleet-management/");
     let mut seen = BTreeSet::new();
     let mut vans = Vec::new();
     let mut unread = 0;
     let mut key: Option<String> = None;
     for _ in 0..MAX_PAGES {
-        let reply = http
-            .json(&address(origin, key.as_deref()), &referer, LIMIT)
-            .await
-            .map_err(refusal)?;
+        let page = address(origin, key.as_deref());
+        let reply = turn
+            .ask("/fleet-management/api/vehicles", || {
+                http.json_with_status(&page, &referer, LIMIT)
+            })
+            .await?
+            .map_err(|error| refusal(error.refusal))?;
         let rows = reply["data"]["vehicles"].as_array().ok_or_else(changed)?;
         for row in rows {
             match Van::read(row.clone())? {
@@ -109,7 +114,9 @@ impl Driver {
         };
         let (company_id, company_code) = sole_company(&companies, &request.dsp_abbreviation)?;
         run.progress(40, "Reading the fleet".into()).await?;
-        let (vans, unread) = fleet(&http, &self.origin).await?;
+        let turn = Turn::of(&self.origin, &company_id, gate::job(run));
+        let (vans, unread) = fleet(&http, &turn, &self.origin).await?;
+        turn.finished();
         // Amazon sending rows without a VIN would otherwise show only as names missing later.
         if unread > 0 {
             run.metrics.detail("vans_row_without_vin");

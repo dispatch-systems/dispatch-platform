@@ -8,6 +8,7 @@ use crate::{
     connection::{
         Driver,
         companies::{COMPANIES, refusal, sole_company},
+        gate::{self, Turn},
         performance::{Found, mismatched},
     },
     discovery::Scope,
@@ -47,22 +48,22 @@ fn address(origin: &str, path: &str, service_area: &str, dates: Option<(Date, Da
 }
 
 /// Every assignment of the week from `start` to `end` the roster lists at `service_area`,
-/// and how many drivers it listed.
+/// asked for once `turn` admits it, and how many drivers it listed.
 pub(crate) async fn roster(
     http: &Http,
+    turn: &Turn,
     origin: &str,
     service_area: &str,
     (start, end): (Date, Date),
 ) -> Result<(Vec<Assignment>, usize)> {
     let referer = address(origin, WEEK, service_area, None);
-    let reply = http
-        .json(
-            &address(origin, &ROSTERS.join("/"), service_area, Some((start, end))),
-            &referer,
-            LIMIT,
-        )
-        .await
-        .map_err(refusal)?;
+    let week = address(origin, &ROSTERS.join("/"), service_area, Some((start, end)));
+    let reply = turn
+        .ask("/schedulingV2/rosters", || {
+            http.json_with_status(&week, &referer, LIMIT)
+        })
+        .await?
+        .map_err(|error| refusal(error.refusal))?;
     ensure(
         reply["error"].is_null(),
         cortex::codes::CORTEX_SOURCE_CHANGED.as_str(),
@@ -156,8 +157,16 @@ impl Driver {
         sole_company(&companies, &request.dsp_abbreviation)?;
         run.progress(50, "Reading the week's shifts".into()).await?;
         let (start, end) = request.week()?;
-        let (assignments, drivers) =
-            roster(&http, &self.origin, &scope.service_area_id, (start, end)).await?;
+        let turn = Turn::of(&self.origin, &scope.provider, gate::job(run));
+        let (assignments, drivers) = roster(
+            &http,
+            &turn,
+            &self.origin,
+            &scope.service_area_id,
+            (start, end),
+        )
+        .await?;
+        turn.finished();
         run.progress(95, "Validating the week's shifts".into())
             .await?;
         let capture = Capture {
