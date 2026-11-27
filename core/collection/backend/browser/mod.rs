@@ -307,6 +307,21 @@ impl Session {
     fn became(&self, saved: SavedSession) {
         *self.saved.lock().expect("saved session") = Some(saved);
     }
+    /// Refuses its next step once it closed, the authority it acts for was revoked, or its
+    /// connection moved on from its revision, as while it waited on the provider: what it
+    /// would then change of the connection, its saved session or a browser is no longer its.
+    async fn still_current(&self, state: &Arc<State>, authority: &ProviderAuthority) -> Result<()> {
+        ensure(!self.closed(), "verification_expired", 409)?;
+        let (dsp, provider, revision) = (self.dsp.clone(), self.provider, self.revision);
+        let authority = authority.clone();
+        state
+            .read(move |db| {
+                authority.check(db, &dsp, provider)?;
+                let current = db.connection_revision(&dsp, provider)? == Some(revision);
+                ensure(current, "connection_changed", 409)
+            })
+            .await
+    }
     pub fn busy(&self) -> bool {
         self.status.load(Ordering::SeqCst) == 0
             || self.worker.try_lock().is_err()
@@ -473,6 +488,7 @@ impl Session {
                 // A collection needed a page: the job's browser starts now, as it would have
                 // with no saved session, and the collection runs again in it.
                 Err(error) if error.is(crate::Code::BrowserRequired) && self.saved() => {
+                    self.still_current(state, &authority).await?;
                     self.became(SavedSession::PageNeeded);
                     metrics.saved_session(SavedSession::PageNeeded);
                     metrics.phase(crate::collection::metrics::Phase::Authentication);
@@ -885,14 +901,8 @@ impl State {
                 )
                 .await;
             match started {
-                // The provider no longer accepts the saved session: it goes, and the browser
-                // signs in as with none.
                 Err(error) if error.is(crate::Code::BrowserRequired) && session.saved() => {
-                    session.became(SavedSession::Refused);
-                    let dsp = id.to_owned();
-                    self.run_bookkeeping(move |db| db.discard_session(&dsp, provider))
-                        .await?;
-                    self.launch(&session, retry).await?;
+                    self.refused(&session, &authority, retry).await?;
                     session
                         .request_guarded(command, &["ready", "challenge"], 180, self, &authority)
                         .await
@@ -952,6 +962,22 @@ impl State {
                 Err(error)
             }
         }
+    }
+    /// The provider no longer accepts the session a sign-in saved, which `session` started
+    /// from: it goes, and the session's browser starts, to sign in as with none. Unless the
+    /// session is no longer current: then neither, nor one saved since under another revision.
+    async fn refused(
+        self: &Arc<Self>,
+        session: &Arc<Session>,
+        authority: &ProviderAuthority,
+        retry: bool,
+    ) -> Result<()> {
+        session.still_current(self, authority).await?;
+        session.became(SavedSession::Refused);
+        let (dsp, provider, revision) = (session.dsp.clone(), session.provider, session.revision);
+        self.run_bookkeeping(move |db| db.discard_session_at(&dsp, provider, revision))
+            .await?;
+        self.launch(session, retry).await
     }
     /// Starts the browser of a session that read with the session a sign-in saved until now:
     /// admitted as any browser is, from its profile, its driver in place of the one it read

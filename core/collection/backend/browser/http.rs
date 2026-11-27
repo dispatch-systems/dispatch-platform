@@ -182,14 +182,30 @@ pub struct Cookie {
     pub domain: String,
     pub path: String,
     pub secure: bool,
+    /// When the browser stops sending it, in milliseconds since the epoch: none for a session
+    /// cookie. Required in a saved session, so one saved before cookies kept their expiry no
+    /// longer opens.
+    #[serde(deserialize_with = "Option::deserialize")]
+    pub expires: Option<i64>,
 }
 impl Cookie {
     /// Whether it is the same cookie as `other`: the same name on the same domain and path.
     fn same(&self, other: &Cookie) -> bool {
         (&self.name, &self.domain, &self.path) == (&other.name, &other.domain, &other.path)
     }
+    /// Whether it has expired by `now`, in milliseconds since the epoch: a browser would no
+    /// longer send it.
+    fn expired(&self, now: i64) -> bool {
+        self.expires.is_some_and(|at| at <= now)
+    }
 }
 impl SignedIn {
+    /// It without the cookies expired by now, which a browser would no longer send.
+    pub fn unexpired(mut self) -> Self {
+        let now = crate::db::now();
+        self.cookies.retain(|cookie| !cookie.expired(now));
+        self
+    }
     /// What `browser` holds for the provider at `origin`, one of its `hosts`: its cookies
     /// on the hosts' cookie domains, and its user agent.
     pub async fn of(
@@ -215,6 +231,11 @@ impl SignedIn {
                 domain: s(cookie, "domain").into(),
                 path: s(cookie, "path").into(),
                 secure: cookie["secure"] == true,
+                // In seconds since the epoch, but for a session cookie.
+                expires: cookie["expires"]
+                    .as_f64()
+                    .filter(|_| cookie["session"] != true)
+                    .map(|seconds| (seconds * 1000.0) as i64),
             })
             .collect();
         Ok(Self {
@@ -254,8 +275,9 @@ impl CookieStore for Carried {
     }
 }
 /// The cookie a `Set-Cookie` header from `url` sets, as a browser would hold it: on the
-/// domain it names, with a leading dot, or on the host alone, and on the path it names or the
-/// address's own directory. None for one it may not set, on a domain the host isn't in.
+/// domain it names, with a leading dot, or on the host alone, on the path it names or the
+/// address's own directory, and until its Max-Age, or else its Expires, runs out. None for one
+/// it may not set, on a domain the host isn't in.
 fn replied(header: &HeaderValue, url: &Url) -> Option<Replied> {
     let parsed = cookie::Cookie::parse(header.to_str().ok()?).ok()?;
     let host = url.host_str()?;
@@ -273,10 +295,15 @@ fn replied(header: &HeaderValue, url: &Url) -> Option<Replied> {
             Some(end) => url.path()[..end].to_owned(),
         },
     };
-    let removed = parsed.max_age().is_some_and(|age| !age.is_positive())
-        || parsed
+    let now = crate::db::now();
+    let expires = match parsed.max_age() {
+        Some(age) => Some(now.saturating_add(
+            i64::try_from(age.whole_milliseconds()).unwrap_or(i64::MAX),
+        )),
+        None => parsed
             .expires_datetime()
-            .is_some_and(|at| at <= cookie::time::OffsetDateTime::now_utc());
+            .map(|at| (at.unix_timestamp_nanos() / 1_000_000) as i64),
+    };
     Some(Replied {
         cookie: Cookie {
             name: parsed.name().to_owned(),
@@ -284,8 +311,9 @@ fn replied(header: &HeaderValue, url: &Url) -> Option<Replied> {
             domain,
             path,
             secure: parsed.secure() == Some(true),
+            expires,
         },
-        removed,
+        removed: expires.is_some_and(|at| at <= now),
     })
 }
 
@@ -467,9 +495,10 @@ impl Http {
         };
         let jar = Jar::default();
         let mut carried = 0;
+        let now = crate::db::now();
         for cookie in &session.cookies {
             let host = cookie.domain.trim_start_matches('.');
-            if !hosts.cookie(host) {
+            if !hosts.cookie(host) || cookie.expired(now) {
                 continue;
             }
             let Ok(url) = Url::parse(&format!("{scheme}://{host}/")) else {
@@ -481,6 +510,10 @@ impl Http {
             }
             if cookie.secure {
                 line.push_str("; Secure");
+            }
+            // The jar stops sending it as the browser would have.
+            if let Some(at) = cookie.expires {
+                line.push_str(&format!("; Max-Age={}", (at - now) / 1000));
             }
             jar.add_cookie_str(&line, &url);
             carried += 1;

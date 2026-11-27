@@ -1,7 +1,7 @@
 //! A live reader's browsers close as it stops reading, each on its own: one whose worker is
 //! busy, as while its browser still starts, is closed to its hook at once and holds up no other
 //! DSP's close. A job reading with a saved session that finds no browser free for a page lets
-//! its session go.
+//! its session go, and one that lost its authority as a page was needed starts no browser.
 use super::*;
 use crate::testing;
 
@@ -13,7 +13,7 @@ fn opened(state: &State, dsp: &str) -> Arc<Session> {
 }
 /// A ready session for `dsp`, opened by `reader` or else a job, registered as a start
 /// registers one.
-fn registered(
+pub(super) fn registered(
     state: &State,
     dsp: &str,
     reader: Option<&'static str>,
@@ -98,4 +98,38 @@ async fn a_saved_sessions_job_finding_no_browser_free_for_a_page_lets_its_sessio
     assert!(state.browsers.get_for("dsp_saved", job.provider).is_none());
     assert!(job.closed());
     assert_eq!(refused.code, "browser_capacity_busy");
+}
+
+/// A driver reading with a saved session whose collection needs a page.
+struct NeedsPage;
+impl Driver for NeedsPage {
+    fn request(&mut self, _: Value) -> Pending<'_, Value> {
+        Box::pin(async { Err(Error::new(crate::Code::BrowserRequired.as_str(), 409)) })
+    }
+    fn collect<'a>(&'a mut self, _: &'a Run<'a>) -> Pending<'a, Collected> {
+        Box::pin(async { Err(Error::new(crate::Code::BrowserRequired.as_str(), 409)) })
+    }
+    fn browser(&self) -> Option<&browseros::Session> {
+        None
+    }
+}
+
+#[tokio::test]
+async fn a_revoked_job_needing_a_page_starts_no_browser() {
+    testing::install(&[], &[]);
+    let (_root, store) = testing::store();
+    let state = State::new(store.config.clone()).unwrap();
+    let job = registered(&state, "dsp_saved", None, true);
+    job.became(SavedSession::Browserless);
+    job.collecting.store(false, Ordering::SeqCst);
+    *job.worker.lock().await = Some(Box::new(NeedsPage));
+    let metrics = crate::collection::metrics::Recorder::new(&json!({}));
+    // A job no worker holds, as one cancelled while its collection read.
+    let refused = job
+        .collect(&state, "job_saved", "worker", &metrics, &json!({}), 1)
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, "job_not_found");
+    assert!(job.browserless());
+    assert_eq!(job.saved_session(), Some(SavedSession::Browserless));
 }

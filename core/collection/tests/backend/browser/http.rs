@@ -63,3 +63,55 @@ fn a_cookie_set_again_replaces_what_was_set_of_it() {
     assert_eq!(kept, [("session-token", false), ("x-old", true)]);
     assert_eq!(set[0].cookie.value, "three");
 }
+
+// A cookie keeps when it expires: a reply's by its Max-Age, which outweighs its Expires, or else
+// its Expires, and a session cookie by neither. A client carries none expired, and the others
+// as the browser held them.
+#[test]
+fn a_cookie_is_carried_until_it_expires() {
+    use reqwest::{cookie::CookieStore, header::HeaderValue};
+    let url = Url::parse("https://logistics.amazon.com/operations").unwrap();
+    let set = |line: &'static str| replied(&HeaderValue::from_static(line), &url).unwrap();
+    let before = crate::db::now();
+    let aged = set("a=1; Max-Age=3600; Expires=Wed, 21 Oct 2015 07:28:00 GMT");
+    let after = crate::db::now();
+    assert!(!aged.removed);
+    assert!((before + 3_600_000..=after + 3_600_000).contains(&aged.cookie.expires.unwrap()));
+    let dated = set("b=1; Expires=Wed, 21 Oct 2037 07:28:00 GMT");
+    let at = "2037-10-21T07:28:00Z".parse::<jiff::Timestamp>().unwrap();
+    assert_eq!(dated.cookie.expires, Some(at.as_millisecond()));
+    assert_eq!(set("c=1").cookie.expires, None);
+
+    static HOSTS: RequestHosts = RequestHosts {
+        allowed: |_| false,
+        cookies: |_| false,
+        http2: false,
+    };
+    let cookie = |name: &str, expires| Cookie {
+        name: name.into(),
+        value: "1".into(),
+        domain: FIXTURE.into(),
+        path: "/".into(),
+        secure: false,
+        expires,
+    };
+    let now = crate::db::now();
+    let session = SignedIn {
+        origin: format!("http://{FIXTURE}:8080"),
+        cookies: vec![
+            cookie("expired", Some(now - 1000)),
+            cookie("lasting", Some(now + 3_600_000)),
+            cookie("session", None),
+        ],
+        user_agent: "Browser".into(),
+    };
+    let http = Http::of_session(&session, &HOSTS).unwrap();
+    let (_, carried) = http.session.as_ref().unwrap();
+    let sent = carried
+        .cookies(&Url::parse(&format!("http://{FIXTURE}:8080/")).unwrap())
+        .unwrap();
+    let mut sent: Vec<&str> = sent.to_str().unwrap().split("; ").collect();
+    sent.sort();
+    assert_eq!(sent, ["lasting=1", "session=1"]);
+    assert_eq!(http.cookies, 2);
+}

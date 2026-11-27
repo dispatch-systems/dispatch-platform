@@ -146,6 +146,7 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
             domain: FIXTURE.into(),
             path: "/".into(),
             secure: false,
+            expires: None,
         }],
         user_agent: "Fixture".into(),
     };
