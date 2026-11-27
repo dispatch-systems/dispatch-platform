@@ -5,10 +5,10 @@
 use super::*;
 use crate::backend::{
     scope::{day_request, routes_today},
-    tests::{publish, publish_edited},
+    tests::{later, publish, publish_edited},
 };
 use dispatch_core::testing;
-use dispatch_cortex::routes::{Capture, ItineraryCapture, Mode};
+use dispatch_cortex::routes::{Capture, Mode};
 use dispatch_routes_contract::{DriverPhone, MOST_ID_LENGTH};
 use jiff::ToSpan;
 use serde_json::json;
@@ -415,29 +415,6 @@ fn unlisted(read: &mut Capture) {
         driver.as_object_mut().unwrap().remove("workPhoneNumber");
     }
 }
-/// `read` with another itinerary of `driver`'s, begun an hour after the day's first, whose response
-/// shows them on `phone`.
-fn later(read: &mut Capture, driver: &str, phone: &str) {
-    let id = format!("itinerary-{}", read.itineraries.len() + 1);
-    let mut summary = read.summaries["itinerarySummaries"][0].clone();
-    let began = summary["itineraryStartTime"].as_i64().unwrap() + 3_600_000;
-    summary["itineraryId"] = json!(id);
-    summary["transporterId"] = json!(driver);
-    summary["itineraryStartTime"] = json!(began);
-    let summaries = read.summaries["itinerarySummaries"].as_array_mut();
-    summaries.unwrap().push(summary);
-    let mut response: Value =
-        serde_json::from_str(&read.itineraries[0].detail.text().unwrap()).unwrap();
-    response["itineraryDetails"]["itineraryId"] = json!(id);
-    response["itineraryDetails"]["transporterId"] = json!(driver);
-    response["transporters"] = json!([{"transporterId":driver,"workPhoneNumber":phone}]);
-    read.itineraries.push(ItineraryCapture {
-        id,
-        transporter_id: driver.into(),
-        detail: dispatch_cortex::routes::Detail::of_text(&response.to_string()).unwrap(),
-    });
-}
-
 #[tokio::test]
 async fn a_days_work_phones_are_each_drivers_latest_saying_when_two_share_one() {
     testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);

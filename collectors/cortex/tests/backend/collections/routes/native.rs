@@ -74,6 +74,11 @@ enum Plays {
     ThrottledLong,
     /// The list shows the first route finished, its driver's session ended.
     Settled,
+    /// Each list asks once for a cooldown over half of what a read waits, then answers.
+    ListsThrottled,
+    /// The route summaries ask for a cooldown each time; the summaries, answering a moment
+    /// later, while that cooldown runs, are not found.
+    OneListThrottled,
 }
 
 /// Cortex for one session: its list page hands out a key, and every read must be signed
@@ -85,7 +90,7 @@ struct Stand {
     keys: Mutex<Vec<(String, String)>>,
     pages: AtomicUsize,
     reads: AtomicUsize,
-    /// How many times each itinerary was asked for.
+    /// How many times each itinerary was asked for, and each list where it counts them.
     asked: Mutex<HashMap<String, usize>>,
     /// The stand-in rejects a retry before the delay it told the reader has passed.
     throttled_until: Mutex<Option<Instant>>,
@@ -203,6 +208,31 @@ impl Stand {
             ("localDate", "2026-09-25"),
             ("serviceAreaId", AREA),
         ];
+        if let Some(list @ ("summaries" | "route-summaries")) =
+            path.strip_prefix("/operations/execution/api/")
+            && matches!(self.plays, Plays::OneListThrottled)
+        {
+            self.ask(list);
+            return match list {
+                "route-summaries" => Response::builder()
+                    .status(StatusCode::TOO_MANY_REQUESTS)
+                    .header(header::RETRY_AFTER, "70")
+                    .body(Body::empty())
+                    .unwrap(),
+                _ => status(StatusCode::NOT_FOUND),
+            };
+        }
+        if let Some(list @ ("summaries" | "route-summaries")) =
+            path.strip_prefix("/operations/execution/api/")
+            && matches!(self.plays, Plays::ListsThrottled)
+            && self.ask(list) == 1
+        {
+            return Response::builder()
+                .status(StatusCode::TOO_MANY_REQUESTS)
+                .header(header::RETRY_AFTER, "70")
+                .body(Body::empty())
+                .unwrap();
+        }
         let body = match path.strip_prefix("/operations/execution/api/") {
             Some("summaries") if asks(&day) => match self.plays {
                 Plays::MalformedList => "[]".into(),
@@ -229,12 +259,7 @@ impl Stand {
                 if !asks(&wanted) {
                     return status(StatusCode::BAD_REQUEST);
                 }
-                let times = {
-                    let mut asked = self.asked.lock().unwrap();
-                    let times = asked.entry(id.to_owned()).or_default();
-                    *times += 1;
-                    *times
-                };
+                let times = self.ask(id);
                 match self.plays {
                     Plays::ThrottledOnce if index == 1 && times == 1 => {
                         *self.throttled_until.lock().unwrap() =
@@ -314,6 +339,13 @@ impl Stand {
             .body(Body::from(gzipped.finish().unwrap()))
             .unwrap()
     }
+    /// How many times `name`, an itinerary or a list, has been asked for, this one counted.
+    fn ask(&self, name: &str) -> usize {
+        let mut asked = self.asked.lock().unwrap();
+        let times = asked.entry(name.to_owned()).or_default();
+        *times += 1;
+        *times
+    }
     fn asked(&self, id: &str) -> usize {
         self.asked.lock().unwrap().get(id).copied().unwrap_or(0)
     }
@@ -348,6 +380,10 @@ async fn answer(State(stand): State<Arc<Stand>>, request: Asked) -> Response<Bod
         return stand.page();
     }
     // An itinerary takes a moment of the test's clock, so those asked for together overlap.
+    // The summaries answer once the route summaries' cooldown has begun.
+    if matches!(stand.plays, Plays::OneListThrottled) && path.ends_with("/api/summaries") {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+    }
     let held = matches!(stand.plays, Plays::ThrottledTwice) && path.contains("/itineraries/");
     if held {
         let answering = stand.answering.fetch_add(1, Ordering::SeqCst) + 1;
@@ -515,6 +551,54 @@ async fn a_throttled_itinerary_is_retried_without_reading_successful_ones_again(
     capture.validate(&request()).unwrap();
     assert_eq!(stand.asked("itinerary-1"), 1);
     assert_eq!(stand.asked("itinerary-2"), 2);
+    assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
+}
+
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
+#[tokio::test(start_paused = true)]
+async fn a_cooldown_both_lists_meet_at_once_is_waited_out_once() {
+    let (stand, session) = stand_in(Plays::ListsThrottled).await;
+    let mut reader = Native::new(&session).unwrap();
+    // The two waits together are over what a read waits, the one cooldown well within it.
+    let capture = reader
+        .read(&stand.day.scope, Mode::Final, &authorized)
+        .await
+        .unwrap();
+    capture.validate(&request()).unwrap();
+    // Each list was asked for once more after the cooldown, and nothing else again.
+    assert_eq!(
+        (stand.asked("summaries"), stand.asked("route-summaries")),
+        (2, 2)
+    );
+    assert_eq!(stand.asked("itinerary-1"), 1);
+    assert_eq!(reader.counts(), [("throttled", 2), ("downloads", 2)]);
+}
+
+// A list unavailable beside one waiting out a cooldown ends the read throttled, not with a
+// fallback that would read the day with a page while the account cools.
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
+#[tokio::test(start_paused = true)]
+async fn a_list_failing_beside_a_throttled_one_does_not_request_a_browser_fallback() {
+    let (stand, session) = stand_in(Plays::OneListThrottled).await;
+    let result = read_natively(
+        &session,
+        &request(),
+        &stand.day.scope,
+        &unprompted,
+        &authorized,
+    )
+    .await;
+    assert_eq!(
+        result.err().map(|error| error.code).as_deref(),
+        Some("cortex_throttled")
+    );
+    // The throttled list was asked again after its cooldown, not left behind by the other's
+    // failure.
+    assert_eq!(
+        (stand.asked("summaries"), stand.asked("route-summaries")),
+        (1, 2)
+    );
+    assert_eq!(stand.asked("itinerary-1"), 0);
     assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
 }
 

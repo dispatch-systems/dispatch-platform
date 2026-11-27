@@ -19,17 +19,19 @@ it is live route data, in a database of its own, `routelive`.
 - **Saving a day:** a feature that depends on Routes saves a whole read of a day it collected itself
   into historical route data, as the standard collection saves a job's, with `save_day`
   (`backend/saving.rs`): under a key of its own, checked whole against the DSP's station and the day
-  before anything is written, staged one itinerary at a time, and the day's read only if collected
-  later than the one it has. A read in a mode its day didn't allow when it was read (its
+  before anything is written, staged a few itineraries at a time, and the day's read only if
+  collected later than the one it has. A read in a mode its day didn't allow when it was read (its
   `finished_at`, where the DSP is), a final read of a day not yet ended or a snapshot of another day
   than it was then, is refused (`routes_day_not_available`). It tells Driver Match of new drivers at
   once (`people.changed`), and refuses while Routes is off.
 - **Staging:** a day's read is staged in an inactive publication before it becomes the day's.
-  Both summary responses are prepared before the staging's database turn. Inactive writes
-  serialize per DSP before entering the database pool and hold a shared transition lock, so
-  foreground WAL reads can proceed. Every turn rechecks tenant lifetime and the caller's job,
-  feature and connection guards; final publication is exclusive. Shared driver and address
-  merges leave identical rows unwritten while preserving seen-day bounds.
+  Both summary responses are prepared before the staging's database turn. Itineraries follow
+  in batches, eight or 4 MiB of their text at most, each in one transaction, the next shaped
+  while one is written. Inactive writes serialize per DSP before entering the database pool and
+  hold a shared transition lock, so foreground WAL reads can proceed. Every turn rechecks tenant
+  lifetime and the caller's job, feature and connection guards; final publication is exclusive.
+  Shared driver and address merges leave identical rows unwritten while preserving seen-day
+  bounds.
 - **Live route data:** a feature that depends on Routes and reads today live asks Cortex for what
   `live_request` names, a snapshot of today where the DSP is at its station, as a job asks for a
   day; and keeps each whole read with `keep_live` (`backend/live.rs`), counting for its read's

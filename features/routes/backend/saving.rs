@@ -1,5 +1,5 @@
 //! A whole read of a day that another feature collected itself, saved into historical route
-//! data as the standard collection saves its own: staged one itinerary at a time, then the
+//! data as the standard collection saves its own: staged a few itineraries at a time, then the
 //! day's read if it was collected later than the one the day has.
 use super::{
     COLLECTION, DOMAIN, RoutesStore,
@@ -60,7 +60,7 @@ impl Drop for Saving {
 /// data under `key`, as the standard collection saves a job's: its two lists and every
 /// itinerary they list, checked whole against what a job reading that day in its mode asks of
 /// the DSP's station, in the scope its days were read in, before anything is written, then
-/// staged one itinerary at a time. It becomes the day's read only if it was collected (its
+/// staged a few itineraries at a time. It becomes the day's read only if it was collected (its
 /// `finished_at`) later than the one the day has, replacing it whole, but for the phones the one it
 /// replaces stored for its itineraries that it shows none for (`work_phones`); an earlier read
 /// changes nothing and is swept. Once it's the day's read it tells Driver Match of its drivers
