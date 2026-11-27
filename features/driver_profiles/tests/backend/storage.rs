@@ -105,6 +105,53 @@ fn a_photo_stays_while_amazon_lists_whoever_it_shows() {
     assert_eq!(kept.versions.len(), 4);
 }
 
+// Where Amazon served no photo, an offboarded associate's address isn't asked for again for a
+// month; anyone else's is asked for at every collection. A photo kept for it later, or the
+// roster no longer listing whoever it names, forgets it.
+#[test]
+fn an_address_amazon_serves_no_photo_at_waits_a_month_for_the_offboarded_alone() {
+    testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
+    let (_root, store, dsp) = testing::bootstrapped();
+    store
+        .set_profile(&dsp, json!({"abbreviation":"FXTR"}))
+        .unwrap();
+    let address = |id: &str| format!("/workforce/api/v1/fetchDAPhoto?associate={id}");
+    let none = ["driver-1", "driver-9", "driver-10"].map(address);
+    let mut first = roster(&store, &dsp);
+    first.photos.retain(|photo| !none.contains(&photo.address));
+    first.photos_unserved = none.to_vec();
+    publish(&store, &dsp, "job-1", first);
+    let unserved = || store.kept_photos(&dsp, "company-fixture").unwrap().unserved;
+    assert_eq!(unserved(), ["driver-9", "driver-10"].map(address).into());
+    // A month on, an offboarded associate's is asked for again.
+    let db = store.driver_profiles_db(&dsp).unwrap();
+    db.exec(
+        "UPDATE unserved_photos SET checked_at='2026-01-01T00:00:00.000Z' \
+         WHERE address LIKE '%driver-9'",
+        [],
+    )
+    .unwrap();
+    drop(db);
+    assert_eq!(unserved(), [address("driver-10")].into());
+    // Amazon serves driver-10's photo after all, and stops listing driver-1.
+    let mut next = roster(&store, &dsp);
+    next.photos
+        .retain(|photo| photo.address == address("driver-10"));
+    next.associates.retain(|a| a.transporter_id != "driver-1");
+    publish(&store, &dsp, "job-2", next);
+    let db = store.driver_profiles_db(&dsp).unwrap();
+    let (left,): (String,) = db
+        .one_as("SELECT address FROM unserved_photos", [])
+        .unwrap()
+        .unwrap();
+    assert_eq!(left, address("driver-9"));
+    assert_eq!(
+        db.count("SELECT count(*) FROM unserved_photos", [])
+            .unwrap(),
+        1
+    );
+}
+
 #[tokio::test]
 async fn photos_staged_as_their_dsp_is_deleted_make_nothing_of_its_folder_again() {
     testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
