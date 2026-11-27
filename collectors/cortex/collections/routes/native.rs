@@ -664,16 +664,22 @@ impl Reading<'_> {
     async fn day(&self, mode: Mode, started_at: i64) -> std::result::Result<Capture, Failure> {
         let scope = self.scope;
         let lists = self.lists();
-        // Neither list depends on the other: both are asked at once, and the first to fail
-        // ends the read.
-        let (text, routes) = futures_util::future::try_join(
+        // Neither list depends on the other: both are asked at once, and each is let finish,
+        // so a list waiting out a cooldown ends the read throttled even when the other failed
+        // another way, as the worse of their failures.
+        let (text, routes) = match futures_util::future::join(
             self.list(SUMMARIES, &lists),
             self.list(
                 ROUTE_SUMMARIES,
                 &[lists.as_slice(), &[("statsFromSummaries", "true")]].concat(),
             ),
         )
-        .await?;
+        .await
+        {
+            (Ok(text), Ok(routes)) => (text, routes),
+            (Err(failure), Ok(_)) | (Ok(_), Err(failure)) => return Err(failure),
+            (Err(first), Err(second)) => return Err(first.worse(second)),
+        };
         let bytes = CaptureBudget::new(text.len())?;
         let summaries = parsed(&text)?;
         // A list that is not one would list no itinerary, and replace the day with none.

@@ -76,6 +76,8 @@ enum Plays {
     Settled,
     /// Each list asks once for a cooldown over half of what a read waits, then answers.
     ListsThrottled,
+    /// The route summaries ask for a cooldown each time, while the summaries are unavailable.
+    OneListThrottled,
 }
 
 /// Cortex for one session: its list page hands out a key, and every read must be signed
@@ -205,6 +207,21 @@ impl Stand {
             ("localDate", "2026-09-25"),
             ("serviceAreaId", AREA),
         ];
+        if let Some(list @ ("summaries" | "route-summaries")) =
+            path.strip_prefix("/operations/execution/api/")
+            && matches!(self.plays, Plays::OneListThrottled)
+        {
+            self.ask(list);
+            let (status, wait) = match list {
+                "route-summaries" => (StatusCode::TOO_MANY_REQUESTS, "70"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "0"),
+            };
+            return Response::builder()
+                .status(status)
+                .header(header::RETRY_AFTER, wait)
+                .body(Body::empty())
+                .unwrap();
+        }
         if let Some(list @ ("summaries" | "route-summaries")) =
             path.strip_prefix("/operations/execution/api/")
             && matches!(self.plays, Plays::ListsThrottled)
@@ -551,6 +568,29 @@ async fn a_cooldown_both_lists_meet_at_once_is_waited_out_once() {
     );
     assert_eq!(stand.asked("itinerary-1"), 1);
     assert_eq!(reader.counts(), [("throttled", 2), ("downloads", 2)]);
+}
+
+// A list unavailable beside one waiting out a cooldown ends the read throttled, not with a
+// fallback that would read the day with a page while the account cools.
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
+#[tokio::test(start_paused = true)]
+async fn a_list_failing_beside_a_throttled_one_does_not_request_a_browser_fallback() {
+    let (stand, session) = stand_in(Plays::OneListThrottled).await;
+    let result = read_natively(
+        &session,
+        &request(),
+        &stand.day.scope,
+        &unprompted,
+        &authorized,
+    )
+    .await;
+    assert_eq!(
+        result.err().map(|error| error.code).as_deref(),
+        Some("cortex_throttled")
+    );
+    assert!(stand.asked("route-summaries") > 1);
+    assert_eq!(stand.asked("itinerary-1"), 0);
+    assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
