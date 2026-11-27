@@ -37,9 +37,14 @@ async fn a_day_staged_in_batches_is_staged_whole_and_stops_once_its_work_is_not_
 
     // Every itinerary is staged with its response, and the publication counts every stop and
     // task its rows hold.
-    let whole = stage_capture(&state, &dsp, "whole", asked.clone(), capture.clone(), |_| {
-        Ok(())
-    })
+    let whole = stage_capture(
+        &state,
+        &dsp,
+        "whole",
+        asked.clone(),
+        capture.clone(),
+        |_| Ok(()),
+    )
     .await
     .unwrap();
     assert_eq!(staged("whole"), (listed, listed));
