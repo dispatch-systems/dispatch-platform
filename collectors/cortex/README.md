@@ -23,8 +23,9 @@ meals are asked of the application's own API action, as
 its pages ask, or read as moves inside an application whose action declines, each response
 withheld from the page so nothing renders. A day's routes are read first with no page, with the
 browser's session: every read signed here with the key Cortex gives the list's own page, both
-lists asked at once, and downloaded gzipped four at a time; a key Cortex refuses, or a session it keeps sending to sign
-in, has the page asked for its key once more, and the browser closes once the day is read whole.
+lists asked at once, and downloaded gzipped four at a time, the next downloading while one is
+decoded and checked; a key Cortex refuses, or a session it keeps sending to sign in, has the
+page asked for its key once more, and the browser closes once the day is read whole.
 A throttled native read (HTTP 429) pauses new requests while in-flight reads drain, keeps
 successful responses for that attempt, and retries only what is missing after Retry-After
 (seconds or an HTTP date), or ten seconds without one. A supplied delay is bounded at a day.

@@ -8,11 +8,11 @@
 //! the read. The lists come first, both at once, each asked again while Cortex is briefly
 //! unavailable or redirects; then every itinerary the list names, a few at a time, each asked
 //! for gzipped, decoded and checked for its driver once, away from the threads serving
-//! requests. Whatever failed is asked once more; what Cortex throttled is asked again after
-//! each cooldown, fewer at a time. Every request waits its place at the account's gate
-//! (`connection::gate`), which every reader of the account on this server shares, so a
-//! throttle one of them meets cools and narrows them all. A day is read whole, both lists
-//! and every itinerary, or not at all.
+//! requests, while the next downloads. Whatever failed is asked once more; what Cortex
+//! throttled is asked again after each cooldown, fewer at a time. Every request waits its
+//! place at the account's gate (`connection::gate`), which every reader of the account on
+//! this server shares, so a throttle one of them meets cools and narrows them all. A day is
+//! read whole, both lists and every itinerary, or not at all.
 use super::capture::{Capture, Collection, Detail, ItineraryCapture, MAX_BODY, Mode};
 use super::protocol::{
     CaptureBudget, ITINERARY, ROUTE_SUMMARIES, SUMMARIES, itineraries_listed, itinerary_path,
@@ -818,8 +818,10 @@ impl Reading<'_> {
                     let limit = MAX_BODY.min(bytes.remaining());
                     (index, self.itinerary(&listed[index], limit).await)
                 })
-                // The gate admits as many at once as the account may ask for.
-                .buffer_unordered(self.throttle.gate.width());
+                // The gate admits as many at once as the account may ask for. As many more
+                // wait their place, so one is asked for as soon as a place is free, while the
+                // answer that freed it is still being decoded and checked.
+                .buffer_unordered(2 * self.throttle.gate.width());
             while let Some((index, answer)) = answers.next().await {
                 match answer {
                     Ok(detail) => {
