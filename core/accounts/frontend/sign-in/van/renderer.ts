@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import modelUrl from '../assets/login-van.glb?url';
 import { vanSettings as settings } from './settings.js';
 import { fragmentShader, vertexShader } from './ordered-shader.js';
 
@@ -32,6 +31,7 @@ function disposeModel(model: THREE.Object3D) {
 /** Owns all GPU resources and listeners. Never updates React on animation frames. */
 export async function startVan(
   canvas: HTMLCanvasElement,
+  modelUrl: string,
   signal: AbortSignal,
   ready: (value: boolean) => void,
 ) {

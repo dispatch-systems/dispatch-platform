@@ -1,12 +1,10 @@
 import * as THREE from 'three';
-import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { amazonDecal, createKit, finish, primeDecal, roundedOutline } from './kit.js';
 
 // Original stylized mesh authored for Dispatch from real vehicle photographs.
 // X = length (front is negative X), Y = up, Z = width.
 // +Z is the driver side; -Z is the passenger side. Units approximately metres.
 export function createStepVan() {
-  const van = new THREE.Group();
-  van.name = 'Dispatch_Step_Van';
   const paints = {
     body: new THREE.MeshStandardMaterial({ color: '#425e6a', roughness: 0.7, metalness: 0.12 }),
     trim: new THREE.MeshStandardMaterial({ color: '#9aa8af', roughness: 0.45, metalness: 0.55 }),
@@ -38,37 +36,8 @@ export function createStepVan() {
     }),
     white: new THREE.MeshStandardMaterial({ color: '#e8edf3', roughness: 0.7 }),
   };
-  Object.entries(paints).forEach(([key, m]) => (m.name = key));
-  function part(geometry, material, x = 0, y = 0, z = 0, name = '') {
-    const mesh = new THREE.Mesh(geometry, paints[material] || material);
-    mesh.position.set(x, y, z);
-    mesh.name = name;
-    van.add(mesh);
-    return mesh;
-  }
-  function box(w, h, d, x, y, z, mat = 'body', name = '') {
-    return part(new THREE.BoxGeometry(w, h, d), mat, x, y, z, name);
-  }
-  function cylinder(r, length, x, y, z, mat = 'trim', segments = 24) {
-    const mesh = part(new THREE.CylinderGeometry(r, r, length, segments), mat, x, y, z);
-    mesh.rotation.x = Math.PI / 2;
-    return mesh;
-  }
-  function tube(points, r = 0.02, mat = 'trim', segments = 24) {
-    const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p)));
-    return part(new THREE.TubeGeometry(curve, segments, r, 6, false), mat);
-  }
-  function polygon(points, mat) {
-    const vertices = [];
-    for (let i = 1; i < points.length - 1; i++)
-      vertices.push(...points[0], ...points[i], ...points[i + 1]);
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geom.computeVertexNormals();
-    const material = (paints[mat] || mat).clone();
-    material.side = THREE.DoubleSide;
-    return part(geom, material);
-  }
+  const { van, part, box, cylinder, tube, polygon, skin, outline, mappedSkin, mappedOutline } =
+    createKit('Dispatch_Step_Van', paints);
   // These outlines follow the passenger and driver photographs supplied by the user.
   // Both doors have split upper glazing. Only the passenger door has the lower sight window.
   const frontAxle = -3.05,
@@ -91,67 +60,9 @@ export function createStepVan() {
     [-1.71, 0.91],
     [-2.25, 0.91],
   ];
-  function roundedOutline(points, radius = 0.06) {
-    const shape = new THREE.Shape();
-    points.forEach((p, i) => {
-      const prev = points[(i + points.length - 1) % points.length],
-        next = points[(i + 1) % points.length];
-      const incoming = new THREE.Vector2(prev[0] - p[0], prev[1] - p[1]);
-      const outgoing = new THREE.Vector2(next[0] - p[0], next[1] - p[1]);
-      const d = Math.min(radius, incoming.length() * 0.3, outgoing.length() * 0.3);
-      incoming.normalize().multiplyScalar(d);
-      outgoing.normalize().multiplyScalar(d);
-      if (i === 0) shape.moveTo(p[0] + incoming.x, p[1] + incoming.y);
-      else shape.lineTo(p[0] + incoming.x, p[1] + incoming.y);
-      shape.quadraticCurveTo(p[0], p[1], p[0] + outgoing.x, p[1] + outgoing.y);
-    });
-    shape.closePath();
-    return shape;
-  }
   const quarterShape = roundedOutline(quarterPoints, 0.025);
   const upperShape = roundedOutline(upperPoints, 0.075);
   const lowerShape = roundedOutline(lowerPoints, 0.07);
-  function skin(shape, z, material, name) {
-    const mat = paints[material].clone();
-    mat.side = THREE.DoubleSide;
-    return part(new THREE.ShapeGeometry(shape, 8), mat, 0, 0, z, name);
-  }
-  function outline(shape, z, r = 0.023, material = 'dark') {
-    const points = shape.getPoints(8),
-      curve = new THREE.CurvePath();
-    for (let i = 1; i < points.length; i++)
-      curve.add(
-        new THREE.LineCurve3(
-          new THREE.Vector3(points[i - 1].x, points[i - 1].y, z),
-          new THREE.Vector3(points[i].x, points[i].y, z),
-        ),
-      );
-    return part(new THREE.TubeGeometry(curve, points.length * 2, r, 6, false), material);
-  }
-  function mappedSkin(shape, mat, map, name) {
-    const geometry = new THREE.ShapeGeometry(shape, 10),
-      positions = geometry.attributes.position;
-    for (let i = 0; i < positions.count; i++) {
-      const p = map(positions.getX(i), positions.getY(i));
-      positions.setXYZ(i, ...p);
-    }
-    geometry.computeVertexNormals();
-    const material = paints[mat].clone();
-    material.side = THREE.DoubleSide;
-    return part(geometry, material, 0, 0, 0, name);
-  }
-  function mappedOutline(shape, map, r = 0.015, mat = 'dark') {
-    const points = shape.getPoints(10),
-      curve = new THREE.CurvePath();
-    for (let i = 1; i < points.length; i++)
-      curve.add(
-        new THREE.LineCurve3(
-          new THREE.Vector3(...map(points[i - 1].x, points[i - 1].y)),
-          new THREE.Vector3(...map(points[i].x, points[i].y)),
-        ),
-      );
-    return part(new THREE.TubeGeometry(curve, points.length * 2, r, 6, false), mat);
-  }
   function endLight(x, y, z, r, mat) {
     const mesh = part(new THREE.CylinderGeometry(r, r, 0.028, 24), mat, x, y, z);
     mesh.rotation.z = Math.PI / 2;
@@ -579,42 +490,7 @@ export function createStepVan() {
       box(0.065, 0.28, 0.45, x + 0.52, 0.3, z, 'dark', 'Mud flap');
     }
   }
-  // Branding is authored here; no third-party texture or mesh is embedded.
-  const label = document.createElement('canvas');
-  label.width = 1024;
-  label.height = 512;
-  const ctx = label.getContext('2d');
-  ctx.fillStyle = '#f5f7fa';
-  ctx.font = '600 110px Inter, Arial, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('prime', 1000, 205);
-  ctx.fillStyle = '#00bddd';
-  ctx.strokeStyle = '#00bddd';
-  ctx.lineWidth = 22;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(45, 229);
-  ctx.bezierCurveTo(260, 331, 555, 350, 781, 250);
-  ctx.quadraticCurveTo(795, 245, 792, 263);
-  ctx.bezierCurveTo(553, 391, 257, 378, 42, 244);
-  ctx.quadraticCurveTo(30, 233, 45, 229);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(708, 233);
-  ctx.quadraticCurveTo(756, 215, 796, 222);
-  ctx.quadraticCurveTo(803, 249, 784, 288);
-  ctx.stroke();
-  const texture = new THREE.CanvasTexture(label);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const brandMaterial = new THREE.MeshStandardMaterial({
-    map: texture,
-    transparent: true,
-    depthWrite: false,
-    roughness: 0.9,
-    metalness: 0,
-    side: THREE.DoubleSide,
-  });
-  brandMaterial.name = 'Original_prime_decal';
+  const brandMaterial = primeDecal();
   for (const sign of [-1, 1]) {
     const brand = part(
       new THREE.PlaneGeometry(4.42, 1.73),
@@ -626,85 +502,20 @@ export function createStepVan() {
     );
     if (sign < 0) brand.rotation.y = Math.PI;
   }
-  const rearLabel = document.createElement('canvas');
-  rearLabel.width = 512;
-  rearLabel.height = 256;
-  const rearCtx = rearLabel.getContext('2d');
-  rearCtx.fillStyle = '#f5f7fa';
-  rearCtx.font = '700 80px Inter, Arial, sans-serif';
-  rearCtx.textAlign = 'center';
-  rearCtx.fillText('amazon', 256, 123);
-  rearCtx.strokeStyle = '#21c2e5';
-  rearCtx.lineWidth = 8;
-  rearCtx.lineCap = 'round';
-  rearCtx.beginPath();
-  rearCtx.moveTo(151, 146);
-  rearCtx.quadraticCurveTo(235, 188, 305, 146);
-  rearCtx.stroke();
-  rearCtx.beginPath();
-  rearCtx.moveTo(281, 143);
-  rearCtx.lineTo(310, 140);
-  rearCtx.lineTo(304, 163);
-  rearCtx.stroke();
-  const rearTexture = new THREE.CanvasTexture(rearLabel);
-  rearTexture.colorSpace = THREE.SRGBColorSpace;
-  const rearMaterial = new THREE.MeshStandardMaterial({
-    map: rearTexture,
-    transparent: true,
-    depthWrite: false,
-    roughness: 0.9,
-    side: THREE.DoubleSide,
-  });
-  rearMaterial.name = 'Original_amazon_rear_decal';
   const rearBrand = part(
     new THREE.PlaneGeometry(0.9, 0.45),
-    rearMaterial,
+    amazonDecal('Original_amazon_rear_decal'),
     3.916,
     2.27,
     0,
     'Small rear Amazon graphic',
   );
   rearBrand.rotation.y = Math.PI / 2;
-  // Merge opaque components by material for a small number of draw calls.
-  van.updateMatrixWorld(true);
-  const buckets = new Map();
-  const keep = [];
-  for (const mesh of [...van.children]) {
-    if (mesh.material.transparent) {
-      keep.push(mesh);
-      continue;
-    }
-    const key = mesh.material.name + ':' + mesh.material.side;
-    if (!buckets.has(key)) buckets.set(key, { material: mesh.material, geometries: [] });
-    let geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-    if (geometry.index) geometry = geometry.toNonIndexed();
-    if (!geometry.attributes.uv)
-      geometry.setAttribute(
-        'uv',
-        new THREE.Float32BufferAttribute(
-          new Float32Array(geometry.attributes.position.count * 2),
-          2,
-        ),
-      );
-    buckets.get(key).geometries.push(geometry);
-  }
-  van.clear();
-  for (const { material, geometries } of buckets.values()) {
-    const merged = mergeGeometries(geometries, false);
-    const indexed = mergeVertices(merged, 1e-5);
-    merged.dispose();
-    const mesh = new THREE.Mesh(indexed, material);
-    mesh.name = 'Stepvan_' + material.name;
-    van.add(mesh);
-    geometries.forEach((g) => g.dispose());
-  }
-  keep.forEach((mesh) => van.add(mesh));
-  van.userData = {
+  return finish(van, 'Stepvan_', {
     author: 'Dispatch',
     source:
       'Original procedural mesh, modeled from four front, rear, passenger and driver photo references supplied by the user',
     units: 'metres',
     style: 'Simplified Freightliner / Utilimaster-inspired step van',
-  };
-  return van;
+  });
 }
