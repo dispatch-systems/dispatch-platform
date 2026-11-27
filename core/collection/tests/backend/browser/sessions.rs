@@ -1,6 +1,7 @@
 //! A live reader's browsers close as it stops reading, each on its own: one whose worker is
 //! busy, as while its browser still starts, is closed to its hook at once and holds up no other
-//! DSP's close.
+//! DSP's close. A job reading with a saved session that finds no browser free for a page lets
+//! its session go.
 use super::*;
 use crate::testing;
 
@@ -8,6 +9,16 @@ const READER: &str = "probe.routes";
 
 /// A reader's browser for `dsp`, registered as `Reading::browser` registers one.
 fn opened(state: &State, dsp: &str) -> Arc<Session> {
+    registered(state, dsp, Some(READER), true)
+}
+/// A ready session for `dsp`, opened by `reader` or else a job, registered as a start
+/// registers one.
+fn registered(
+    state: &State,
+    dsp: &str,
+    reader: Option<&'static str>,
+    browserless: bool,
+) -> Arc<Session> {
     let provider = Provider::new("probe_site");
     let (cancel, _) = watch::channel(false);
     let session = Arc::new(Session {
@@ -29,12 +40,12 @@ fn opened(state: &State, dsp: &str) -> Arc<Session> {
         worker: AsyncMutex::new(None),
         commands: tokio::sync::Semaphore::new(32),
         cancel,
-        browserless: AtomicBool::new(true),
+        browserless: AtomicBool::new(browserless),
         saved: Mutex::new(None),
         started: std::time::Instant::now(),
         last_used: Mutex::new(std::time::Instant::now()),
         collecting: std::sync::atomic::AtomicBool::new(true),
-        reader: Some(READER),
+        reader,
         credential_lease: Mutex::new(Some(tempfile::tempfile().unwrap())),
     });
     let mut sessions = state.browsers.sessions.lock().unwrap();
@@ -65,4 +76,26 @@ async fn a_readers_browser_still_starting_holds_up_no_other_dsps_close() {
     drop(worker);
     tokio::time::sleep(Duration::from_millis(1)).await;
     assert!(!leased(&starting));
+}
+
+#[tokio::test]
+async fn a_saved_sessions_job_finding_no_browser_free_for_a_page_lets_its_session_go() {
+    testing::install(&[], &[]);
+    let (_root, store) = testing::store();
+    let state = State::new(store.config.clone()).unwrap();
+    // Other DSPs' jobs hold every browser the server runs.
+    for n in 0..state.config.browser_capacity {
+        registered(&state, &format!("dsp_busy_{n}"), None, false);
+    }
+    let job = registered(&state, "dsp_saved", None, true);
+    job.became(SavedSession::Browserless);
+    let authority = ProviderAuthority::Job {
+        id: "job_saved".into(),
+        owner: "worker".into(),
+    };
+    let refused = state.browser_for(&job, &authority).await.unwrap_err();
+    // The job goes back to wait for a browser: its next start finds no session left busy.
+    assert!(state.browsers.get_for("dsp_saved", job.provider).is_none());
+    assert!(job.closed());
+    assert_eq!(refused.code, "browser_capacity_busy");
 }

@@ -172,15 +172,13 @@ test(
     // browser: the console page read once with no sign-in, and the check's company list
     // serving the collection too.
     const before = { ...seen, fleet: seen.fleet.length };
-    await collect('fleet-2');
+    const [queued] = await collect('fleet-2');
     assert.equal(seen.signIns, before.signIns);
     assert.equal(seen.landings, before.landings);
     assert.equal(seen.consoles, before.consoles + 1);
     assert.equal(seen.companies, before.companies + 1);
-    const job = (await owner.get('/api/dsp/jobs')).value
-      .filter((j: any) => j.kind === 'cortex.vans.collect')
-      .sort((a: any, b: any) => a.createdAt.localeCompare(b.createdAt))
-      .at(-1);
+    // Vans lists no jobs of its own: the platform's list holds every DSP's.
+    const job = (await owner.read('/api/platform/jobs')).find((j: any) => j.id === queued.id);
     assert.equal(job.metrics.at(-1).savedSession, 'browserless');
     assert.equal(job.metrics.at(-1).memorySamples, 0, 'No browser ran to be measured');
     const pages = seen.fleet.slice(before.fleet);
@@ -207,8 +205,8 @@ test(
       { vin: '7FCTGAAA1NN000214', name: NAME, status: 'ACTIVE', listed: 1 },
     ]);
 
-    // A roster job's new browser also reads the company list in its check alone, then the
-    // company's roster and everyone it offboarded.
+    // A roster job also reads the company list in its check alone, then the company's roster
+    // and everyone it offboarded.
     const roster = { ...seen, roster: seen.roster.length };
     await collectNow(owner, 'associates', 'roster-1', 120000);
     assert.equal(seen.signIns, roster.signIns);

@@ -423,7 +423,8 @@ test(
     assert.equal((await job(foreign)).metrics.at(-1).savedSession, 'page_needed');
 
     // New credentials forget what discovery kept, and the session the old ones saved: the
-    // next job finds the station again, from the session the new sign-in saved.
+    // next job finds the station again, going on in the browser the new sign-in left, as the
+    // first job did.
     const resaved = await owner.post('/api/dsp/connections/cortex', {
       username: 'fixture@example.test',
       password: 'fixture-password',
@@ -434,7 +435,7 @@ test(
     const resavedSession = fs.readFileSync(sessions, 'utf8');
     const renewed = await collect('week-37-again', '2026-W37');
     assert.ok(seen.discovery > forgotten);
-    assert.equal((await job(renewed)).metrics.at(-1).savedSession, 'page_needed');
+    assert.equal((await job(renewed)).metrics.at(-1).savedSession, undefined);
     // Kept encrypted: neither a cookie's name nor its value reads in the file.
     for (const needle of ['authenticated', `g${generation}x`])
       assert.equal(resavedSession.includes(needle), false, needle);
