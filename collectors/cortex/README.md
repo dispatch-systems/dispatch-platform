@@ -91,5 +91,7 @@ reports at a time. The roster's photos are shrunk as they download, to at most 4
 pixels on the long side as a JPEG, a JPEG read straight at a fraction of its size, four at a time
 away from the threads that serve requests, each a little more than a core. One collection brings
 every photo the DSP lacks, sixteen at a time, and stops at the first the application refuses the
-session for or a throttle outlasts; a photo due a refresh is asked for by its ETag, so only a
-changed one comes again.
+session for (a 401, or sixteen 403s in a row) or a throttle outlasts. A 403 at one address alone
+and Amazon's placeholder are photos Amazon serves none of, which an offboarded associate's
+address isn't asked for again for a month; a photo due a refresh is asked for by its ETag, so
+only a changed one comes again.
