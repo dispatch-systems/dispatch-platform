@@ -99,7 +99,9 @@ impl Store {
         Ok(deadlines)
     }
     /// What the rule `row`'s pending run queues, unless that run was queued already, as when
-    /// the server stopped after queueing it and before moving the rule on.
+    /// the server stopped after queueing it and before moving the rule on. It waits while a
+    /// job from one of its providers is still to finish, so that one provider's collections
+    /// finish before another recurring batch of its enters the queue.
     fn due_requests(&self, id: &str, row: &ScheduleRow) -> Result<Vec<(String, Provider, Value)>> {
         let pending = row.next_run.as_deref().unwrap_or("");
         let key = format!("schedule:{}:{}:", row.id, pending);
@@ -114,7 +116,16 @@ impl Store {
             return Ok(vec![]);
         }
         self.check_schedule_sources(id, row.collection)?;
-        self.scheduled_requests(id, row.collection, &key)
+        let requests = self.scheduled_requests(id, row.collection, &key)?;
+        let providers = requests.iter().map(|(_, provider, _)| *provider);
+        ensure(
+            self.jobs
+                .one(ACTIVE_JOB, [id, JobKind::of(providers)?.as_str()])?
+                .is_none(),
+            "sync_in_progress",
+            409,
+        )?;
+        Ok(requests)
     }
     /// Queues the runs of the DSP's rules that are due, all in one batch, so the collections
     /// due together run together, and moves each rule on to its next run. A rule that can't
@@ -174,15 +185,7 @@ impl Store {
             }
         }
         if !requests.is_empty() {
-            // Other collections finish before another recurring batch enters the queue.
-            let started = ensure(
-                self.jobs
-                    .one(ACTIVE_JOB, [id, JobKind::known()?.as_str()])?
-                    .is_none(),
-                "sync_in_progress",
-                409,
-            )
-            .and_then(|()| self.enqueue_batch(id, None, &requests));
+            let started = self.enqueue_batch(id, None, &requests);
             let queued = queueing.into_iter().map(|(row, _)| row);
             match started {
                 Ok(_) => moved.extend(queued),
