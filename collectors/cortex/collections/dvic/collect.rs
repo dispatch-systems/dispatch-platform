@@ -4,6 +4,7 @@ use crate as cortex;
 use crate::{
     connection::{
         Driver,
+        gate::Turn,
         performance::{Api, Found, mismatched},
     },
     discovery::Scope,
@@ -166,12 +167,14 @@ fn listing(
 }
 
 /// Reports downloaded at once: two weeks' fourteen downloaded fourteen at a time in about
-/// a third of the time four at a time took.
+/// a third of the time four at a time took. Weeks listed at once at most, as many in flight
+/// as the account's gate admits.
 const DOWNLOADS: usize = 14;
 
-/// One week's listing, as the overview page asks for it.
+/// One week's listing, as the overview page asks for it, at the account's gate.
 async fn list_week(
     http: &Http,
+    turn: &Turn,
     api: &Api,
     station: &str,
     week: &str,
@@ -187,14 +190,13 @@ async fn list_week(
         .append_pair("timeFrame", "Weekly")
         .append_pair("from", week)
         .append_pair("to", week);
-    let data = http
-        .json(
-            url.as_str(),
-            &format!("{origin}/performance"),
-            2 * 1024 * 1024,
-        )
-        .await
-        .map_err(refusal)?;
+    let referer = format!("{origin}/performance");
+    let data = turn
+        .ask("/performance/api/getData", || {
+            http.json_with_status(url.as_str(), &referer, 2 * 1024 * 1024)
+        })
+        .await?
+        .map_err(|error| refusal(error.refusal))?;
     listing(data, week, &api.dsp, station, origin, metrics)
 }
 /// One listed report, downloaded only when DVIC lacks it or it changed, and read.
@@ -287,10 +289,12 @@ impl Driver {
         self.dvic_read(request, scope, listing, started_at, run)
             .await
     }
-    /// Every week's listing, read together, in the weeks' order.
+    /// Every week's listing, read together as the account's gate admits, in the weeks'
+    /// order.
     async fn dvic_listing(
         &self,
         http: &Http,
+        turn: &Turn,
         api: &Api,
         request: &Request,
         run: &Run<'_>,
@@ -298,13 +302,24 @@ impl Driver {
         let weeks: Vec<_> = request
             .weeks
             .iter()
-            .map(|week| list_week(http, api, &request.station, week, &self.origin, run.metrics))
+            .map(|week| {
+                list_week(
+                    http,
+                    turn,
+                    api,
+                    &request.station,
+                    week,
+                    &self.origin,
+                    run.metrics,
+                )
+            })
             .collect();
         let lists: Vec<_> = stream::iter(weeks).buffered(DOWNLOADS).collect().await;
         let mut listed = Vec::new();
         for list in lists {
             listed.extend(list?);
         }
+        turn.finished();
         Ok(listed)
     }
     /// Where the reports are, which DVIC already holds, and every week's listing.
@@ -341,7 +356,8 @@ impl Driver {
         let listed = loop {
             // The browser's cookies as they are now: the overview may have renewed them.
             let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
-            match self.dvic_listing(&http, &api, request, run).await {
+            let turn = Turn::of(&self.origin, &scope.provider);
+            match self.dvic_listing(&http, &turn, &api, request, run).await {
                 Ok(listed) => break listed,
                 // Nothing answers where the API last answered, or it answers as to no one
                 // signed in: the overview names it again, or shows the sign-out itself.

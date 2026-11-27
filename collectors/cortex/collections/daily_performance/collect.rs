@@ -21,8 +21,8 @@ use jiff::{ToSpan, civil::Date};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// Bounded dataset reads across runs of days. Every sibling read drains before its
-/// reply is released. Inspect dataset requests with the `probe_scorecard_api` operator probe.
+/// Bounded dataset reads across runs of days, as many in flight as the account's gate
+/// admits. Every sibling read drains before its reply is released. Inspect dataset requests with the `probe_scorecard_api` operator probe.
 const LANES: usize = 22;
 
 /// The most days one range reads: a week, as read side by side with each day's own reads.
