@@ -724,6 +724,10 @@
         {
           "id": 3,
           "name": "photo_etags"
+        },
+        {
+          "id": 4,
+          "name": "unserved_photos"
         }
       ]
     },
@@ -775,7 +779,8 @@
       "driver_profiles": [
         "associates",
         "photos",
-        "roster_runs"
+        "roster_runs",
+        "unserved_photos"
       ]
     },
     "subfeatures": []

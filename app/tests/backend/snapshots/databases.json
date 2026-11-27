@@ -222,7 +222,8 @@
     "migrations": [
       [1, "baseline", "7883df84ca01f041"],
       [2, "drop_settings", "c8a26bc3352c0fed"],
-      [3, "photo_etags", "code"]
+      [3, "photo_etags", "code"],
+      [4, "unserved_photos", "6d32f79035f197e2"]
     ]
   },
   {
