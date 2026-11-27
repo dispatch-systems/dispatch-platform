@@ -15,7 +15,8 @@ use dispatch_core::{
     server::startup,
 };
 use dispatch_cortex::routes::{
-    Capture, Collection, MAX_CAPTURE_BYTES, Mode, Request, add_capture_bytes,
+    Capture, Collection, Detail, ItineraryCapture, MAX_CAPTURE_BYTES, Mode, Request,
+    add_capture_bytes,
 };
 use dispatch_cortex::{
     discovery::CollectionRequest,
@@ -179,6 +180,28 @@ pub(super) async fn publish_edited(
     // The executor publishes in the same transaction that finishes the job.
     testing::set_job_status(db, &job, "succeeded").unwrap();
     job
+}
+/// `read` with another itinerary of `driver`'s, begun an hour after the day's first, whose response
+/// shows them on `phone`.
+pub(super) fn later(read: &mut Capture, driver: &str, phone: &str) {
+    let id = format!("itinerary-{}", read.itineraries.len() + 1);
+    let mut summary = read.summaries["itinerarySummaries"][0].clone();
+    let began = summary["itineraryStartTime"].as_i64().unwrap() + 3_600_000;
+    summary["itineraryId"] = json!(id);
+    summary["transporterId"] = json!(driver);
+    summary["itineraryStartTime"] = json!(began);
+    let summaries = read.summaries["itinerarySummaries"].as_array_mut();
+    summaries.unwrap().push(summary);
+    let mut response: serde_json::Value =
+        serde_json::from_str(&read.itineraries[0].detail.text().unwrap()).unwrap();
+    response["itineraryDetails"]["itineraryId"] = json!(id);
+    response["itineraryDetails"]["transporterId"] = json!(driver);
+    response["transporters"] = json!([{"transporterId":driver,"workPhoneNumber":phone}]);
+    read.itineraries.push(ItineraryCapture {
+        id,
+        transporter_id: driver.into(),
+        detail: Detail::of_text(&response.to_string()).unwrap(),
+    });
 }
 pub(super) fn request(mode: Mode) -> Request {
     Request {

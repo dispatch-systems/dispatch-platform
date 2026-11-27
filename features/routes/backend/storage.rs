@@ -138,11 +138,11 @@ pub trait RoutesStore {
     ) -> Result<Value>;
     fn routes_schedule_ready(&self, id: &str) -> Result<()>;
     fn routes_jobs(&self, id: &str, mode: Mode) -> Result<Vec<(String, Value)>>;
-    fn stage_routes_itinerary(
+    fn stage_routes_itineraries(
         &self,
         id: &str,
         staged: &Staged,
-        itinerary: &PreparedItinerary,
+        itineraries: &[PreparedItinerary],
     ) -> Result<()>;
     fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<bool>;
     fn expire_routes(&self, id: &str) -> Result<usize>;
@@ -185,13 +185,13 @@ impl RoutesStore for Store {
     fn routes_jobs(&self, id: &str, mode: Mode) -> Result<Vec<(String, Value)>> {
         commands::routes_jobs(self, id, mode)
     }
-    fn stage_routes_itinerary(
+    fn stage_routes_itineraries(
         &self,
         id: &str,
         staged: &Staged,
-        itinerary: &PreparedItinerary,
+        itineraries: &[PreparedItinerary],
     ) -> Result<()> {
-        commands::stage_routes_itinerary(self, id, staged, itinerary)
+        commands::stage_routes_itineraries(self, id, staged, itineraries)
     }
     fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<bool> {
         commands::publish_routes(self, id, job, staged)

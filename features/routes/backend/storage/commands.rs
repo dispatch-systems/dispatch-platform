@@ -176,12 +176,12 @@ pub(in crate::backend) fn stage_prepared_routes_start(
     })
 }
 
-/// Adds one shaped itinerary to a staged publication, in one short transaction.
-pub(super) fn stage_routes_itinerary(
+/// Adds shaped itineraries to a staged publication, in order, in one short transaction.
+pub(super) fn stage_routes_itineraries(
     store: &Store,
     id: &str,
     staged: &Staged,
-    itinerary: &PreparedItinerary,
+    itineraries: &[PreparedItinerary],
 ) -> Result<()> {
     let db = store.routes_db(id)?;
     db.transaction(|| {
@@ -194,23 +194,24 @@ pub(super) fn stage_routes_itinerary(
             "routes_capture_invalid",
             502,
         )?;
-        write_itinerary(&db, Writes::Staged, &staged.publication, &staged.day, itinerary)?;
-        write_shared(&db, Writes::Staged, &staged.publication, &staged.day, itinerary)?;
-        write_raw(
-            &db,
-            Writes::Staged,
-            &staged.publication,
-            &format!("itinerary:{}", itinerary.id),
-            itinerary.raw_bytes,
-            &itinerary.raw,
-        )?;
+        let (mut stops, mut tasks) = (0, 0);
+        for itinerary in itineraries {
+            write_itinerary(&db, Writes::Staged, &staged.publication, &staged.day, itinerary)?;
+            write_shared(&db, Writes::Staged, &staged.publication, &staged.day, itinerary)?;
+            write_raw(
+                &db,
+                Writes::Staged,
+                &staged.publication,
+                &format!("itinerary:{}", itinerary.id),
+                itinerary.raw_bytes,
+                &itinerary.raw,
+            )?;
+            stops += itinerary.stops.len();
+            tasks += itinerary.tasks.len();
+        }
         db.exec(
             "UPDATE route_publications SET stop_count=stop_count+?,task_count=task_count+? WHERE id=?",
-            params![
-                itinerary.stops.len() as i64,
-                itinerary.tasks.len() as i64,
-                staged.publication
-            ],
+            params![stops as i64, tasks as i64, staged.publication],
         )?;
         Ok(())
     })
