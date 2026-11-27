@@ -35,6 +35,37 @@ fn days_group_into_runs_of_consecutive_days() {
     );
 }
 
+// An attempt reads each day on its own only once an earlier one met a range it couldn't read
+// whole, whatever failed between; one after any other failure reads ranges again.
+#[test]
+fn only_a_range_that_failed_sends_later_attempts_a_day_at_a_time() {
+    let attempt = |number: i64, detail: Option<&str>| {
+        let mut metrics = Metrics::new(&json!({ "attempt": number }));
+        metrics.detail = detail.map(str::to_owned);
+        metrics
+    };
+    // The attempt running now is not an earlier one.
+    assert!(!range_failed_before(&[attempt(1, Some(RANGE_UNSPLIT))], 1));
+    assert!(!range_failed_before(
+        &[attempt(1, Some("http_status")), attempt(2, None)],
+        2
+    ));
+    for range in [RANGE_TOO_LARGE, RANGE_UNSPLIT] {
+        assert!(range_failed_before(
+            &[attempt(1, Some(range)), attempt(2, None)],
+            2
+        ));
+        assert!(range_failed_before(
+            &[
+                attempt(1, Some(range)),
+                attempt(2, Some("http_status")),
+                attempt(3, None)
+            ],
+            3
+        ));
+    }
+}
+
 // A range's rows go back to the days they name, every day of the range answered, even one
 // with none; the thresholds, which name no station or day, answer every day alike; a
 // station's row naming no day, or a day outside the range, can't be split; one day's own

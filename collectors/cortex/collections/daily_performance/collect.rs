@@ -1,7 +1,7 @@
 //! The days a collection was asked for over the shared authenticated performance transport.
-//! On a job's first attempt each run of up to a week of consecutive days is one read per
-//! dataset, its rows given back to their days; a retry, whatever the first attempt met,
-//! reads each day on its own as a job of one day always did.
+//! Each run of up to a week of consecutive days is one read per dataset, its rows given back
+//! to their days; once an attempt met a run it couldn't read whole, the job's next attempts
+//! read each day on its own as a job of one day always did.
 use super::{Capture, Collection, DATASETS, Days, Request};
 use crate::{
     codes,
@@ -12,7 +12,11 @@ use crate::{
     discovery::Scope,
     performance::{Dataset, DatasetCapture, Read},
 };
-use dispatch_core::{Error, Result, collection::browser::Run, db::now};
+use dispatch_core::{
+    Error, Result,
+    collection::{browser::Run, metrics::Metrics},
+    db::now,
+};
 use jiff::{ToSpan, civil::Date};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -23,6 +27,10 @@ const LANES: usize = 22;
 
 /// The most days one range reads: a week, as read side by side with each day's own reads.
 const RANGE_DAYS: usize = 7;
+/// What an attempt's metrics name when a range it read was too large, or couldn't be told
+/// apart into its days.
+const RANGE_TOO_LARGE: &str = "daily_range_too_large";
+const RANGE_UNSPLIT: &str = "daily_range_unsplit";
 
 /// The request's days as runs of consecutive days of at most a week, first and last of each.
 fn runs(dates: &[String]) -> Result<Vec<(String, String)>> {
@@ -44,6 +52,26 @@ fn runs(dates: &[String]) -> Result<Vec<(String, String)>> {
         .into_iter()
         .map(|(first, last, ..)| (first, last))
         .collect())
+}
+/// Whether one of the job's attempts before `attempt`, as `metrics` has them, met a range it
+/// couldn't read whole: the range would meet it again, where each day on its own reads.
+fn range_failed_before(metrics: &[Metrics], attempt: i64) -> bool {
+    metrics.iter().any(|earlier| {
+        earlier.attempt < attempt
+            && earlier
+                .detail
+                .as_deref()
+                .is_some_and(|detail| [RANGE_TOO_LARGE, RANGE_UNSPLIT].contains(&detail))
+    })
+}
+/// Whether an earlier attempt of the job met a range it couldn't read whole.
+async fn range_failed(run: &Run<'_>) -> Result<bool> {
+    if run.attempt <= 1 {
+        return Ok(false);
+    }
+    let job = run.job.to_owned();
+    let metrics = run.state.read(move |db| db.metrics(&job)).await?;
+    Ok(range_failed_before(&metrics, run.attempt))
 }
 /// One dataset's rows over the days `from` to `to`, as each day's own read answers them.
 /// One day's read is that day's. A dataset read as a range gives each day the rows naming
@@ -106,16 +134,15 @@ impl Driver {
         run: &Run<'_>,
     ) -> Result<(Days, Scope)> {
         let started_at = now();
-        // A first attempt reads ranges; a retry, which may follow a range that couldn't be
-        // split, reads each day on its own.
-        let ranges = if run.attempt <= 1 {
-            runs(&request.dates)?
-        } else {
+        // Ranges, unless an earlier attempt met one it couldn't read whole.
+        let ranges = if range_failed(run).await? {
             request
                 .dates
                 .iter()
                 .map(|d| (d.clone(), d.clone()))
                 .collect()
+        } else {
+            runs(&request.dates)?
         };
         let reads: Vec<Read> = ranges
             .iter()
@@ -132,9 +159,9 @@ impl Driver {
             .read_performance(scope, found, &request.dsp_abbreviation, &reads, LANES, run)
             .await
             .map_err(|error| {
-                // A range too large to read is read a day at a time by the retry.
+                // A range too large to read is read a day at a time by the retries.
                 if ranged && error.is_any(&[codes::PERFORMANCE_SOURCE_TOO_LARGE]) {
-                    run.metrics.detail("daily_range_too_large");
+                    run.metrics.detail(RANGE_TOO_LARGE);
                     Error::new(codes::CORTEX_SOURCE_CHANGED.as_str(), 502)
                 } else {
                     error
@@ -148,7 +175,7 @@ impl Driver {
         for (asked, read) in reads.iter().zip(datasets) {
             let split =
                 split(asked.dataset, &read.rows, &read.from, &read.to).ok_or_else(|| {
-                    run.metrics.detail("daily_range_unsplit");
+                    run.metrics.detail(RANGE_UNSPLIT);
                     Error::new(codes::CORTEX_SOURCE_CHANGED.as_str(), 502)
                 })?;
             for (date, rows) in split {
