@@ -30,7 +30,7 @@ use dispatch_core::{
 };
 use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Mutex};
 use tokio::sync::Semaphore;
 
 /// Where S3 serves the photos the application redirects to.
@@ -175,10 +175,58 @@ enum Missed {
     Refused(&'static str),
     /// This photo alone.
     Skipped(&'static str),
-    /// Amazon serves no photo at this address: its placeholder (`photo_placeholder`), or a
-    /// refusal of this address alone (`photo_forbidden`), which a session Amazon ended would
-    /// give every photo instead.
+    /// Amazon serves no photo at this address: its placeholder.
     Unserved(&'static str),
+    /// Cortex refused this address with a 403, which `Refusals` tells apart from a session
+    /// Amazon ended.
+    Forbidden,
+}
+
+/// The addresses Cortex refuses with a 403, counted as its redirects answer. Amazon refuses
+/// some offboarded associates' addresses alone, but a session it ended refuses every one: as
+/// many refused in a row as are asked at once are that. Any other answer from Cortex makes
+/// the refusals before it their addresses' own.
+#[derive(Default)]
+struct Refusals(Mutex<Refused>);
+#[derive(Default)]
+struct Refused {
+    /// Refused in a row since Cortex last answered otherwise.
+    run: Vec<String>,
+    /// Refused with Cortex answering otherwise after.
+    alone: Vec<String>,
+    /// A run long enough to be a session Amazon ended.
+    ended: bool,
+}
+impl Refusals {
+    /// Cortex answered for an address otherwise than with a 403.
+    fn answered(&self) {
+        let mut refused = self.0.lock().expect("photo refusals");
+        let run = std::mem::take(&mut refused.run);
+        refused.alone.extend(run);
+    }
+    /// Cortex refused `address` with a 403: false once that ends the session.
+    fn refused(&self, address: &str) -> bool {
+        let mut refused = self.0.lock().expect("photo refusals");
+        if refused.ended {
+            return false;
+        }
+        refused.run.push(address.to_owned());
+        if refused.run.len() >= LANES {
+            refused.ended = true;
+            refused.run.clear();
+        }
+        !refused.ended
+    }
+    /// The addresses Cortex refused alone; with `whole`, a read that ran to its end or to the
+    /// photos it can hold, the last run of refusals too, which no session's end followed.
+    fn alone(self, whole: bool) -> Vec<String> {
+        let refused = self.0.into_inner().expect("photo refusals");
+        let mut alone = refused.alone;
+        if whole && !refused.ended {
+            alone.extend(refused.run);
+        }
+        alone
+    }
 }
 
 /// What the photos asked for came to, as they answer.
@@ -188,9 +236,8 @@ struct Tally {
     held: usize,
     unchanged: Vec<String>,
     unserved: Vec<String>,
-    /// The addresses refused in a row since a photo last answered otherwise: as many as are
-    /// asked at once are a session Amazon ended, not their photos.
-    refused: Vec<String>,
+    /// Whether a refusal ended the read.
+    refused: bool,
 }
 impl Tally {
     /// Counts the answer for `address`, the `index`th asked for: false once no more are asked,
@@ -203,25 +250,6 @@ impl Tally {
         metrics: &Recorder,
     ) -> bool {
         match fetched {
-            Err(Missed::Unserved(label @ "photo_forbidden")) => {
-                metrics.detail(label);
-                self.refused.push(address.to_owned());
-                if self.refused.len() >= LANES {
-                    metrics.detail("http_signed_out");
-                    self.refused.clear();
-                    return false;
-                }
-                return true;
-            }
-            Err(Missed::Refused(label)) => {
-                metrics.detail(label);
-                self.refused.clear();
-                return false;
-            }
-            // Refusals before an answer of another kind were their addresses' alone.
-            _ => self.unserved.append(&mut self.refused),
-        }
-        match fetched {
             Ok(Some(photo)) => {
                 self.held += photo.data.len();
                 self.photos.push((index, photo));
@@ -231,15 +259,41 @@ impl Tally {
                 metrics.detail(label);
                 self.unserved.push(address.to_owned());
             }
-            Err(Missed::Skipped(label) | Missed::Refused(label)) => metrics.detail(label),
+            // Its address is the refusals' to keep or not.
+            Err(Missed::Forbidden) => metrics.detail("photo_forbidden"),
+            Err(Missed::Skipped(label)) => metrics.detail(label),
+            Err(Missed::Refused(label)) => {
+                metrics.detail(label);
+                self.refused = true;
+                return false;
+            }
         }
         self.held < PHOTOS_BUDGET
     }
-    /// Once no more answers come: refusals since the last other answer were theirs alone.
-    fn finish(mut self) -> Self {
-        self.unserved.append(&mut self.refused);
-        self
+}
+/// The photos to ask for: active associates' first, then the rest, each address once, with
+/// the ETag of the version kept when it is due a refresh. None that stands, nor an
+/// offboarded associate's Amazon lately served nothing at.
+fn wanted<'a>(
+    associates: &'a [Associate],
+    kept: &'a KeptPhotos,
+) -> Vec<(&'a str, Option<&'a str>)> {
+    let mut wanted: Vec<(&str, Option<&str>)> = Vec::new();
+    for active in [true, false] {
+        for associate in associates {
+            if let Some(address) = &associate.photo
+                && (associate.status == "ACTIVE") == active
+                && !kept.standing.contains(address)
+                // An address Amazon lately served nothing at waits only while the roster lists
+                // whoever it names as offboarded.
+                && !(associate.status == "OFFBOARDED" && kept.unserved.contains(address))
+                && !wanted.iter().any(|(wanted, _)| wanted == address)
+            {
+                wanted.push((address, kept.versions.get(address).map(String::as_str)));
+            }
+        }
     }
+    wanted
 }
 /// One photo's bytes and the ETag they were served under, or None when the photo host still
 /// serves the version `etag` names: where the application redirects its address, asked at
@@ -249,21 +303,39 @@ async fn photo(
     http: &Http,
     downloads: &Http,
     turn: &Turn,
+    refusals: &Refusals,
     origin: &str,
     referer: &str,
     address: &str,
     etag: Option<&str>,
 ) -> std::result::Result<Option<(Vec<u8>, Option<String>)>, Missed> {
-    let address = format!("{origin}{address}");
-    let source = turn
-        .ask("/workforce photo", || http.location(&address, referer))
+    let url = format!("{origin}{address}");
+    let answered = turn
+        .ask("/workforce photo", || http.location(&url, referer))
         .await
-        .map_err(|_| Missed::Refused("photo_throttled"))?
-        .map_err(|error| match error.refusal {
-            Refusal::Unavailable => Missed::Refused("photo_unavailable"),
-            Refusal::Unreadable("http_signed_out") => Missed::Unserved("photo_forbidden"),
-            Refusal::Unreadable(label) => Missed::Skipped(label),
-        })?;
+        .map_err(|_| Missed::Refused("photo_throttled"))?;
+    let source = match answered {
+        Err(error) if error.status == Some(403) => {
+            return Err(match refusals.refused(address) {
+                true => Missed::Forbidden,
+                false => Missed::Refused("http_signed_out"),
+            });
+        }
+        Err(error) => {
+            return Err(match error.refusal {
+                Refusal::Unavailable => Missed::Refused("photo_unavailable"),
+                Refusal::Unreadable(label @ "http_signed_out") => Missed::Refused(label),
+                Refusal::Unreadable(label) => {
+                    refusals.answered();
+                    Missed::Skipped(label)
+                }
+            });
+        }
+        Ok(source) => {
+            refusals.answered();
+            source
+        }
+    };
     if source.host_str() == Some(PLACEHOLDER_HOST) && source.path().ends_with(PLACEHOLDER) {
         return Err(Missed::Unserved("photo_placeholder"));
     }
@@ -344,21 +416,7 @@ impl Driver {
         self.stop_browser();
         let associates = everyone(roster(&listed)?, rows(&offboarded)?)?;
         let kept = kept_photos(run, &company_id).await?;
-        // Active associates' photos first, then the rest; each address once, with the ETag of
-        // the version kept when it is due a refresh.
-        let mut wanted: Vec<(&str, Option<&str>)> = Vec::new();
-        for active in [true, false] {
-            for associate in &associates {
-                if let Some(address) = &associate.photo
-                    && (associate.status == "ACTIVE") == active
-                    && !kept.standing.contains(address)
-                    && !kept.unserved.contains(address)
-                    && !wanted.iter().any(|(wanted, _)| wanted == address)
-                {
-                    wanted.push((address, kept.versions.get(address).map(String::as_str)));
-                }
-            }
-        }
+        let wanted = wanted(&associates, &kept);
         let total = wanted.len();
         if total > 0 {
             run.progress(50, format!("Downloading photos (0/{total})"))
@@ -366,15 +424,19 @@ impl Driver {
         }
         let downloads = Http::detached(&self.origin, &cortex::PHOTO_HOSTS)?;
         let shrinking = Semaphore::new(SHRINKING);
-        let (http, downloads, turn, shrinking) = (&http, &downloads, &turn, &shrinking);
+        let refusals = Refusals::default();
+        let (http, downloads, turn, shrinking, refused) =
+            (&http, &downloads, &turn, &shrinking, &refusals);
         let (origin, referer) = (self.origin.as_str(), referer.as_str());
         let mut fetching = stream::iter(0..total)
             .map(|index| {
                 let (address, etag) = wanted[index];
                 async move {
                     let fetched = async {
-                        let Some((bytes, etag)) =
-                            photo(http, downloads, turn, origin, referer, address, etag).await?
+                        let Some((bytes, etag)) = photo(
+                            http, downloads, turn, refused, origin, referer, address, etag,
+                        )
+                        .await?
                         else {
                             return Ok(None);
                         };
@@ -406,9 +468,11 @@ impl Driver {
         let Tally {
             mut photos,
             unchanged,
-            unserved,
+            mut unserved,
+            refused,
             ..
-        } = tally.finish();
+        } = tally;
+        unserved.extend(refusals.alone(!refused));
         photos.sort_by_key(|(index, _)| *index);
         run.progress(95, "Validating the roster".into()).await?;
         let capture = Capture {

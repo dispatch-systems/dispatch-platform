@@ -218,13 +218,19 @@ impl DriverProfilesStore for Store {
                     serde_json::to_string(&capture.photos_unserved)?
                 ],
             )?;
-            // An address Amazon served nothing at goes once a photo is kept for it, or once the
-            // roster no longer lists whoever it names.
+            // An address Amazon served nothing at goes once Amazon serves a photo there, kept
+            // anew or unchanged, or once the roster no longer lists whoever it names.
+            let served: Vec<&str> = capture
+                .photos
+                .iter()
+                .map(|photo| photo.address.as_str())
+                .chain(capture.photos_unchanged.iter().map(String::as_str))
+                .collect();
             db.exec(
-                "DELETE FROM unserved_photos WHERE address IN (SELECT address FROM photos) OR \
-                 address NOT IN (SELECT photo_address FROM associates WHERE listed=1 AND \
+                "DELETE FROM unserved_photos WHERE address IN (SELECT value FROM json_each(?)) \
+                 OR address NOT IN (SELECT photo_address FROM associates WHERE listed=1 AND \
                  photo_address IS NOT NULL)",
-                [],
+                [serde_json::to_string(&served)?],
             )?;
             db.exec(
                 "INSERT INTO roster_runs(job_id,company_id,collected_at,listed,photos,photos_waiting) \

@@ -119,6 +119,10 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
             get(|| async { Response::builder().status(403).body(Body::empty()).unwrap() }),
         )
         .route(
+            "/workforce/signed-out",
+            get(|| async { Response::builder().status(401).body(Body::empty()).unwrap() }),
+        )
+        .route(
             "/workforce/placeholder",
             get(|| async {
                 Response::builder()
@@ -166,11 +170,13 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
     let http = Http::with_session(&session, &cortex::HOSTS).unwrap();
     let downloads = Http::detached(&origin, &cortex::PHOTO_HOSTS).unwrap();
     let turn = Turn::of(&origin, "c-1", Box::new(|| Box::pin(async { Ok(()) })));
+    let refusals = Refusals::default();
     let fetch = |address: &'static str, etag: Option<&'static str>| {
         photo(
             &http,
             &downloads,
             &turn,
+            &refusals,
             &origin,
             "/workforce",
             address,
@@ -189,7 +195,8 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
         served
     );
     // Only where Amazon serves photos; an answer that isn't a redirect is no photo. Amazon's
-    // placeholder, or a refusal of the one address, is a photo Amazon doesn't serve.
+    // placeholder is a photo Amazon doesn't serve; a 403 is the refusals' to judge, and a 401
+    // a session the application refuses, which would be refused every photo after.
     assert_eq!(
         fetch("/workforce/away", None).await.unwrap_err(),
         Missed::Skipped("photo_redirect_unexpected")
@@ -204,7 +211,11 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
     );
     assert_eq!(
         fetch("/workforce/refused", None).await.unwrap_err(),
-        Missed::Unserved("photo_forbidden")
+        Missed::Forbidden
+    );
+    assert_eq!(
+        fetch("/workforce/signed-out", None).await.unwrap_err(),
+        Missed::Refused("http_signed_out")
     );
     let s3 = url::Url::parse(&format!("https://{PHOTO_HOST}/photo?X-Amz-Expires=180")).unwrap();
     assert!(cortex::PHOTO_HOSTS.allows(&s3));
@@ -280,6 +291,7 @@ async fn photos_ask_cortex_no_more_at_once_than_its_gate_admits_and_wait_out_a_t
     let http = Http::with_session(&session, &cortex::HOSTS).unwrap();
     let downloads = Http::detached(&origin, &cortex::PHOTO_HOSTS).unwrap();
     let turn = Turn::of(&origin, "c-1", Box::new(|| Box::pin(async { Ok(()) })));
+    let refusals = Refusals::default();
     let addresses: Vec<String> = (0..LANES)
         .map(|n| format!("/workforce/photo/{n}"))
         .collect();
@@ -288,6 +300,7 @@ async fn photos_ask_cortex_no_more_at_once_than_its_gate_admits_and_wait_out_a_t
             &http,
             &downloads,
             &turn,
+            &refusals,
             &origin,
             "/workforce",
             address,
@@ -303,46 +316,61 @@ async fn photos_ask_cortex_no_more_at_once_than_its_gate_admits_and_wait_out_a_t
     assert!(stand.most_at_once.load(Ordering::SeqCst) <= 4);
 }
 
-// Amazon refuses some offboarded associates' photo addresses alone: a refusal among photos
-// that answered otherwise is that address's, kept as served nothing, and the rest still come.
-// As many refused in a row as are asked at once are a session Amazon ended: the read stops
-// and none of them is kept as served nothing.
+// Amazon refuses some offboarded associates' photo addresses alone: a 403 with Cortex
+// answering otherwise after is that address's, kept as served nothing, and so is a last run
+// of them once the read ends whole. As many in a row as are asked at once are a session
+// Amazon ended: no more are asked for, and none of that run is kept as served nothing.
 #[test]
-fn a_photo_refused_alone_is_that_photos_and_a_run_of_refusals_ends_the_read() {
-    let metrics = Recorder::new(&json!({}));
-    let photo = |n: usize| {
-        Photo::new(
-            &format!("/workforce/photo/{n}"),
-            b"\xFF\xD8\xFF a jpeg",
-            None,
+fn a_photo_refused_alone_is_that_photos_and_a_run_of_refusals_ends_the_session() {
+    let refusals = Refusals::default();
+    assert!(refusals.refused("/workforce/photo/0"));
+    refusals.answered();
+    assert!(refusals.refused("/workforce/photo/2"));
+    assert_eq!(
+        refusals.alone(true),
+        ["/workforce/photo/0", "/workforce/photo/2"]
+    );
+    let refusals = Refusals::default();
+    assert!(refusals.refused("/workforce/photo/0"));
+    refusals.answered();
+    assert!(refusals.refused("/workforce/photo/2"));
+    // A read a throttle ended can't tell the last run from a session's end.
+    assert_eq!(refusals.alone(false), ["/workforce/photo/0"]);
+    let refusals = Refusals::default();
+    refusals.answered();
+    for n in 0..LANES - 1 {
+        assert!(refusals.refused(&format!("/workforce/photo/{n}")));
+    }
+    assert!(!refusals.refused("/workforce/photo/last"));
+    assert!(!refusals.refused("/workforce/photo/after"));
+    assert!(refusals.alone(true).is_empty());
+}
+
+// An address Amazon lately served nothing at waits only while the roster just read lists
+// whoever it names as offboarded: someone back on the roster is asked for again at once.
+#[test]
+fn a_photo_amazon_served_none_of_waits_only_for_the_offboarded() {
+    let read = |id: &str, status: &str| {
+        Associate::read(
+            json!({"transporter_id":id,"full_name":id,"operational_status":status,
+            "photo_url":format!("/workforce/photo/{id}")}),
         )
         .unwrap()
+        .unwrap()
     };
-    let refused = || Err(Missed::Unserved("photo_forbidden"));
-    let mut tally = Tally::default();
-    assert!(tally.add(0, "/workforce/photo/0", refused(), &metrics));
-    assert!(tally.add(1, "/workforce/photo/1", Ok(Some(photo(1))), &metrics));
-    assert!(tally.add(
-        2,
-        "/workforce/photo/2",
-        Err(Missed::Unserved("photo_placeholder")),
-        &metrics
-    ));
-    assert!(tally.add(3, "/workforce/photo/3", refused(), &metrics));
-    let tally = tally.finish();
-    assert_eq!(tally.photos.len(), 1);
+    let associates = [
+        read("A1", "OFFBOARDED"),
+        read("A2", "ACTIVE"),
+        read("A3", "OFFBOARDED"),
+    ];
+    let kept = KeptPhotos {
+        unserved: ["/workforce/photo/A1", "/workforce/photo/A2"]
+            .map(String::from)
+            .into(),
+        ..KeptPhotos::default()
+    };
     assert_eq!(
-        tally.unserved,
-        [
-            "/workforce/photo/0",
-            "/workforce/photo/2",
-            "/workforce/photo/3"
-        ]
+        wanted(&associates, &kept),
+        [("/workforce/photo/A2", None), ("/workforce/photo/A3", None)]
     );
-    let mut tally = Tally::default();
-    for n in 0..LANES - 1 {
-        assert!(tally.add(n, &format!("/workforce/photo/{n}"), refused(), &metrics));
-    }
-    assert!(!tally.add(LANES, "/workforce/photo/last", refused(), &metrics));
-    assert!(tally.finish().unserved.is_empty());
 }

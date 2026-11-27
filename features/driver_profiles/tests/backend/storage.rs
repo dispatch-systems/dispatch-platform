@@ -150,6 +150,27 @@ fn an_address_amazon_serves_no_photo_at_waits_a_month_for_the_offboarded_alone()
             .unwrap(),
         1
     );
+    // A photo whose file a restore left out is asked for again: Amazon serving nothing there
+    // then waits the month as well, though its row is still there.
+    let (sha256,): (String,) = db
+        .one_as(
+            "SELECT sha256 FROM photos WHERE address LIKE '%driver-11'",
+            [],
+        )
+        .unwrap()
+        .unwrap();
+    drop(db);
+    std::fs::remove_file(
+        photos::dir(&store, &dsp)
+            .unwrap()
+            .join(format!("{sha256}.png")),
+    )
+    .unwrap();
+    let mut again = roster(&store, &dsp);
+    again.photos.clear();
+    again.photos_unserved = vec![address("driver-11")];
+    publish(&store, &dsp, "job-3", again);
+    assert!(unserved().contains(&address("driver-11")));
 }
 
 #[tokio::test]
