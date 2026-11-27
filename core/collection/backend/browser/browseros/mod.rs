@@ -309,8 +309,13 @@ impl Session {
         )?;
         Ok(result["result"]["value"].clone())
     }
-    pub async fn close(&self) -> Exit {
+    /// Asks the browser to close, without waiting for it to exit: its own task stops and reaps
+    /// it, as `close` waits for.
+    pub fn stop(&self) {
         self.0.stop.send_replace(true);
+    }
+    pub async fn close(&self) -> Exit {
+        self.stop();
         self.wait_closed().await
     }
     /// Wait for automatic cancellation, failure, expiry, or explicit close.

@@ -261,7 +261,8 @@ impl Driver {
             )
             .await
             .map_err(refusal)?;
-        self.browser.close().await;
+        // It exits while the photos come, rather than holding them up.
+        self.browser.stop();
         let associates = everyone(roster(&listed)?, rows(&offboarded)?)?;
         let kept = kept_photos(run, &company_id).await?;
         // Active associates' photos first, then the rest; each address once, with the ETag of

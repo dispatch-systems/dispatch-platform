@@ -126,7 +126,8 @@ impl Driver {
             }
             captured => captured,
         };
-        self.browser.close().await;
+        // It exits while the week is published, rather than holding it up.
+        self.browser.stop();
         captured
     }
     async fn week_of_shifts(
