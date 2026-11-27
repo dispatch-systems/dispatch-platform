@@ -21,8 +21,9 @@ const SATURDAYS: Record<string, string> = {
 // The real Rust driver against a staged multi-provider Cortex. Provider discovery binds
 // the tenant to its company before the overview is opened; stored addresses are reused
 // only inside that scope; when the API moves, a job finds it again; a refused dataset
-// fails the attempt for a retry; jobs start from the saved session, and sign in again
-// once it ends; and nothing collected is left outside the databases.
+// fails the attempt for a retry; jobs start from the session a sign-in saved with no browser,
+// start one where a page is needed, forget it with new credentials, and sign in again once it
+// ends; and nothing collected is left outside the databases.
 test(
   'Cortex BrowserOS collects scorecard weeks at the stored API address from the saved session, finds the address again when it moves, and leaves nothing outside the databases',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 300000 },
@@ -371,7 +372,7 @@ test(
 
     // The next jobs read at the stored address, for the station's scope discovery kept,
     // without discovery or the overview: a week not posted yet is noted, a posted one
-    // published. Each job's new browser starts from the session its profile kept: one
+    // published. Each job starts from the session the sign-in saved, with no browser: one
     // check of the company list, then no landing page and no sign-in.
     requests.length = 0;
     const session = { ...seen };
@@ -398,13 +399,18 @@ test(
       [{ job_id: posted36, week: '2026-W36', company_id: 'company-1', active: 1 }],
     );
     assert.equal((await job(posted36)).metrics.at(-1).rows, 12);
+    assert.equal((await job(posted36)).metrics.at(-1).savedSession, 'browserless');
+    assert.equal((await job(posted36)).metrics.at(-1).memorySamples, 0);
 
     // Cortex moves its API: nothing answers at the stored address, the page names the
-    // new one, and the week is read there.
+    // new one, and the week is read there: the job's browser starts for the page, in the same
+    // attempt.
     version = 'v2';
-    await collect('week-38-again', '2026-W38');
+    const moved = await collect('week-38-again', '2026-W38');
     assert.ok(seen.overview > overviews);
     assert.match(stored().urls.at(-1)!.url, /\/performance\/api\/v2\/getData\?/);
+    assert.equal((await job(moved)).metrics.length, 1);
+    assert.equal((await job(moved)).metrics.at(-1).savedSession, 'page_needed');
 
     // A read naming another station than the kept scope's: the station is found again, and
     // the week read again for what discovery finds.
@@ -414,16 +420,24 @@ test(
     assert.equal(foreignOnce, false);
     assert.ok(seen.discovery > kept);
     assert.equal((await job(foreign)).metrics.length, 1, 'found again within the attempt');
+    assert.equal((await job(foreign)).metrics.at(-1).savedSession, 'page_needed');
 
-    // New credentials forget what discovery kept: the next job finds the station again.
+    // New credentials forget what discovery kept, and the session the old ones saved: the
+    // next job finds the station again, from the session the new sign-in saved.
     const resaved = await owner.post('/api/dsp/connections/cortex', {
       username: 'fixture@example.test',
       password: 'fixture-password',
     });
     assert.equal(resaved.value.status, 'ready', resaved.body);
     const forgotten = seen.discovery;
-    await collect('week-37-again', '2026-W37');
+    const sessions = path.join(f.root, `dsps/${dsp.id}/state/browsers/cortex-session.enc`);
+    const resavedSession = fs.readFileSync(sessions, 'utf8');
+    const renewed = await collect('week-37-again', '2026-W37');
     assert.ok(seen.discovery > forgotten);
+    assert.equal((await job(renewed)).metrics.at(-1).savedSession, 'page_needed');
+    // Kept encrypted: neither a cookie's name nor its value reads in the file.
+    for (const needle of ['authenticated', `g${generation}x`])
+      assert.equal(resavedSession.includes(needle), false, needle);
 
     // A dataset the API refuses has no other source: the attempt fails for a retry.
     const refused = await owner.post('/api/dsp/weekly-scorecard/collect', {
@@ -457,13 +471,18 @@ test(
       });
       assert.equal(daily.status, 202, daily.body);
       const id = daily.value[0].id;
+      let finished: any;
       await until(async () => {
-        const current = (await owner.read('/api/dsp/daily-performance/jobs')).find(
+        finished = (await owner.read('/api/dsp/daily-performance/jobs')).find(
           (job: any) => job.id === id,
         );
-        assert.notEqual(current.status, 'failed', JSON.stringify(current));
-        return current.status === 'succeeded';
+        assert.notEqual(finished.status, 'failed', JSON.stringify(finished));
+        return finished.status === 'succeeded';
       }, 120000);
+      assert.equal(
+        finished.metrics.at(-1).savedSession,
+        date === '2026-10-03' ? 'refused' : 'browserless',
+      );
       const captured = requests.filter(
         (url) => url.searchParams.get('from') === date && url.searchParams.get('to') === date,
       );
