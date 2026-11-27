@@ -123,3 +123,14 @@ async fn once_a_read_fails_no_lane_takes_another() {
         .collect();
     assert_eq!(failed, ["performance_api_unreadable"]);
 }
+
+// A reply longer than the reader takes fails as the source too large, as too many rows do,
+// whatever the other reads beside it met; any other refusal is unreadable.
+#[test]
+fn a_reply_too_long_is_the_source_too_large() {
+    let metrics = Recorder::new(&json!({}));
+    let error = refused(Refusal::Unreadable("http_too_large"), &metrics);
+    assert!(error.is(cortex::codes::PERFORMANCE_SOURCE_TOO_LARGE));
+    let error = refused(Refusal::Unreadable("http_status"), &metrics);
+    assert!(error.is(cortex::codes::PERFORMANCE_API_UNREADABLE));
+}

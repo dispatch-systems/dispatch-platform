@@ -66,22 +66,6 @@ fn only_a_range_that_failed_sends_later_attempts_a_day_at_a_time() {
     }
 }
 
-// A range fails for its size when it has too many rows, or when its reply is longer than the
-// reader takes; any other refusal is not its size.
-#[test]
-fn a_range_too_large_is_too_many_rows_or_too_long_a_reply() {
-    let too_many = Error::new(codes::PERFORMANCE_SOURCE_TOO_LARGE.as_str(), 502);
-    let unreadable = Error::new(codes::PERFORMANCE_API_UNREADABLE.as_str(), 502);
-    assert!(too_large(&too_many, None));
-    assert!(too_large(&unreadable, Some("http_too_large")));
-    assert!(!too_large(&unreadable, Some("http_status")));
-    assert!(!too_large(&unreadable, None));
-    assert!(!too_large(
-        &Error::new("provider_unavailable", 502),
-        Some("http_too_large")
-    ));
-}
-
 // A range's rows go back to the days they name, every day of the range answered, even one
 // with none; the thresholds, which name no station or day, answer every day alike; a
 // station's row naming no day, or a day outside the range, can't be split; one day's own

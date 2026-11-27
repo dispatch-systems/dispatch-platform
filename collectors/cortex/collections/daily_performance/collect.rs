@@ -64,12 +64,6 @@ fn range_failed_before(metrics: &[Metrics], attempt: i64) -> bool {
                 .is_some_and(|detail| [RANGE_TOO_LARGE, RANGE_UNSPLIT].contains(&detail))
     })
 }
-/// Whether a read failed for its size: too many rows, or a reply longer than the reader takes,
-/// which the reader refuses as unreadable and names in the attempt's `detail`.
-fn too_large(error: &Error, detail: Option<&str>) -> bool {
-    error.is_any(&[codes::PERFORMANCE_SOURCE_TOO_LARGE])
-        || (error.is_any(&[codes::PERFORMANCE_API_UNREADABLE]) && detail == Some("http_too_large"))
-}
 /// Whether an earlier attempt of the job met a range it couldn't read whole.
 async fn range_failed(run: &Run<'_>) -> Result<bool> {
     if run.attempt <= 1 {
@@ -166,7 +160,7 @@ impl Driver {
             .await
             .map_err(|error| {
                 // A range too large to read is read a day at a time by the retries.
-                if ranged && too_large(&error, run.metrics.snapshot().detail.as_deref()) {
+                if ranged && error.is_any(&[codes::PERFORMANCE_SOURCE_TOO_LARGE]) {
                     run.metrics.detail(RANGE_TOO_LARGE);
                     Error::new(codes::CORTEX_SOURCE_CHANGED.as_str(), 502)
                 } else {

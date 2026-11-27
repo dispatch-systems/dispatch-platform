@@ -62,10 +62,16 @@ impl Api {
     }
 }
 /// The error a refusal is. The page shares the session and the provider, so nothing
-/// else can read a dataset the API refused; the job's next attempt asks again.
+/// else can read a dataset the API refused; the job's next attempt asks again. A reply
+/// longer than the reader takes is the source being too large, as too many rows are, which
+/// asking again would meet again.
 fn refused(refusal: Refusal, metrics: &Recorder) -> Error {
     match refusal {
         Refusal::Unavailable => Error::new("provider_unavailable", 502),
+        Refusal::Unreadable(label @ "http_too_large") => {
+            metrics.detail(label);
+            Error::new(cortex::codes::PERFORMANCE_SOURCE_TOO_LARGE.as_str(), 502)
+        }
         Refusal::Unreadable(label) => {
             metrics.detail(label);
             Error::new("performance_api_unreadable", 502)
