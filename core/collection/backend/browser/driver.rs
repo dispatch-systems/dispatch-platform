@@ -1,6 +1,8 @@
 //! What a session asks of a provider's driver: its browser's, or one that needs none
-//! (`Collector::direct`). Nothing outside this directory knows which one it is driving.
-use super::browseros;
+//! (`Collector::direct`), or one reading with the session a sign-in saved until it needs a
+//! browser (`Collector::resumed`). Nothing outside this directory knows which one it is
+//! driving.
+use super::{browseros, http::SignedIn};
 use crate::{
     Result, State,
     collection::{
@@ -53,6 +55,12 @@ pub trait Driver: Send {
     fn collect<'a>(&'a mut self, run: &'a Run<'a>) -> Pending<'a, Collected>;
     /// The browser to close with the session. A driver without one has nothing to close.
     fn browser(&self) -> Option<&browseros::Session>;
+    /// The provider's session as it holds it now, for the next job to start from with no
+    /// browser (`saved`): none for a driver whose sessions nothing reads over HTTP, or whose
+    /// browser has closed.
+    fn session(&self) -> Pending<'_, Option<SignedIn>> {
+        Box::pin(async { Ok(None) })
+    }
     /// What a driver without a browser asks of its provider as it connects, and how each
     /// went the last time it did: each waiting before then. One with a browser has none.
     fn checks(&self) -> Vec<ConnectionCheck> {

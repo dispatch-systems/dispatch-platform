@@ -21,6 +21,7 @@ fn opened(state: &State, dsp: &str) -> Arc<Session> {
             .environment_root()
             .join("browser-runs")
             .join(dsp),
+        profile: std::path::PathBuf::new(),
         process_id: std::sync::atomic::AtomicU32::new(0),
         observed_pss: std::sync::atomic::AtomicU64::new(0),
         browser_exited: std::sync::atomic::AtomicBool::new(false),
@@ -28,7 +29,8 @@ fn opened(state: &State, dsp: &str) -> Arc<Session> {
         worker: AsyncMutex::new(None),
         commands: tokio::sync::Semaphore::new(32),
         cancel,
-        browserless: true,
+        browserless: AtomicBool::new(true),
+        saved: Mutex::new(None),
         started: std::time::Instant::now(),
         last_used: Mutex::new(std::time::Instant::now()),
         collecting: std::sync::atomic::AtomicBool::new(true),

@@ -72,7 +72,7 @@ impl Driver {
         };
         capture.validate_scope(request, scope)?;
         // Checked, the capture needs the browser no more.
-        self.browser.close().await;
+        self.close_browser().await;
         Ok((capture, scope.clone()))
     }
 }

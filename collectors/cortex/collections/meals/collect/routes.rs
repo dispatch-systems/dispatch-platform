@@ -8,6 +8,8 @@ use tokio::time::sleep_until;
 /// One pass over the routes whose record is missing or out of date, shared by the tabs.
 pub(super) struct Routes<'a, F> {
     pub(super) driver: &'a Driver,
+    /// The driver's browser, which every tab is in.
+    pub(super) browser: &'a browseros::Session,
     pub(super) scope: &'a Scope,
     pub(super) pending: Vec<&'a Candidate>,
     pub(super) next: AtomicUsize,
@@ -163,7 +165,7 @@ where
                 },
             });
             // The store lives in the application's own world, where the action runs.
-            match driver.browser.evaluate(&page.id, &call(ASK, &read)).await {
+            match self.browser.evaluate(&page.id, &call(ASK, &read)).await {
                 Ok(taken) if taken == true => return true,
                 Ok(_) => {
                     *asking = false;
@@ -258,7 +260,7 @@ where
                 }
                 let input =
                     json!({"candidate": candidate, "scope": self.scope, "origin": driver.origin});
-                let named = driver
+                let named = self
                     .browser
                     .evaluate(
                         &page.id,
@@ -294,7 +296,7 @@ where
             if waiting.is_empty() {
                 continue;
             }
-            match driver
+            match self
                 .browser
                 .evaluate(
                     &page.id,

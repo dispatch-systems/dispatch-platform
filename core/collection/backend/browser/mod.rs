@@ -6,11 +6,12 @@ pub mod egress;
 mod fixture;
 pub mod http;
 pub mod page;
+mod saved;
 pub use crate::collection::registry::Provider;
 use crate::{
     Error, Result, State,
     accounts::Context,
-    collection::api::types::Connection,
+    collection::{api::types::Connection, metrics::SavedSession},
     db::{self, Store, s},
     ensure,
     foundation::crypto,
@@ -23,7 +24,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
     time::Duration,
 };
@@ -44,6 +45,8 @@ pub struct Session {
     pub revision: i64,
     pub timezone: String,
     run: PathBuf,
+    /// Its browser's profile, which it starts from once it needs one.
+    profile: PathBuf,
     process_id: std::sync::atomic::AtomicU32,
     observed_pss: std::sync::atomic::AtomicU64,
     /// Its driver closed the browser before the session ended.
@@ -52,9 +55,13 @@ pub struct Session {
     worker: AsyncMutex<Option<Box<dyn Driver>>>,
     commands: tokio::sync::Semaphore,
     cancel: watch::Sender<bool>,
-    // No browser runs in fixture mode, nor for a driver that needs none: nothing to take
-    // over, no memory to admit.
-    browserless: bool,
+    // No browser runs in fixture mode, nor for a driver that needs none, nor while it reads
+    // with the session a sign-in saved: nothing to take over, no memory to admit.
+    browserless: AtomicBool,
+    /// What became of the session a sign-in saved, for a job that started from one: while it
+    /// is `Browserless`, the job reads with it and starts its browser once a collection needs
+    /// a page.
+    saved: Mutex<Option<SavedSession>>,
     started: std::time::Instant,
     last_used: Mutex<std::time::Instant>,
     collecting: std::sync::atomic::AtomicBool,
@@ -266,7 +273,7 @@ impl Session {
     }
     /// What its browser last used, while it has one.
     fn resident(&self) -> Option<u64> {
-        (!self.browserless && !self.browser_exited.load(Ordering::Acquire))
+        (!self.browserless() && !self.browser_exited.load(Ordering::Acquire))
             .then(|| self.observed_pss.load(Ordering::Acquire))
     }
     pub fn process_id(&self) -> Option<u32> {
@@ -284,7 +291,21 @@ impl Session {
         self.status.load(Ordering::SeqCst) == 3
     }
     pub fn interactive(&self) -> bool {
-        self.challenge() && !self.browserless
+        self.challenge() && !self.browserless()
+    }
+    fn browserless(&self) -> bool {
+        self.browserless.load(Ordering::Acquire)
+    }
+    /// What became of the session a sign-in saved, for a job that started from one.
+    pub fn saved_session(&self) -> Option<SavedSession> {
+        *self.saved.lock().expect("saved session")
+    }
+    /// It reads with the session a sign-in saved, with no browser yet.
+    fn saved(&self) -> bool {
+        self.saved_session() == Some(SavedSession::Browserless)
+    }
+    fn became(&self, saved: SavedSession) {
+        *self.saved.lock().expect("saved session") = Some(saved);
     }
     pub fn busy(&self) -> bool {
         self.status.load(Ordering::SeqCst) == 0
@@ -354,11 +375,70 @@ impl Session {
         *self.last_used.lock().expect("browser idle clock") = std::time::Instant::now();
         if s(&event, "type") == "ready" {
             self.status.store(1, Ordering::SeqCst);
+            self.keep_session(&mut **worker, state, authority).await;
         }
         if s(&event, "type") == "challenge" {
             self.status.store(2, Ordering::SeqCst);
         }
         Ok(event)
+    }
+    /// Saves the provider's session as `driver` holds it, for the next job to start from with
+    /// no browser. One left unsaved only means the next job starts a browser.
+    async fn keep_session(
+        &self,
+        driver: &mut dyn Driver,
+        state: &Arc<State>,
+        authority: &ProviderAuthority,
+    ) {
+        let Ok(Some(session)) = driver.session().await else {
+            return;
+        };
+        let (dsp, provider, revision) = (self.dsp.clone(), self.provider, self.revision);
+        let authority = authority.clone();
+        let saved = state
+            .run_bookkeeping(move |db| {
+                authority.check(db, &dsp, provider)?;
+                db.save_session(&dsp, provider, revision, &session)
+            })
+            .await;
+        if let Err(error) = saved {
+            crate::foundation::observability::event(
+                "warn",
+                "browser.session_unsaved",
+                json!({"provider":provider.id(),"error":error.code}),
+            );
+        }
+    }
+    /// Waits while its start waits on the owner's verification, as the job's progress says,
+    /// until it is ready, failing once it closes.
+    pub(crate) async fn verified(
+        &self,
+        state: &Arc<State>,
+        job: &str,
+        owner: &str,
+        metrics: &crate::collection::metrics::Recorder,
+    ) -> Result<()> {
+        if !self.challenge() {
+            return Ok(());
+        }
+        metrics.phase(crate::collection::metrics::Phase::Verification);
+        let (job, owner) = (job.to_owned(), owner.to_owned());
+        state
+            .run_bookkeeping(move |db| {
+                db.progress(
+                    &job,
+                    &owner,
+                    5,
+                    "Waiting for owner verification",
+                    crate::collection::api::jobs::ActiveJobStatus::WaitingVerification,
+                )
+            })
+            .await?;
+        while !self.ready() {
+            ensure(!self.closed(), "verification_expired", 409)?;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        Ok(())
     }
     pub async fn collect(
         self: &Arc<Self>,
@@ -375,11 +455,6 @@ impl Session {
             "connection_busy",
             409,
         )?;
-        let mut worker = self.worker.lock().await;
-        let worker = worker
-            .as_mut()
-            .ok_or_else(|| Error::new("browser_unavailable", 409))?;
-        let mut cancellation = self.cancel.subscribe();
         let run = Run {
             state,
             job,
@@ -389,12 +464,59 @@ impl Session {
             request,
             attempt,
         };
-        let response = worker.collect(&run);
-        tokio::select! {
-            _=cancellation.wait_for(|closed|*closed)=>Err(Error::new("job_cancelled",409)),
-            result=tokio::time::timeout(Duration::from_secs(1800),response)=>result.map_err(|_|Error::new("provider_timeout",504))?,
+        let authority = ProviderAuthority::Job {
+            id: job.into(),
+            owner: owner.into(),
+        };
+        loop {
+            match self.collect_once(&run, &authority).await {
+                // A collection needed a page: the job's browser starts now, as it would have
+                // with no saved session, and the collection runs again in it.
+                Err(error) if error.is(crate::Code::BrowserRequired) && self.saved() => {
+                    self.became(SavedSession::PageNeeded);
+                    metrics.saved_session(SavedSession::PageNeeded);
+                    metrics.phase(crate::collection::metrics::Phase::Authentication);
+                    state.browser_for(self, &authority).await?;
+                    self.verified(state, job, owner, metrics).await?;
+                    metrics.phase(crate::collection::metrics::Phase::Collection);
+                }
+                collected => return collected,
+            }
         }
     }
+    /// One collection by its driver as it is now, its session saved once it succeeds: what
+    /// its replies set is what the next job starts from.
+    async fn collect_once(
+        &self,
+        run: &Run<'_>,
+        authority: &ProviderAuthority,
+    ) -> Result<Collected> {
+        let mut worker = self.worker.lock().await;
+        let worker = worker
+            .as_mut()
+            .ok_or_else(|| Error::new("browser_unavailable", 409))?;
+        let mut cancellation = self.cancel.subscribe();
+        let response = worker.collect(run);
+        let collected = tokio::select! {
+            _=cancellation.wait_for(|closed|*closed)=>Err(Error::new("job_cancelled",409)),
+            result=tokio::time::timeout(Duration::from_secs(1800),response)=>result.map_err(|_|Error::new("provider_timeout",504))?,
+        };
+        if collected.is_ok() {
+            self.keep_session(&mut **worker, run.state, authority).await;
+        }
+        collected
+    }
+}
+/// Whether a browser may start beside those `sessions` hold: within the server's capacity,
+/// and with the memory each needs. A session with no browser counts toward neither.
+fn admit(sessions: &HashMap<String, Arc<Session>>, capacity: usize) -> Result<()> {
+    let browsers = sessions.values().filter(|s| !s.browserless()).count();
+    ensure(browsers < capacity, "browser_capacity_busy", 429)?;
+    let admission = admission::Admission::new(
+        admission::available(),
+        sessions.values().filter_map(|s| s.resident()),
+    );
+    ensure(admission.can_start, "browser_memory_busy", 503)
 }
 /// A browser session that closes when dropped, unless kept: one a start registered until
 /// it's done, or a live reader's until its hook is done with it.
@@ -466,13 +588,15 @@ impl ProviderBrowser {
 }
 
 impl Store {
-    /// Credential changes reset only this collector's sessions. Call after its
-    /// browser worker closes; other collectors' profiles must survive unchanged.
+    /// Credential changes reset only this collector's sessions, the one a sign-in saved with
+    /// them. Call after its browser worker closes; other collectors' profiles must survive
+    /// unchanged.
     pub fn clear_collector_browser_state(&self, id: &str, provider: Provider) -> Result<()> {
         let browsers = self.area(id, "state")?.join("browsers");
         if !browsers.try_exists()? {
             return Ok(());
         }
+        self.discard_session(id, provider)?;
         db::private_dir(&browsers)?;
         for entry in provider.collector().browser_entries() {
             let path = browsers.join(entry);
@@ -581,7 +705,8 @@ impl State {
     ) -> Result<Arc<Session>> {
         let dsp = id.to_owned();
         let initial_authority = authority.clone();
-        let (dsp, credentials, revision, run, profile, direct) = self
+        let fixture = self.config.fixture && self.config.fixture_url.is_none();
+        let (dsp, credentials, revision, run, profile, direct, saved) = self
             .run_bookkeeping(move |db| {
                 initial_authority.check(db, &dsp, provider)?;
                 let value = db.ensure_dsp_active(&dsp)?;
@@ -596,6 +721,21 @@ impl State {
                 let credentials = db.credentials(&dsp, provider)?;
                 // The collector's own driver, when these credentials need no browser.
                 let direct = provider.collector().direct(db, &dsp, &credentials)?;
+                // The session a sign-in saved, for a job whose collection may read with it and
+                // start no browser. An owner's retry signs in as always.
+                let saved = match &initial_authority {
+                    ProviderAuthority::Job { id, .. }
+                        if direct.is_none()
+                            && !retry
+                            && !fixture
+                            && provider
+                                .collector()
+                                .resumes(db.job_row(id, Some(&dsp))?.kind.as_str()) =>
+                    {
+                        db.saved_session(&dsp, provider, connection.revision)?
+                    }
+                    _ => None,
+                };
                 Ok((
                     value,
                     credentials,
@@ -603,6 +743,7 @@ impl State {
                     run,
                     profile,
                     direct,
+                    saved,
                 ))
             })
             .await?;
@@ -654,18 +795,19 @@ impl State {
             revision,
             timezone: dsp.timezone.clone(),
             run: run.clone(),
+            profile: profile.clone(),
             process_id: std::sync::atomic::AtomicU32::new(0),
             observed_pss: std::sync::atomic::AtomicU64::new(0),
-            browser_exited: std::sync::atomic::AtomicBool::new(false),
+            browser_exited: AtomicBool::new(false),
             status: AtomicU8::new(0),
             worker: AsyncMutex::new(None),
             commands: tokio::sync::Semaphore::new(32),
             cancel,
-            browserless: direct.is_some()
-                || (self.config.fixture && self.config.fixture_url.is_none()),
+            browserless: AtomicBool::new(direct.is_some() || fixture || saved.is_some()),
+            saved: Mutex::new(saved.is_some().then_some(SavedSession::Browserless)),
             started: std::time::Instant::now(),
             last_used: Mutex::new(std::time::Instant::now()),
-            collecting: std::sync::atomic::AtomicBool::new(authority.reader().is_some()),
+            collecting: AtomicBool::new(authority.reader().is_some()),
             reader: authority.reader(),
             credential_lease: Mutex::new(Some(credential_lease)),
         });
@@ -680,17 +822,8 @@ impl State {
                 "connection_busy",
                 409,
             )?;
-            ensure(
-                sessions.len() < self.config.browser_capacity,
-                "browser_capacity_busy",
-                429,
-            )?;
-            if !session.browserless {
-                let admission = admission::Admission::new(
-                    admission::available(),
-                    sessions.values().filter_map(|s| s.resident()),
-                );
-                ensure(admission.can_start, "browser_memory_busy", 503)?;
+            if !session.browserless() {
+                admit(&sessions, self.config.browser_capacity)?;
             }
             sessions.insert(provider.key(id), session.clone());
         }
@@ -699,6 +832,7 @@ impl State {
         let mut starting = Closing::new(self, session.clone());
         // What a driver without a browser is about to ask, each still waiting.
         let asking = direct.as_ref().map(|driver| driver.checks());
+        let command = self.start_command(&credentials, &session.timezone, retry);
         let start = async {
             let mut worker = session.worker.lock().await;
             ensure(!session.closed(), "verification_expired", 409)?;
@@ -724,59 +858,47 @@ impl State {
             db::private_dir(&run)?;
             if let Some(driver) = direct {
                 *worker = Some(driver);
-            } else if session.browserless {
+            } else if fixture {
                 db::private_dir(&profile)?;
                 *worker = Some(Box::new(fixture::Driver::new(provider)));
             } else {
                 db::private_dir(&profile)?;
                 attempt::preflight(&profile, provider.id(), retry)?;
-                let policy = if let Some(value) = &self.config.fixture_url {
-                    browseros::NetworkPolicy::Fixture(
-                        std::num::NonZeroU16::new(
-                            url::Url::parse(value)
-                                .expect("validated fixture URL")
-                                .port()
-                                .unwrap(),
-                        )
-                        .unwrap(),
-                    )
-                } else {
-                    provider.collector().network()
-                };
-                let runtime = self.browsers.runtime(&self.config)?;
-                let browser = runtime
-                    .start(&profile, browseros::Mode::Windowed, policy)
-                    .await?;
-                session
-                    .process_id
-                    .store(browser.process_id(), Ordering::Release);
-                match provider
-                    .collector()
-                    .driver(
-                        browser.clone(),
-                        &profile,
-                        self.config.fixture_url.as_deref(),
-                    )
-                    .await
-                {
-                    Ok(driver) => *worker = Some(driver),
-                    Err(error) => {
-                        browser.close().await;
-                        return Err(error);
+                *worker = Some(match saved {
+                    Some(saved) => {
+                        provider
+                            .collector()
+                            .resumed(saved, &profile, self.config.fixture_url.as_deref())
+                            .await?
                     }
-                }
+                    None => self.browser_driver(&session).await?,
+                });
             }
             drop(worker);
-            session
+            let started = session
                 .request_guarded(
-                    json!({"action":"start","credentials":credentials,"timezone":session.timezone,
-                "ownerRetry":retry,"fixtureUrl":self.config.fixture_url}),
+                    command.clone(),
                     &["ready", "challenge"],
                     180,
                     self,
                     &authority,
                 )
-                .await
+                .await;
+            match started {
+                // The provider no longer accepts the saved session: it goes, and the browser
+                // signs in as with none.
+                Err(error) if error.is(crate::Code::BrowserRequired) && session.saved() => {
+                    session.became(SavedSession::Refused);
+                    let dsp = id.to_owned();
+                    self.run_bookkeeping(move |db| db.discard_session(&dsp, provider))
+                        .await?;
+                    self.launch(&session, retry).await?;
+                    session
+                        .request_guarded(command, &["ready", "challenge"], 180, self, &authority)
+                        .await
+                }
+                started => started,
+            }
         }
         .await;
         let persisted = self.browser_result(&session, &start, &authority).await;
@@ -786,6 +908,95 @@ impl State {
         persisted?;
         start?;
         Ok(starting.keep())
+    }
+    /// What a start asks of a session's driver.
+    fn start_command(&self, credentials: &Value, timezone: &str, retry: bool) -> Value {
+        json!({"action":"start","credentials":credentials,"timezone":timezone,
+            "ownerRetry":retry,"fixtureUrl":self.config.fixture_url})
+    }
+    /// A browser for `session`, started from its profile, and its collector's driver on it.
+    async fn browser_driver(self: &Arc<Self>, session: &Session) -> Result<Box<dyn Driver>> {
+        let provider = session.provider;
+        let policy = if let Some(value) = &self.config.fixture_url {
+            browseros::NetworkPolicy::Fixture(
+                std::num::NonZeroU16::new(
+                    url::Url::parse(value)
+                        .expect("validated fixture URL")
+                        .port()
+                        .unwrap(),
+                )
+                .unwrap(),
+            )
+        } else {
+            provider.collector().network()
+        };
+        let runtime = self.browsers.runtime(&self.config)?;
+        let browser = runtime
+            .start(&session.profile, browseros::Mode::Windowed, policy)
+            .await?;
+        session
+            .process_id
+            .store(browser.process_id(), Ordering::Release);
+        match provider
+            .collector()
+            .driver(
+                browser.clone(),
+                &session.profile,
+                self.config.fixture_url.as_deref(),
+            )
+            .await
+        {
+            Ok(driver) => Ok(driver),
+            Err(error) => {
+                browser.close().await;
+                Err(error)
+            }
+        }
+    }
+    /// Starts the browser of a session that read with the session a sign-in saved until now:
+    /// admitted as any browser is, from its profile, its driver in place of the one it read
+    /// with.
+    async fn launch(self: &Arc<Self>, session: &Arc<Session>, retry: bool) -> Result<()> {
+        {
+            let sessions = self
+                .browsers
+                .sessions
+                .lock()
+                .map_err(|_| Error::new("browser_unavailable", 503))?;
+            admit(&sessions, self.config.browser_capacity)?;
+            session.browserless.store(false, Ordering::Release);
+        }
+        attempt::preflight(&session.profile, session.provider.id(), retry)?;
+        let mut worker = session.worker.lock().await;
+        ensure(!session.closed(), "verification_expired", 409)?;
+        *worker = Some(self.browser_driver(session).await?);
+        Ok(())
+    }
+    /// Starts the browser of a job's `session` that read with the session a sign-in saved,
+    /// once a collection needs a page, and signs it in as a job's start does.
+    pub(crate) async fn browser_for(
+        self: &Arc<Self>,
+        session: &Arc<Session>,
+        authority: &ProviderAuthority,
+    ) -> Result<()> {
+        let started = async {
+            self.launch(session, false).await?;
+            let (dsp, provider, check) = (session.dsp.clone(), session.provider, authority.clone());
+            let credentials = self
+                .read(move |db| {
+                    check.check(db, &dsp, provider)?;
+                    db.credentials(&dsp, provider)
+                })
+                .await?;
+            let command = self.start_command(&credentials, &session.timezone, false);
+            session
+                .request_guarded(command, &["ready", "challenge"], 180, self, authority)
+                .await
+        }
+        .await;
+        let persisted = self.browser_result(session, &started, authority).await;
+        persisted?;
+        started.map(drop)
     }
     pub(crate) async fn browser_result(
         self: &Arc<Self>,

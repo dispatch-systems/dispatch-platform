@@ -218,7 +218,7 @@ impl Driver {
         request.validate()?;
         let started_at = now();
         run.progress(15, "Finding the DSP's company".into()).await?;
-        let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
+        let http = self.http().await?;
         let companies = match self.companies.take() {
             Some(companies) => companies,
             None => http
@@ -262,7 +262,7 @@ impl Driver {
             .await
             .map_err(refusal)?;
         // It exits while the photos come, rather than holding them up.
-        self.browser.stop();
+        self.stop_browser();
         let associates = everyone(roster(&listed)?, rows(&offboarded)?)?;
         let kept = kept_photos(run, &company_id).await?;
         // Active associates' photos first, then the rest; each address once, with the ETag of

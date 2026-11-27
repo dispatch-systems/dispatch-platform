@@ -2,11 +2,16 @@
 
 Amazon Logistics, read for one DSP through the sandboxed browser and plain HTTP: meal breaks,
 routes, posted weekly scorecards, Daily Quality and Day Safety, DVIC workbooks, the roster with
-everyone Amazon offboarded, and the fleet's vans. A job's browser starts from the session its
-profile kept, checked by asking for the console page and the account's companies over HTTP, and
-opens no page until a collection needs one; a session Amazon no longer accepts, or sends to a
-sign-in or a verification, or none at all, signs in on the page as the owner's own sign-ins
-always do. Discovery finds the station's service area and the DSP's company there, kept beside
+everyone Amazon offboarded, and the fleet's vans. Each sign-in, and each collection read with no
+browser, saves the account's Amazon cookies beside the profile, encrypted with the DSP's vault key
+and bound to the connection's revision. A job other than routes or meals starts from them with no
+browser, checked by asking for the console page and the account's companies over HTTP, and reads
+over HTTP with them; a collection that needs a page there, to find the station's scope or the
+performance API again, has its browser start then and runs again in it, as a job's metrics say
+(`savedSession`). Saved cookies Amazon no longer accepts are dropped, and the job's browser starts
+from the session its profile kept, checked the same way, and opens no page until a collection
+needs one; a session Amazon no longer accepts, or sends to a sign-in or a verification, or none at
+all, signs in on the page as the owner's own sign-ins always do. Discovery finds the station's service area and the DSP's company there, kept beside
 the profile for a week; performance and DVIC collections read for it, at the address the API
 last answered, with no page, and find it again when the credentials change or what they read
 names another station, company or DSP. A day's meals are first asked of their keeper as the live

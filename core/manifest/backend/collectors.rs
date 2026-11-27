@@ -4,7 +4,7 @@
 use crate::{
     Code, Result,
     collection::{
-        browser::{Collected, Driver, Pending, browseros},
+        browser::{Collected, Driver, Pending, browseros, http::SignedIn},
         metrics::{Counted, Counts},
     },
     db::{Db, Kind, Migrations, Store},
@@ -119,6 +119,24 @@ pub trait Collector: Sync {
         _credentials: &Value,
     ) -> Result<Option<Box<dyn Driver>>> {
         Ok(None)
+    }
+    /// Whether a job of `job_kind` may start from the session a sign-in saved, with no
+    /// browser (`resumed`): not one whose collection always needs a page.
+    fn resumes(&self, _job_kind: &str) -> bool {
+        false
+    }
+    /// Its driver reading with `session`, the one a sign-in saved, for a job of a kind it
+    /// `resumes`: no browser runs. Its `start` checks the session still holds. Refused, and
+    /// wherever a collection then needs a page, it fails `Code::BrowserRequired`, and the
+    /// job's browser starts as it would with no saved session. `profile` and `fixture` are
+    /// what `driver` is given.
+    fn resumed<'a>(
+        &self,
+        _session: SignedIn,
+        _profile: &'a Path,
+        _fixture: Option<&'a str>,
+    ) -> Pending<'a, Box<dyn Driver>> {
+        Box::pin(async { Err(crate::Error::new(Code::BrowserRequired.as_str(), 409)) })
     }
     /// What a collection returns in fixture mode, where no browser runs.
     fn fixture(&self, timezone: &str, request: &Value) -> Result<Collected>;

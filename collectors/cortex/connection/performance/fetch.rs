@@ -14,10 +14,7 @@ use crate::{
 use dispatch_core::{
     Error, Result,
     collection::{
-        browser::{
-            Run,
-            http::{Http, Refusal},
-        },
+        browser::{Run, http::Refusal},
         metrics::Recorder,
     },
     db::{now, s},
@@ -200,7 +197,10 @@ impl Driver {
     /// notifications without issuing stale continueRequest commands, which retire
     /// the browser session on a protocol error.
     async fn drain_paused(&self) {
-        while let Ok(event) = self.browser.event(&self.page.id).await {
+        let (Ok(browser), Ok(page)) = (self.browser(), self.page()) else {
+            return;
+        };
+        while let Ok(event) = browser.event(&page.id).await {
             if event.is_null() {
                 break;
             }
@@ -215,14 +215,14 @@ impl Driver {
         metrics: &Recorder,
     ) -> Result<Api> {
         self.ensure_page().await?;
-        self.page
+        self.page()?
             .command(
                 "Fetch.enable",
                 json!({"patterns":[{"urlPattern":"*/performance/api/*getData*","requestStage":"Request"}]}),
             )
             .await?;
         let result = self.observe_api(scope, expected_dsp, metrics).await;
-        let _ = self.page.command("Fetch.disable", json!({})).await;
+        let _ = self.page()?.command("Fetch.disable", json!({})).await;
         self.drain_paused().await;
         result
     }
@@ -240,7 +240,7 @@ impl Driver {
                 .append_pair("companyId", &scope.provider);
             format!("{}/performance?{}", self.origin, query.finish())
         };
-        self.page.start_navigation(&address).await?;
+        self.page()?.start_navigation(&address).await?;
         let deadline = Instant::now() + Duration::from_secs(60);
         let mut mismatched = false;
         let (base, dsp) = loop {
@@ -253,13 +253,13 @@ impl Driver {
                 },
                 502,
             )?;
-            let event = self.browser.event(&self.page.id).await?;
+            let event = self.browser()?.event(&self.page()?.id).await?;
             if event.is_null() {
                 continue;
             }
             // Every paused request goes on, watched or not: the page must keep loading.
             let _ = self
-                .page
+                .page()?
                 .command(
                     "Fetch.continueRequest",
                     json!({"requestId":event["requestId"]}),
@@ -281,12 +281,12 @@ impl Driver {
             });
         };
         // Stop intercepting before waiting on the page: nothing else must be held up.
-        self.page.command("Fetch.disable", json!({})).await?;
+        self.page()?.command("Fetch.disable", json!({})).await?;
         self.drain_paused().await;
         // The page must settle on the exact provider discovery selected.
         let settled = Instant::now() + Duration::from_secs(15);
         loop {
-            let frame = self.page.frame().await?;
+            let frame = self.page()?.frame().await?;
             if let Ok(url) = url::Url::parse(s(&frame, "url"))
                 && url.origin().ascii_serialization() == self.origin
             {
@@ -350,7 +350,7 @@ impl Driver {
         close: bool,
         run: &Run<'_>,
     ) -> std::result::Result<Vec<(String, Vec<Value>)>, Failed> {
-        let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
+        let http = self.http().await?;
         let referer = format!("{}/performance", self.origin);
         let done = AtomicUsize::new(0);
         let answered = AtomicBool::new(false);
@@ -367,7 +367,7 @@ impl Driver {
                 .map_err(|refusal| refused(refusal, run.metrics))?;
             let rows = rows(dataset.id, &value)?;
             if !answered.swap(true, Ordering::SeqCst) && close {
-                self.browser.close().await;
+                self.close_browser().await;
             }
             done.fetch_add(1, Ordering::SeqCst);
             // Each progress update is a database write, and the datasets finish

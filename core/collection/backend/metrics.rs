@@ -2,7 +2,7 @@
 //! labels are persisted.
 use crate::collection::api::metrics::{DocumentState, JobOutcome, PageRead, PageReads, PageStage};
 pub use crate::collection::api::{
-    metrics::{JobMetrics as Metrics, JobPhase as Phase},
+    metrics::{JobMetrics as Metrics, JobPhase as Phase, SavedSession},
     types::RunCounts as Counts,
 };
 use crate::{
@@ -78,6 +78,7 @@ impl Metrics {
             detail: None,
             method: None,
             fallback: None,
+            saved_session: None,
             queue_ms: db::now().saturating_sub(available_at).max(0) as u64,
             elapsed_ms: 0,
             authentication_ms: None,
@@ -268,6 +269,10 @@ impl Recorder {
     /// keeps too.
     pub fn fallback(&self, label: &str) {
         self.clock().value.fallback = identifier(label);
+    }
+    /// What became of the session a sign-in saved, which the job started from.
+    pub fn saved_session(&self, saved: SavedSession) {
+        self.clock().value.saved_session = Some(saved);
     }
     pub fn counts(&self, counts: Counts) {
         let mut clock = self.clock();

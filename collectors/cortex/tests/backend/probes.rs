@@ -114,7 +114,7 @@ async fn record_data_requests() -> Result<()> {
         let candidates = driver
             .candidates(&scope, &collection::MealMethod::rendered(), &metrics)
             .await?;
-        let list = driver.browser.evaluate(&driver.page.id, REQUESTS).await?;
+        let list = driver.browser()?.evaluate(&driver.page()?.id, REQUESTS).await?;
         eprintln!(
             "REQUESTS {}",
             json!({"page":"list","ms":started.elapsed().as_millis(),"routes":candidates.len(),"observed":list})
@@ -124,9 +124,9 @@ async fn record_data_requests() -> Result<()> {
             .ok_or_else(|| Error::new("benchmark_no_routes", 409))?;
         let started = Instant::now();
         driver
-            .meal_page(&driver.page, &scope, collection::Ask::Detail(candidate), &metrics)
+            .meal_page(driver.page()?, &scope, collection::Ask::Detail(candidate), &metrics)
             .await?;
-        let detail = driver.browser.evaluate(&driver.page.id, REQUESTS).await?;
+        let detail = driver.browser()?.evaluate(&driver.page()?.id, REQUESTS).await?;
         eprintln!(
             "REQUESTS {}",
             json!({"page":"detail","ms":started.elapsed().as_millis(),"observed":detail})
@@ -134,7 +134,7 @@ async fn record_data_requests() -> Result<()> {
         Ok(())
     }
     .await;
-    driver.browser.close().await;
+    driver.close_browser().await;
     result
 }
 
@@ -142,22 +142,22 @@ async fn record_data_requests() -> Result<()> {
 /// its method, address and the headers a page may set. Prints only header names.
 async fn capture(driver: &Driver, url: &str, path: &str) -> Result<Value> {
     driver
-        .page
+        .page()?
         .command(
             "Fetch.enable",
             json!({"patterns":[{"urlPattern":format!("*{path}*"),"requestStage":"Request"}]}),
         )
         .await?;
-    driver.page.start_navigation(url).await?;
+    driver.page()?.start_navigation(url).await?;
     let deadline = Instant::now() + Duration::from_secs(30);
     let request = loop {
         ensure(Instant::now() < deadline, "provider_timeout", 504)?;
-        let event = driver.browser.event(&driver.page.id).await?;
+        let event = driver.browser()?.event(&driver.page()?.id).await?;
         if event.is_null() {
             continue;
         }
         driver
-            .page
+            .page()?
             .command(
                 "Fetch.continueRequest",
                 json!({"requestId":event["requestId"]}),
@@ -165,7 +165,7 @@ async fn capture(driver: &Driver, url: &str, path: &str) -> Result<Value> {
             .await?;
         break event["request"].clone();
     };
-    driver.page.command("Fetch.disable", json!({})).await?;
+    driver.page()?.command("Fetch.disable", json!({})).await?;
     let forbidden = |name: &str| {
         let name = name.to_ascii_lowercase();
         [
@@ -312,9 +312,9 @@ async fn compare_tabs() -> Result<()> {
             .candidates(&scope, &collection::MealMethod::rendered(), &Recorder::new(&json!({})))
             .await?;
         let listed = driver
-            .browser
+            .browser()?
             .evaluate(
-                &driver.page.id,
+                &driver.page()?.id,
                 &format!(
                     "fetch({},{{headers:{},credentials:'include',cache:'no-store'}}).then(r=>r.json())\
                      .then(b=>b.itinerarySummaries.filter(s=>s.companyId==={}).length)",
@@ -342,7 +342,7 @@ async fn compare_tabs() -> Result<()> {
                     // Which read stalled and why: fixed labels and timings only.
                     let snapshot = serde_json::to_value(metrics.snapshot())?;
                     let hidden = driver
-                        .browser
+                        .browser()?
                         .command("Target.getTargets", json!({}), None)
                         .await
                         .map(|t| t["targetInfos"].as_array().map(Vec::len))
@@ -386,7 +386,7 @@ async fn compare_tabs() -> Result<()> {
         Ok(())
     }
     .await;
-    driver.browser.close().await;
+    driver.close_browser().await;
     result
 }
 
@@ -675,7 +675,7 @@ async fn probe_scorecard_api() -> Result<()> {
         // A saved session opens no page: these probes read the page themselves.
         driver.ensure_page().await?;
         let driver = &driver;
-        let page = &driver.page;
+        let page = driver.page()?;
         let origin = driver.origin.clone();
         page.start_navigation(&format!("{origin}/performance?pageId=dsp_dashboard_overview"))
             .await?;
@@ -690,7 +690,7 @@ async fn probe_scorecard_api() -> Result<()> {
             if query.get("station") == Some(&station)
                 && let Some(company) = query.get("companyId")
                 && driver
-                    .browser
+                    .browser()?
                     .evaluate(
                         &page.id,
                         "performance.getEntriesByType('resource')\
@@ -710,12 +710,12 @@ async fn probe_scorecard_api() -> Result<()> {
             .collect::<Result<Vec<_>>>()?;
         let input = json!({"company":company,"week":week,"station":station,
             "firstDay":first_day,"lastDay":last_day,"adjacentWeeks":adjacent});
-        driver.browser.evaluate(&page.id, &call(API_SHAPES, &input)).await?;
+        driver.browser()?.evaluate(&page.id, &call(API_SHAPES, &input)).await?;
         let started = Instant::now();
         let probe = loop {
             sleep(Duration::from_millis(500)).await;
             let state = driver
-                .browser
+                .browser()?
                 .evaluate(&page.id, "JSON.stringify(globalThis.__dispatchApi||{})")
                 .await
                 .ok()
@@ -733,8 +733,8 @@ async fn probe_scorecard_api() -> Result<()> {
         let (Some(segment), Some(dsp_param)) = (probe["segment"].as_str(), probe["dsp"].as_str()) else {
             return Ok(());
         };
-        let cookies = driver.browser.command("Storage.getCookies", json!({}), None).await?;
-        let version = driver.browser.command("Browser.getVersion", json!({}), None).await?;
+        let cookies = driver.browser()?.command("Storage.getCookies", json!({}), None).await?;
+        let version = driver.browser()?.command("Browser.getVersion", json!({}), None).await?;
         let jar = reqwest::cookie::Jar::default();
         let mut kept = 0;
         for cookie in cookies["cookies"].as_array().into_iter().flatten() {
@@ -802,7 +802,7 @@ async fn probe_scorecard_api() -> Result<()> {
         Ok(())
     }
     .await;
-    driver.browser.close().await;
+    driver.close_browser().await;
     result
 }
 
@@ -957,7 +957,7 @@ async fn load_routes_page(
     url: &str,
     saved: &mut usize,
 ) -> Result<Vec<(String, Option<Value>)>> {
-    let page = &driver.page;
+    let page = driver.page()?;
     let patterns: Vec<Value> = ["XHR", "Fetch"]
         .iter()
         .map(|kind| json!({"urlPattern":"*/operations/execution/api/*","resourceType":kind,"requestStage":"Response"}))
@@ -969,7 +969,7 @@ async fn load_routes_page(
     let mut bodies: Vec<(Value, Vec<u8>)> = Vec::new();
     let mut last_event = Instant::now();
     while started.elapsed() < Duration::from_secs(60) {
-        let event = driver.browser.event(&page.id).await?;
+        let event = driver.browser()?.event(&page.id).await?;
         if event.is_null() {
             // Quiet for a while after the first response: the page has what it needs.
             if !bodies.is_empty() && last_event.elapsed() > Duration::from_secs(6) {
@@ -1054,7 +1054,7 @@ async fn capture_routes_responses(
     label: &'static str,
     saved: &mut usize,
 ) -> Result<Value> {
-    let page = &driver.page;
+    let page = driver.page()?;
     let patterns: Vec<Value> = ["XHR", "Fetch"]
         .iter()
         .map(|kind| json!({"urlPattern":"*/operations/execution/api/*","resourceType":kind,"requestStage":"Response"}))
@@ -1064,7 +1064,7 @@ async fn capture_routes_responses(
     let started = Instant::now();
     let mut seen = Vec::new();
     while started.elapsed() < Duration::from_secs(10) {
-        let event = driver.browser.event(&page.id).await?;
+        let event = driver.browser()?.event(&page.id).await?;
         if event.is_null() {
             continue;
         }
@@ -1125,8 +1125,8 @@ async fn capture_routes_responses(
 const ROUTES_SURVEY: &str = include_str!("../../probes/routes_survey.js");
 async fn survey_routes_page(driver: &Driver, input: Value) -> Result<Value> {
     driver
-        .browser
-        .evaluate(&driver.page.id, &call(ROUTES_SURVEY, &input))
+        .browser()?
+        .evaluate(&driver.page()?.id, &call(ROUTES_SURVEY, &input))
         .await
 }
 
@@ -1252,7 +1252,7 @@ async fn probe_routes_api() -> Result<()> {
             "{origin}/operations/execution/dv/routes?{}",
             query.finish()
         );
-        let page = &driver.page;
+        let page = driver.page()?;
         page.command(
             "Emulation.setDeviceMetricsOverride",
             json!({"width":1600,"height":1000,"deviceScaleFactor":1,"mobile":false}),
@@ -1273,7 +1273,7 @@ async fn probe_routes_api() -> Result<()> {
                 "downloadControls":survey_routes_page(driver, json!({"action":"downloadControls"})).await?,
                 "controls":survey_routes_page(driver, json!({"action":"controls"})).await?})
         );
-        let hooked = driver.browser.evaluate(&page.id, DOWNLOAD_HOOK).await?;
+        let hooked = driver.browser()?.evaluate(&page.id, DOWNLOAD_HOOK).await?;
         let pressed = survey_routes_page(driver, json!({"action":"pressCard"})).await?;
         eprintln!(
             "ROUTES {}",
@@ -1315,7 +1315,7 @@ async fn probe_routes_api() -> Result<()> {
         Ok(())
     }
     .await;
-    driver.browser.close().await;
+    driver.close_browser().await;
     result
 }
 
@@ -1398,7 +1398,7 @@ async fn measure_meal_method() -> Result<()> {
             SENT.load(std::sync::atomic::Ordering::Relaxed),
             RECEIVED.load(std::sync::atomic::Ordering::Relaxed),
         );
-        let pid = driver.browser.process_id();
+        let pid = driver.browser()?.process_id();
         let sampling = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
         let sampling_guard = Sampling(sampling.clone());
         let sampler = {
@@ -1501,7 +1501,7 @@ async fn measure_meal_method() -> Result<()> {
         Ok(())
     }
     .await;
-    driver.browser.close().await;
+    driver.close_browser().await;
     result
 }
 
@@ -1509,8 +1509,8 @@ async fn measure_meal_method() -> Result<()> {
 const SCHEDULING_SURVEY: &str = include_str!("../../probes/scheduling_survey.js");
 async fn survey_scheduling_page(driver: &Driver, input: Value) -> Result<Value> {
     driver
-        .browser
-        .evaluate(&driver.page.id, &call(SCHEDULING_SURVEY, &input))
+        .browser()?
+        .evaluate(&driver.page()?.id, &call(SCHEDULING_SURVEY, &input))
         .await
 }
 /// One response the Scheduling page received: what it was asked with, kept to replay it,
@@ -1534,7 +1534,7 @@ async fn capture_scheduling(
     window: Duration,
     saved: &mut usize,
 ) -> Result<Vec<Received>> {
-    let page = &driver.page;
+    let page = driver.page()?;
     let mut patterns: Vec<Value> = ["XHR", "Fetch", "Document", "Other"]
         .iter()
         .map(|kind| json!({"urlPattern":"*","resourceType":kind,"requestStage":"Request"}))
@@ -1554,7 +1554,7 @@ async fn capture_scheduling(
     let mut received = Vec::new();
     let mut last_event = Instant::now();
     while started.elapsed() < window {
-        let event = driver.browser.event(&page.id).await?;
+        let event = driver.browser()?.event(&page.id).await?;
         if event.is_null() {
             if !received.is_empty() && last_event.elapsed() > Duration::from_secs(6) {
                 break;
@@ -1705,7 +1705,7 @@ async fn probe_scheduling_page() -> Result<()> {
         )?;
         driver.ensure_page().await?;
         let driver = &driver;
-        let page = &driver.page;
+        let page = driver.page()?;
         let origin = driver.origin.clone();
         page.command(
             "Emulation.setDeviceMetricsOverride",
@@ -1736,7 +1736,7 @@ async fn probe_scheduling_page() -> Result<()> {
         // The same reads with no page: the browser's cookies and user agent, then the page's
         // own headers as well. Only GETs: another method may change what Amazon holds, so the
         // page's are never sent again.
-        let http = Http::signed_in(&driver.browser, &origin, &crate::HOSTS).await?;
+        let http = Http::signed_in(driver.browser()?, &origin, &crate::HOSTS).await?;
         let skipped = [
             "cookie", "user-agent", "accept", "accept-language", "accept-encoding", "referer",
             "origin", "host", "content-length", "connection",
@@ -1844,7 +1844,7 @@ async fn probe_scheduling_page() -> Result<()> {
         // The download, and whatever it asks for next.
         eprintln!(
             "SCHEDULING {}",
-            json!({"hooked":driver.browser.evaluate(&page.id, DOWNLOAD_HOOK).await?})
+            json!({"hooked":driver.browser()?.evaluate(&page.id, DOWNLOAD_HOOK).await?})
         );
         let mut steps = vec!["^(download|export)".to_owned()];
         steps.extend(presses);
@@ -1913,6 +1913,6 @@ async fn probe_scheduling_page() -> Result<()> {
         Ok(())
     }
     .await;
-    driver.browser.close().await;
+    driver.close_browser().await;
     result
 }

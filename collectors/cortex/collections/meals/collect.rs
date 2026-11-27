@@ -12,6 +12,7 @@ use dispatch_core::{
     Error, Result,
     collection::{
         browser::{
+            browseros,
             http::SignedIn,
             page::{Page, call},
         },
@@ -305,7 +306,7 @@ impl Driver {
         )?;
         let input = json!({"kind":ask.kind(),"scope":scope,"candidate":ask.candidate(),"origin":self.origin});
         let result = self
-            .browser
+            .browser()?
             .evaluate(&page.id, &call(&EXTRACT, &input))
             .await?;
         evidence(result, metrics)
@@ -399,7 +400,7 @@ impl Driver {
             json!({"candidate": candidate, "scope": scope, "origin": self.origin})
         );
         if *moving {
-            let told = self.browser.evaluate(&page.id, &expect).await;
+            let told = self.browser()?.evaluate(&page.id, &expect).await;
             let moved = told.is_ok_and(|v| v == true)
                 && page
                     .evaluate(&call(MOVE, &json!(url)))
@@ -421,7 +422,7 @@ impl Driver {
             sleep(Duration::from_millis(50)).await;
         }
         while !self
-            .browser
+            .browser()?
             .evaluate(&page.id, &expect)
             .await
             .is_ok_and(|v| v == true)
@@ -461,7 +462,7 @@ impl Driver {
             json!(candidate.id)
         );
         while Instant::now() < deadline {
-            match self.browser.evaluate(&page.id, &take).await {
+            match self.browser()?.evaluate(&page.id, &take).await {
                 // A route's own page throttled: the account cools, and the collection's next
                 // attempt reads it.
                 Ok(value) if value["throttled"] == true => {
@@ -491,7 +492,7 @@ impl Driver {
         metrics: &Recorder,
     ) -> Result<Value> {
         metrics.detail("meal_hook_missed");
-        let mut page = Page::open_window(self.browser.clone(), self.origin.clone()).await?;
+        let mut page = Page::open_window(self.browser()?.clone(), self.origin.clone()).await?;
         page.allow_origins(&self.origins.iter().map(String::as_str).collect::<Vec<_>>());
         let result = self
             .meal_page(&page, scope, Ask::Detail(candidate), metrics)
@@ -509,11 +510,11 @@ impl Driver {
         metrics: &Recorder,
     ) -> Result<Vec<Candidate>> {
         let value = if method.hook {
-            self.meal_page(&self.page, scope, Ask::Scope, metrics)
+            self.meal_page(self.page()?, scope, Ask::Scope, metrics)
                 .await?;
             self.hooked_list(scope, metrics).await?
         } else {
-            self.meal_page(&self.page, scope, Ask::List, metrics)
+            self.meal_page(self.page()?, scope, Ask::List, metrics)
                 .await?
         };
         let rows: Vec<Candidate> = serde_json::from_value(value["candidates"].clone())
@@ -530,7 +531,7 @@ impl Driver {
         );
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
-            match self.browser.evaluate(&self.page.id, &list).await {
+            match self.browser()?.evaluate(&self.page()?.id, &list).await {
                 Ok(value) if value.is_object() => return evidence(value, metrics),
                 Ok(_) => (),
                 Err(error) if error.is_any(CONTENT_NOT_READY) => (),
@@ -582,7 +583,7 @@ impl Driver {
         self.ensure_page().await?;
         let installed = if method.hook {
             let added = self
-                .page
+                .page()?
                 .command(
                     "Page.addScriptToEvaluateOnNewDocument",
                     json!({"source": *HOOK}),
@@ -598,7 +599,7 @@ impl Driver {
         // The session's tab goes on to other collections, whose pages keep what they fetch.
         if let Some(identifier) = installed {
             let _ = self
-                .page
+                .page()?
                 .command(
                     "Page.removeScriptToEvaluateOnNewDocument",
                     json!({"identifier": identifier}),
@@ -629,9 +630,9 @@ impl Driver {
         let mut others = Vec::new();
         for _ in 1..method.tabs.min(candidates.len()) {
             let mut page = if method.windows {
-                Page::open_window(self.browser.clone(), self.origin.clone()).await?
+                Page::open_window(self.browser()?.clone(), self.origin.clone()).await?
             } else {
-                Page::open(self.browser.clone(), self.origin.clone()).await?
+                Page::open(self.browser()?.clone(), self.origin.clone()).await?
             };
             page.allow_origins(&self.origins.iter().map(String::as_str).collect::<Vec<_>>());
             if method.hook {
@@ -718,7 +719,7 @@ impl Driver {
             metrics.detail(&fault.reason);
             Error::new(fault.code, 502)
         };
-        let session = SignedIn::of(&self.browser, &self.origin, &HOSTS).await?;
+        let session = SignedIn::of(self.browser()?, &self.origin, &HOSTS).await?;
         let mut native = Native::new(&session)?;
         let started_at = now();
         let mut records: BTreeMap<String, (String, Itinerary)> = BTreeMap::new();
@@ -898,6 +899,7 @@ impl Driver {
             let lanes = {
                 let routes = Routes {
                     driver: self,
+                    browser: self.browser()?,
                     scope,
                     pending: candidates
                         .iter()
@@ -924,7 +926,7 @@ impl Driver {
                 // The first tab shows the list's application; the others show whatever
                 // their last read left, which a first read in each loads.
                 futures_util::future::join_all(
-                    std::iter::once((&self.page, true))
+                    std::iter::once((self.page()?, true))
                         .chain(others.iter().map(|page| (page, pass > 0)))
                         .map(|(page, loaded)| routes.lane(page, loaded)),
                 )

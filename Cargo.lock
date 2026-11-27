@@ -1048,6 +1048,7 @@ dependencies = [
  "argon2 0.6.0",
  "axum",
  "base64 0.23.1",
+ "cookie",
  "dispatch-core",
  "flate2",
  "fs2",
