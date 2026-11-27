@@ -82,3 +82,44 @@ fn daily_thresholds_omit_station_while_day_rows_keep_their_exact_date() {
     assert!(url.contains("to=2026-10-03"));
     assert!(url.contains("station=TST1"));
 }
+
+// Every read is asked once, by whichever lane is free. Once one fails the whole read has: no
+// lane takes another, those already asked drain, and the failure is what the lanes answer.
+#[tokio::test]
+async fn once_a_read_fails_no_lane_takes_another() {
+    let lanes = in_lanes(10, 3, |index| async move { Ok(index) }).await;
+    let mut read: Vec<usize> = lanes
+        .into_iter()
+        .flat_map(|lane| lane.unwrap())
+        .map(|(index, value)| {
+            assert_eq!(index, value);
+            index
+        })
+        .collect();
+    read.sort_unstable();
+    assert_eq!(read, (0..10).collect::<Vec<_>>());
+
+    let (asked, finished) = (AtomicUsize::new(0), AtomicUsize::new(0));
+    let lanes = in_lanes(100, 4, |index| {
+        let (asked, finished) = (&asked, &finished);
+        async move {
+            asked.fetch_add(1, Ordering::SeqCst);
+            tokio::task::yield_now().await;
+            finished.fetch_add(1, Ordering::SeqCst);
+            if index == 0 {
+                return Err(Error::new("performance_api_unreadable", 502));
+            }
+            Ok(index)
+        }
+    })
+    .await;
+    let asked = asked.load(Ordering::SeqCst);
+    assert!(asked <= 4, "{asked} reads asked after the first failed");
+    assert_eq!(finished.load(Ordering::SeqCst), asked);
+    let failed: Vec<&str> = lanes
+        .iter()
+        .filter_map(|lane| lane.as_ref().err())
+        .map(|error| error.code.as_str())
+        .collect();
+    assert_eq!(failed, ["performance_api_unreadable"]);
+}

@@ -159,6 +159,35 @@ impl From<Error> for Failed {
         }
     }
 }
+/// `read` of each index below `count`, `lanes` at once, each lane taking the next index as it
+/// finishes one: what each lane read, by index, or the error it met. Once a read failed the
+/// whole has, so no lane takes another; reads already asked drain.
+async fn in_lanes<T, F, Fut>(count: usize, lanes: usize, read: F) -> Vec<Result<Vec<(usize, T)>>>
+where
+    F: Fn(usize) -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    let next = AtomicUsize::new(0);
+    let failed = AtomicBool::new(false);
+    futures_util::future::join_all((0..lanes).map(|_| async {
+        let mut read_here = Vec::new();
+        while !failed.load(Ordering::SeqCst) {
+            let index = next.fetch_add(1, Ordering::SeqCst);
+            if index >= count {
+                break;
+            }
+            match read(index).await {
+                Ok(value) => read_here.push((index, value)),
+                Err(error) => {
+                    failed.store(true, Ordering::SeqCst);
+                    return Err(error);
+                }
+            }
+        }
+        Ok(read_here)
+    }))
+    .await
+}
 
 impl Driver {
     /// Fetch.disable already resumes outstanding requests. Drain their queued
@@ -302,7 +331,8 @@ impl Driver {
             .then_some(Api { base, dsp })
         }))
     }
-    /// Bounded parallel reads, `lanes` at once, preserving the requested order.
+    /// Bounded parallel reads, `lanes` at once, preserving the requested order; the first
+    /// that fails fails them all, with the error of the first lane in order that met one.
     /// The first answer shows the session and the address work, and with `close` the
     /// browser closes then: nothing after it needs a page.
     async fn read_all(
@@ -316,46 +346,40 @@ impl Driver {
     ) -> std::result::Result<Vec<(String, Vec<Value>)>, Failed> {
         let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
         let referer = format!("{}/performance", self.origin);
-        let next = AtomicUsize::new(0);
         let done = AtomicUsize::new(0);
         let answered = AtomicBool::new(false);
         let reporting = AtomicBool::new(false);
-        let lanes = futures_util::future::join_all((0..lanes).map(|_| async {
-            let mut replies = Vec::new();
-            loop {
-                let index = next.fetch_add(1, Ordering::SeqCst);
-                let Some(read) = reads.get(index) else {
-                    break;
-                };
-                let dataset = read.dataset;
-                let url = api.address(dataset, station, &read.from, &read.to);
-                let value = http
-                    .json(&url, &referer, LIMIT)
-                    .await
-                    .map_err(|refusal| refused(refusal, run.metrics))?;
-                let rows = rows(dataset.id, &value)?;
-                if !answered.swap(true, Ordering::SeqCst) && close {
-                    self.browser.close().await;
-                }
-                done.fetch_add(1, Ordering::SeqCst);
-                // Each progress update is a database write, and the datasets finish
-                // together: one write at a time shows the count, where one per lane would
-                // hold every database slot the platform answers requests with.
-                if !reporting.swap(true, Ordering::SeqCst) {
-                    let finished = done.load(Ordering::SeqCst);
-                    let written = run
-                        .progress(
-                            20 + (70 * finished / reads.len()) as i64,
-                            format!("Reading performance datasets ({finished}/{})", reads.len()),
-                        )
-                        .await;
-                    reporting.store(false, Ordering::SeqCst);
-                    written?;
-                }
-                replies.push((index, url, rows));
+        let (http, referer, done, answered, reporting) =
+            (&http, &referer, &done, &answered, &reporting);
+        let lanes = in_lanes(reads.len(), lanes, |index| async move {
+            let read = &reads[index];
+            let dataset = read.dataset;
+            let url = api.address(dataset, station, &read.from, &read.to);
+            let value = http
+                .json(&url, referer, LIMIT)
+                .await
+                .map_err(|refusal| refused(refusal, run.metrics))?;
+            let rows = rows(dataset.id, &value)?;
+            if !answered.swap(true, Ordering::SeqCst) && close {
+                self.browser.close().await;
             }
-            Ok::<_, Error>(replies)
-        }))
+            done.fetch_add(1, Ordering::SeqCst);
+            // Each progress update is a database write, and the datasets finish
+            // together: one write at a time shows the count, where one per lane would
+            // hold every database slot the platform answers requests with.
+            if !reporting.swap(true, Ordering::SeqCst) {
+                let finished = done.load(Ordering::SeqCst);
+                let written = run
+                    .progress(
+                        20 + (70 * finished / reads.len()) as i64,
+                        format!("Reading performance datasets ({finished}/{})", reads.len()),
+                    )
+                    .await;
+                reporting.store(false, Ordering::SeqCst);
+                written?;
+            }
+            Ok((url, rows))
+        })
         .await;
         let mut replies: Vec<Option<(String, Vec<Value>)>> = reads.iter().map(|_| None).collect();
         for lane in lanes {
@@ -363,8 +387,8 @@ impl Driver {
                 error,
                 answered: answered.load(Ordering::SeqCst),
             })?;
-            for (index, url, rows) in lane {
-                replies[index] = Some((url, rows));
+            for (index, reply) in lane {
+                replies[index] = Some(reply);
             }
         }
         Ok(replies
