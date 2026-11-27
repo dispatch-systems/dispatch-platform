@@ -1916,3 +1916,46 @@ async fn probe_scheduling_page() -> Result<()> {
     driver.close_browser().await;
     result
 }
+
+// Where Cortex sends the photos it lists for associates it keeps none of: opens a copy of a
+// DSP's saved session, asks for each address `DISPATCH_BENCHMARK_PHOTOS` names, comma
+// separated, as the roster does, and prints only its status and the host and masked address
+// it is sent to.
+#[tokio::test]
+#[ignore = "requires an explicitly selected DSP copy with a saved Cortex session"]
+async fn probe_photo_redirects() -> Result<()> {
+    use dispatch_core::collection::browser::http::{Http, Refusal, SignedIn};
+    let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
+    let id = dsp
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| Error::new("benchmark_configuration_required", 400))?;
+    let revision = std::env::var("DISPATCH_BENCHMARK_REVISION")
+        .map_err(|_| Error::new("benchmark_configuration_required", 400))?;
+    let saved = dispatch_core::foundation::crypto::decrypt(
+        &db::key_file(&dsp.join("secrets/vault.key"))?,
+        &format!("{id}:cortex:session:{revision}"),
+        &std::fs::read_to_string(dsp.join("state/browsers/cortex-session.enc"))?,
+    )?;
+    let session: SignedIn = serde_json::from_value(saved["session"].clone())?;
+    let http = Http::with_session(&session, &crate::HOSTS)?;
+    let referer = format!("{}/workforce", session.origin);
+    let photos = std::env::var("DISPATCH_BENCHMARK_PHOTOS")
+        .map_err(|_| Error::new("benchmark_configuration_required", 400))?;
+    for address in photos.split(',') {
+        let sent = http
+            .location(&format!("{}{address}", session.origin), &referer)
+            .await;
+        eprintln!(
+            "PHOTO {}",
+            match sent {
+                Ok(to) => json!({"host":to.host_str(),"to":masked_url(to.as_str())}),
+                Err(error) => json!({"status":error.status,"refusal":match error.refusal {
+                    Refusal::Unavailable => "unavailable",
+                    Refusal::Unreadable(label) => label,
+                }}),
+            }
+        );
+    }
+    Ok(())
+}
