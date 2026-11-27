@@ -312,15 +312,21 @@ impl Session {
     /// would then change of the connection, its saved session or a browser is no longer its.
     async fn still_current(&self, state: &Arc<State>, authority: &ProviderAuthority) -> Result<()> {
         ensure(!self.closed(), "verification_expired", 409)?;
+        let current = self.current(authority);
+        state.read(move |db| current(db)).await
+    }
+    /// What `still_current` asks, to ask in the same database turn as what it guards.
+    fn current(
+        &self,
+        authority: &ProviderAuthority,
+    ) -> impl Fn(&Store) -> Result<()> + Send + 'static {
         let (dsp, provider, revision) = (self.dsp.clone(), self.provider, self.revision);
         let authority = authority.clone();
-        state
-            .read(move |db| {
-                authority.check(db, &dsp, provider)?;
-                let current = db.connection_revision(&dsp, provider)? == Some(revision);
-                ensure(current, "connection_changed", 409)
-            })
-            .await
+        move |db| {
+            authority.check(db, &dsp, provider)?;
+            let current = db.connection_revision(&dsp, provider)? == Some(revision);
+            ensure(current, "connection_changed", 409)
+        }
     }
     pub fn busy(&self) -> bool {
         self.status.load(Ordering::SeqCst) == 0
@@ -972,17 +978,27 @@ impl State {
         authority: &ProviderAuthority,
         retry: bool,
     ) -> Result<()> {
-        session.still_current(self, authority).await?;
-        session.became(SavedSession::Refused);
+        ensure(!session.closed(), "verification_expired", 409)?;
+        // The session goes only while the job is still current, asked in the same turn.
+        let current = session.current(authority);
         let (dsp, provider, revision) = (session.dsp.clone(), session.provider, session.revision);
-        self.run_bookkeeping(move |db| db.discard_session_at(&dsp, provider, revision))
-            .await?;
-        self.launch(session, retry).await
+        self.run_bookkeeping(move |db| {
+            current(db)?;
+            db.discard_session_at(&dsp, provider, revision)
+        })
+        .await?;
+        session.became(SavedSession::Refused);
+        self.launch(session, authority, retry).await
     }
     /// Starts the browser of a session that read with the session a sign-in saved until now:
     /// admitted as any browser is, from its profile, its driver in place of the one it read
     /// with.
-    async fn launch(self: &Arc<Self>, session: &Arc<Session>, retry: bool) -> Result<()> {
+    async fn launch(
+        self: &Arc<Self>,
+        session: &Arc<Session>,
+        authority: &ProviderAuthority,
+        retry: bool,
+    ) -> Result<()> {
         {
             let sessions = self
                 .browsers
@@ -994,7 +1010,9 @@ impl State {
         }
         attempt::preflight(&session.profile, session.provider.id(), retry)?;
         let mut worker = session.worker.lock().await;
-        ensure(!session.closed(), "verification_expired", 409)?;
+        // What it waited on may have outlasted the job: asked once more, just before the
+        // browser starts from the profile.
+        session.still_current(self, authority).await?;
         *worker = Some(self.browser_driver(session).await?);
         Ok(())
     }
@@ -1006,7 +1024,7 @@ impl State {
         authority: &ProviderAuthority,
     ) -> Result<()> {
         let started = async {
-            self.launch(session, false).await?;
+            self.launch(session, authority, false).await?;
             let (dsp, provider, check) = (session.dsp.clone(), session.provider, authority.clone());
             let credentials = self
                 .read(move |db| {
