@@ -343,7 +343,7 @@ impl Driver {
     {
         let started_at = now();
         progress(5, "Finding the station".into()).await?;
-        let mut tab = self.tab();
+        let mut tab = self.tab()?;
         let scope = tab.routes_scope(request, metrics).await?;
         let day = tab
             .read_routes(

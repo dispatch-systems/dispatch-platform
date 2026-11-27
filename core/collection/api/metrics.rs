@@ -13,6 +13,20 @@ pub enum JobPhase {
     Publication,
 }
 
+/// What became of the session a provider's sign-in saved, for a job that started from it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
+#[serde(rename_all = "snake_case")]
+pub enum SavedSession {
+    /// The job read with it and started no browser.
+    Browserless,
+    /// The provider no longer accepted it, and a browser signed in instead.
+    Refused,
+    /// A collection needed a page, and a browser started for it.
+    PageNeeded,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
@@ -36,6 +50,11 @@ pub struct JobMetrics {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub fallback: Option<String>,
+    /// What became of the session a sign-in saved, for a job that started from one. Metrics
+    /// saved before it, and a job that had none, have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub saved_session: Option<SavedSession>,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub queue_ms: u64,
     #[cfg_attr(feature = "ts", ts(type = "number"))]

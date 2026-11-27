@@ -9,14 +9,14 @@ use dispatch_core::collection::browser::{
     Collected, Driver as Drives, Pending, Run,
     attempt::Attempts,
     browseros,
-    http::{Http, Refusal},
+    http::{Http, Refusal, SignedIn},
     page::{Page, call},
 };
 use dispatch_core::{
-    Error, Result, collection::metrics::Recorder, db::s, ensure, manifest::registry,
+    Code, Error, Result, collection::metrics::Recorder, db::s, ensure, manifest::registry,
 };
 use serde_json::{Value, json};
-use std::{path::Path, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 use tokio::time::{Instant, sleep};
 // The page is between documents or still loading its scripts; ask it again.
 const PAGE_NOT_READY: &[dispatch_core::Code] = &[
@@ -62,6 +62,45 @@ where
     }
     None
 }
+/// Whether the session `http` carries still signs the account in: it carries Amazon's
+/// cookies, Amazon serves the console page itself rather than sending it to a sign-in or a
+/// verification, and the company list, which Amazon answers only a signed-in account, comes
+/// back with the account's companies. Answers the company list when the session stands.
+async fn session_stands(http: &Http, origin: &str) -> Option<Value> {
+    if !http.carries_cookies() {
+        return None;
+    }
+    let landing = format!("{origin}{LANDING}");
+    let home = format!("{origin}/");
+    let companies = format!("{origin}{COMPANIES}");
+    let workforce = format!("{origin}/workforce");
+    // Both at once; the first refused ends the check without waiting on the other.
+    let console = async {
+        checked(|| http.page(&landing, &home))
+            .await
+            .filter(|html| console(html))
+            .ok_or(())
+    };
+    let companies = async {
+        checked(|| http.json(&companies, &workforce, COMPANIES_LIMIT))
+            .await
+            .filter(|reply| {
+                reply["records"]
+                    .as_array()
+                    .is_some_and(|records| !records.is_empty())
+            })
+            .ok_or(())
+    };
+    futures_util::future::try_join(console, companies)
+        .await
+        .ok()
+        .map(|(_, companies)| companies)
+}
+/// What a driver with no browser fails where a collection needs a page: the job's browser
+/// starts then, and the collection runs again in it.
+fn browser_required() -> Error {
+    Error::new(Code::BrowserRequired, 409)
+}
 /// Where the application is, and the origins its tab may open: Amazon's, or only the
 /// stand-in a test points the browser at.
 pub(crate) fn application(fixture: Option<&str>) -> (String, Vec<String>) {
@@ -96,9 +135,18 @@ impl Tab<'_> {
         Ok(())
     }
 }
+/// A job's browser, and the tab its collections read in.
+struct Application {
+    browser: browseros::Session,
+    page: Page,
+}
 pub struct Driver {
-    pub browser: browseros::Session,
-    pub(crate) page: Page,
+    /// None for a driver reading with the session a sign-in saved (`resumed`), which fails
+    /// `browser_required` where a collection needs a page.
+    application: Option<Application>,
+    /// The session such a driver reads with: one client for the job, which keeps what its
+    /// replies set for the next job.
+    saved: Option<Arc<Http>>,
     pub(crate) origin: String,
     pub(crate) origins: Vec<String>,
     attempts: Attempts,
@@ -119,8 +167,26 @@ impl Driver {
     ) -> Result<Self> {
         let (origin, origins) = application(fixture);
         Ok(Self {
-            page: Page::empty(browser.clone(), origin.clone()),
-            browser,
+            application: Some(Application {
+                page: Page::empty(browser.clone(), origin.clone()),
+                browser,
+            }),
+            saved: None,
+            ..Self::without_browser(profile, origin, origins)?
+        })
+    }
+    /// A driver reading with `session`, the one a sign-in saved, and no browser.
+    pub fn resumed(session: &SignedIn, profile: &Path, fixture: Option<&str>) -> Result<Self> {
+        let (origin, origins) = application(fixture);
+        Ok(Self {
+            saved: Some(Arc::new(Http::of_session(session, &crate::HOSTS)?)),
+            ..Self::without_browser(profile, origin, origins)?
+        })
+    }
+    fn without_browser(profile: &Path, origin: String, origins: Vec<String>) -> Result<Self> {
+        Ok(Self {
+            application: None,
+            saved: None,
             origin,
             origins,
             attempts: Attempts::beside(profile, "cortex")?,
@@ -131,66 +197,69 @@ impl Driver {
             password_submitted: false,
         })
     }
+    /// Its browser: none while it reads with the session a sign-in saved.
+    pub(crate) fn browser(&self) -> Result<&browseros::Session> {
+        self.application
+            .as_ref()
+            .map(|application| &application.browser)
+            .ok_or_else(browser_required)
+    }
+    /// The tab its collections read in, which `ensure_page` opens.
+    pub(crate) fn page(&self) -> Result<&Page> {
+        self.application
+            .as_ref()
+            .map(|application| &application.page)
+            .ok_or_else(browser_required)
+    }
     /// Its application, for a collection to read in.
-    pub(crate) fn tab(&mut self) -> Tab<'_> {
-        Tab {
-            browser: &self.browser,
-            page: &mut self.page,
+    pub(crate) fn tab(&mut self) -> Result<Tab<'_>> {
+        let application = self.application.as_mut().ok_or_else(browser_required)?;
+        Ok(Tab {
+            browser: &application.browser,
+            page: &mut application.page,
             origin: &self.origin,
             origins: &self.origins,
-        }
+        })
     }
     pub(crate) async fn ensure_page(&mut self) -> Result<()> {
-        self.tab().ensure_page().await
+        self.tab()?.ensure_page().await
     }
     pub async fn resolve_scope(
         &mut self,
         request: &CollectionRequest,
         metrics: &Recorder,
     ) -> Result<Scope> {
-        self.tab().resolve_scope(request, metrics).await
+        self.tab()?.resolve_scope(request, metrics).await
     }
-    /// Whether the session the profile kept still signs this browser in: it kept
-    /// Amazon's cookies, Amazon serves the console page itself rather than sending it to
-    /// a sign-in or a verification, and the company list, which Amazon answers only a
-    /// signed-in account, comes back with the account's companies. Anything else signs
-    /// in on the page as before, where a verification reaches the owner. Answers the
-    /// company list when the session stands.
-    async fn saved_session(&self) -> Result<Option<Value>> {
-        let http = Http::signed_in(&self.browser, &self.origin, &crate::HOSTS).await?;
-        if !http.carries_cookies() {
-            return Ok(None);
+    /// The account's session over plain HTTP: the browser's as it is now, or the one a
+    /// sign-in saved.
+    pub(crate) async fn http(&self) -> Result<Arc<Http>> {
+        match (&self.saved, &self.application) {
+            (Some(http), _) => Ok(http.clone()),
+            (None, Some(application)) => Ok(Arc::new(
+                Http::signed_in(&application.browser, &self.origin, &crate::HOSTS).await?,
+            )),
+            (None, None) => Err(browser_required()),
         }
-        let landing = format!("{}{LANDING}", self.origin);
-        let home = format!("{}/", self.origin);
-        let companies = format!("{}{COMPANIES}", self.origin);
-        let workforce = format!("{}/workforce", self.origin);
-        // Both at once; the first refused ends the check without waiting on the other.
-        let console = async {
-            checked(|| http.page(&landing, &home))
-                .await
-                .filter(|html| console(html))
-                .ok_or(())
-        };
-        let companies = async {
-            checked(|| http.json(&companies, &workforce, COMPANIES_LIMIT))
-                .await
-                .filter(|reply| {
-                    reply["records"]
-                        .as_array()
-                        .is_some_and(|records| !records.is_empty())
-                })
-                .ok_or(())
-        };
-        Ok(futures_util::future::try_join(console, companies)
-            .await
-            .ok()
-            .map(|(_, companies)| companies))
+    }
+    /// Closes its browser once a collection needs no page: one reading with the saved session
+    /// has none.
+    pub(crate) async fn close_browser(&self) {
+        if let Some(application) = &self.application {
+            application.browser.close().await;
+        }
+    }
+    /// Asks its browser to close without waiting for it to exit, so that what reads next is
+    /// not held up: one reading with the saved session has none.
+    pub(crate) fn stop_browser(&self) {
+        if let Some(application) = &self.application {
+            application.browser.stop();
+        }
     }
     async fn script(&self, mut input: Value) -> Result<Value> {
         input["origins"] = json!(self.origins);
         input["applicationOrigin"] = json!(self.origin);
-        self.page.evaluate(&call(AUTH, &input)).await
+        self.page()?.evaluate(&call(AUTH, &input)).await
     }
     async fn observe(&self, previous: &str, seconds: u64) -> Result<Value> {
         let deadline = Instant::now() + Duration::from_secs(seconds);
@@ -201,9 +270,10 @@ impl Driver {
                 }
                 Ok(_) => (),
                 Err(error) if error.is_any(PAGE_NOT_READY) => {
-                    let frame = self.page.frame().await?;
+                    let page = self.page()?;
+                    let frame = page.frame().await?;
                     ensure(
-                        s(&frame, "url") == "about:blank" || self.page.trusted(s(&frame, "url")),
+                        s(&frame, "url") == "about:blank" || page.trusted(s(&frame, "url")),
                         "navigation_policy_violation",
                         409,
                     )?;
@@ -253,13 +323,28 @@ impl Driver {
         self.attempts.failed("manual_verification_required")?;
         Ok(json!({"type":"challenge"}))
     }
+    /// The start of a driver reading with the session a sign-in saved: ready when the session
+    /// still stands, as a browser's own is checked, and `browser_required` otherwise.
+    async fn resume(&mut self, command: &Value) -> Result<Value> {
+        ensure(s(command, "action") == "start", "verification_expired", 409)?;
+        let http = self.http().await?;
+        let companies = session_stands(&http, &self.origin)
+            .await
+            .ok_or_else(browser_required)?;
+        self.attempts.succeeded()?;
+        self.companies = Some(companies);
+        Ok(json!({"type":"ready"}))
+    }
     pub async fn request(&mut self, command: Value) -> Result<Value> {
+        if self.application.is_none() {
+            return self.resume(&command).await;
+        }
         let result = async {
             // A session that started from the saved one has no tab to verify on.
             if ["complete_assistance", "verify", "screenshot", "assist"]
                 .contains(&s(&command, "action"))
             {
-                ensure(!self.page.id.is_empty(), "verification_expired", 409)?;
+                ensure(!self.page()?.id.is_empty(), "verification_expired", 409)?;
             }
             match s(&command, "action") {
                 "start" | "check" => {
@@ -278,8 +363,12 @@ impl Driver {
                     // owner's own sign-ins always go through the page.
                     if s(&command, "action") == "start"
                         && command["ownerRetry"] != true
-                        && self.page.id.is_empty()
-                        && let Some(companies) = self.saved_session().await?
+                        && self.page()?.id.is_empty()
+                        && let Some(companies) = session_stands(
+                            &Http::signed_in(self.browser()?, &self.origin, &crate::HOSTS).await?,
+                            &self.origin,
+                        )
+                        .await
                     {
                         self.attempts.succeeded()?;
                         self.credentials = Value::Null;
@@ -287,7 +376,7 @@ impl Driver {
                         return Ok(json!({"type":"ready"}));
                     }
                     self.ensure_page().await?;
-                    self.page.navigate(LANDING).await?;
+                    self.page()?.navigate(LANDING).await?;
                     let value = self.observe("", 30).await?;
                     self.advance(value).await
                 }
@@ -311,8 +400,8 @@ impl Driver {
                     let value = self.observe("challenge", 15).await?;
                     self.advance(value).await
                 }
-                "screenshot" => self.page.screenshot().await,
-                "assist" => self.page.assisted(&command["input"]).await,
+                "screenshot" => self.page()?.screenshot().await,
+                "assist" => self.page()?.assisted(&command["input"]).await,
                 _ => Err(Error::new("verification_expired", 409)),
             }
         }
@@ -503,7 +592,23 @@ impl Drives for Driver {
         })
     }
     fn browser(&self) -> Option<&browseros::Session> {
-        Some(&self.browser)
+        Driver::browser(self).ok()
+    }
+    /// The session it read with, as its replies left it, when it had no browser; else the
+    /// browser's, while it is open.
+    fn session(&self) -> Pending<'_, Option<SignedIn>> {
+        Box::pin(async move {
+            let session = match (&self.saved, &self.application) {
+                (Some(http), _) => http.session(),
+                (None, Some(application)) => {
+                    SignedIn::of(&application.browser, &self.origin, &crate::HOSTS)
+                        .await
+                        .ok()
+                }
+                (None, None) => None,
+            };
+            Ok(session.filter(|session| !session.cookies.is_empty()))
+        })
     }
 }
 impl Driver {

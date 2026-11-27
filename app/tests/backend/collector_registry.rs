@@ -352,12 +352,17 @@ fn resetting_paycom_browser_state_preserves_other_collectors_and_business_data()
         db::write_private(&browsers.join(name).join("session"), b"private session").unwrap();
     }
     db::write_private(&browsers.join("paycom-attempt.json"), b"{}").unwrap();
+    // The sessions sign-ins saved, Paycom's and another collector's.
+    db::write_private(&browsers.join("paycom-session.enc"), b"sealed").unwrap();
+    db::write_private(&browsers.join("cortex-session.enc"), b"sealed").unwrap();
     store
         .clear_collector_browser_state(&id, paycom::PROVIDER)
         .unwrap();
     assert!(!browsers.join("paycom").exists());
     assert!(!browsers.join("paycom-browseros").exists());
     assert!(!browsers.join("paycom-attempt.json").exists());
+    assert!(!browsers.join("paycom-session.enc").exists());
+    assert!(browsers.join("cortex-session.enc").exists());
     assert_eq!(
         std::fs::read(browsers.join("future-collector/session")).unwrap(),
         b"private session"

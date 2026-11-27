@@ -168,7 +168,7 @@ pub async fn measure_route_method<R: serde::Serialize>(
             sent.load(std::sync::atomic::Ordering::Relaxed),
             received.load(std::sync::atomic::Ordering::Relaxed),
         );
-        let pid = driver.browser.process_id();
+        let pid = driver.browser()?.process_id();
         let sampling = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
         let sampling_guard = Sampling(sampling.clone());
         let sampler = {
@@ -312,7 +312,7 @@ pub async fn measure_route_method<R: serde::Serialize>(
         Ok(())
     }
     .await;
-    driver.browser.close().await;
+    driver.close_browser().await;
     result
 }
 

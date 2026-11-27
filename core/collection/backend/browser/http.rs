@@ -3,19 +3,25 @@
 //! Requests keep to the browser's egress rules: the provider's own HTTPS hosts on
 //! public IPv4 addresses, no redirects or ambient proxies, bounded in size and time. An
 //! isolated support verification uses its fixed trusted provider broker. Session cookies
-//! stay in memory, for the job or a reader that goes on after it, and are never written or
-//! logged.
+//! stay in memory, for the job or a reader that goes on after it, and are never logged; the
+//! only copy written is the one a sign-in leaves for the next job, encrypted (`saved`).
 use super::{browseros, egress};
 use crate::{Error, Result, db::s};
 use reqwest::{
     Client, Response, StatusCode,
-    cookie::Jar,
+    cookie::{CookieStore, Jar},
     dns::{Addrs, Name, Resolve, Resolving},
-    header::{CONTENT_ENCODING, CONTENT_TYPE},
+    header::{CONTENT_ENCODING, CONTENT_TYPE, HeaderValue},
     redirect::Policy,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use std::{io::Read, net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    io::Read,
+    net::SocketAddr,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use url::Url;
 
 /// As much as a reader in the tab accepts.
@@ -182,8 +188,9 @@ fn retry_after(value: Option<&reqwest::header::HeaderValue>) -> Option<Duration>
 
 /// A provider's session as a signed-in browser held it: the cookies its requests carry and
 /// the browser's user agent, so a reader can go on with it after the browser closes. Kept in
-/// memory only.
-#[derive(Clone)]
+/// memory, but for the copy a sign-in saves for the next job, encrypted (`saved`).
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SignedIn {
     /// The provider's origin: one of its hosts, or the local stand-in.
     pub origin: String,
@@ -191,15 +198,38 @@ pub struct SignedIn {
     pub user_agent: String,
 }
 /// One cookie of a session, as the browser held it.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Cookie {
     pub name: String,
     pub value: String,
     pub domain: String,
     pub path: String,
     pub secure: bool,
+    /// When the browser stops sending it, in milliseconds since the epoch: none for a session
+    /// cookie. Required in a saved session, so one saved before cookies kept their expiry no
+    /// longer opens.
+    #[serde(deserialize_with = "Option::deserialize")]
+    pub expires: Option<i64>,
+}
+impl Cookie {
+    /// Whether it is the same cookie as `other`: the same name on the same domain and path.
+    fn same(&self, other: &Cookie) -> bool {
+        (&self.name, &self.domain, &self.path) == (&other.name, &other.domain, &other.path)
+    }
+    /// Whether it has expired by `now`, in milliseconds since the epoch: a browser would no
+    /// longer send it.
+    fn expired(&self, now: i64) -> bool {
+        self.expires.is_some_and(|at| at <= now)
+    }
 }
 impl SignedIn {
+    /// It without the cookies expired by now, which a browser would no longer send.
+    pub fn unexpired(mut self) -> Self {
+        let now = crate::db::now();
+        self.cookies.retain(|cookie| !cookie.expired(now));
+        self
+    }
     /// What `browser` holds for the provider at `origin`, one of its `hosts`: its cookies
     /// on the hosts' cookie domains, and its user agent.
     pub async fn of(
@@ -225,6 +255,11 @@ impl SignedIn {
                 domain: s(cookie, "domain").into(),
                 path: s(cookie, "path").into(),
                 secure: cookie["secure"] == true,
+                // In seconds since the epoch, but for a session cookie.
+                expires: cookie["expires"]
+                    .as_f64()
+                    .filter(|_| cookie["session"] != true)
+                    .map(|seconds| (seconds * 1000.0) as i64),
             })
             .collect();
         Ok(Self {
@@ -233,6 +268,77 @@ impl SignedIn {
             user_agent: s(&version, "userAgent").into(),
         })
     }
+}
+
+/// The cookies a client carries, and the last each reply set of each cookie since: what
+/// `Http::session` answers the session as the replies left it.
+struct Carried {
+    jar: Jar,
+    set: Mutex<Vec<Replied>>,
+}
+/// A cookie a reply set: one to keep, or one it removed, sent already expired.
+struct Replied {
+    cookie: Cookie,
+    removed: bool,
+}
+impl CookieStore for Carried {
+    fn set_cookies(&self, headers: &mut dyn Iterator<Item = &HeaderValue>, url: &Url) {
+        let headers: Vec<&HeaderValue> = headers.collect();
+        if let Ok(mut set) = self.set.lock() {
+            for replied in headers.iter().filter_map(|header| replied(header, url)) {
+                // A cookie set again replaces what was set of it before, so a client kept
+                // long holds no more than the cookies it was sent.
+                set.retain(|kept| !kept.cookie.same(&replied.cookie));
+                set.push(replied);
+            }
+        }
+        self.jar.set_cookies(&mut headers.into_iter(), url);
+    }
+    fn cookies(&self, url: &Url) -> Option<HeaderValue> {
+        self.jar.cookies(url)
+    }
+}
+/// The cookie a `Set-Cookie` header from `url` sets, as a browser would hold it: on the
+/// domain it names, with a leading dot, or on the host alone, on the path it names or the
+/// address's own directory, and until its Max-Age, or else its Expires, runs out. None for one
+/// it may not set, on a domain the host isn't in.
+fn replied(header: &HeaderValue, url: &Url) -> Option<Replied> {
+    let parsed = cookie::Cookie::parse(header.to_str().ok()?).ok()?;
+    let host = url.host_str()?;
+    let domain = match parsed.domain().map(|domain| domain.trim_start_matches('.')) {
+        Some(domain) if host == domain || host.ends_with(&format!(".{domain}")) => {
+            format!(".{domain}")
+        }
+        Some(_) => return None,
+        None => host.to_owned(),
+    };
+    let path = match parsed.path() {
+        Some(path) if path.starts_with('/') => path.to_owned(),
+        _ => match url.path().rfind('/') {
+            Some(0) | None => "/".to_owned(),
+            Some(end) => url.path()[..end].to_owned(),
+        },
+    };
+    let now = crate::db::now();
+    let expires = match parsed.max_age() {
+        Some(age) => {
+            Some(now.saturating_add(i64::try_from(age.whole_milliseconds()).unwrap_or(i64::MAX)))
+        }
+        None => parsed
+            .expires_datetime()
+            .map(|at| (at.unix_timestamp_nanos() / 1_000_000) as i64),
+    };
+    Some(Replied {
+        cookie: Cookie {
+            name: parsed.name().to_owned(),
+            value: parsed.value().to_owned(),
+            domain,
+            path,
+            secure: parsed.secure() == Some(true),
+            expires,
+        },
+        removed: expires.is_some_and(|at| at <= now),
+    })
 }
 
 /// A body as the wire sent it, from `Http::wire`.
@@ -282,6 +388,9 @@ pub struct Http {
     origin: String,
     /// How many of the browser's cookies its requests carry.
     cookies: usize,
+    /// The session it began with and the cookies its replies set since: none for a client
+    /// that carries no session (`detached`).
+    session: Option<(SignedIn, Arc<Carried>)>,
 }
 /// What a provider's own API answered, from `Http::answer`.
 pub struct Answer {
@@ -326,6 +435,7 @@ impl Http {
             hosts,
             origin: origin.into(),
             cookies: 0,
+            session: None,
         })
     }
     pub async fn download(
@@ -390,6 +500,11 @@ impl Http {
     ) -> Result<Self> {
         Self::carrying(&SignedIn::of(browser, origin, hosts).await?, hosts, true)
     }
+    /// A client carrying `session`, as `signed_in` makes one of a browser's: the session a
+    /// sign-in saved for a job that reads with no browser.
+    pub fn of_session(session: &SignedIn, hosts: &'static RequestHosts) -> Result<Self> {
+        Self::carrying(session, hosts, true)
+    }
     /// A client carrying `session` as `signed_in` makes one, but handing bodies back as the
     /// wire sent them, for a reader that asks for gzip with `wire` and decodes them itself.
     pub fn with_session(session: &SignedIn, hosts: &'static RequestHosts) -> Result<Self> {
@@ -404,9 +519,10 @@ impl Http {
         };
         let jar = Jar::default();
         let mut carried = 0;
+        let now = crate::db::now();
         for cookie in &session.cookies {
             let host = cookie.domain.trim_start_matches('.');
-            if !hosts.cookie(host) {
+            if !hosts.cookie(host) || cookie.expired(now) {
                 continue;
             }
             let Ok(url) = Url::parse(&format!("{scheme}://{host}/")) else {
@@ -419,12 +535,20 @@ impl Http {
             if cookie.secure {
                 line.push_str("; Secure");
             }
+            // The jar stops sending it as the browser would have.
+            if let Some(at) = cookie.expires {
+                line.push_str(&format!("; Max-Age={}", (at - now) / 1000));
+            }
             jar.add_cookie_str(&line, &url);
             carried += 1;
         }
+        let jar = Arc::new(Carried {
+            jar,
+            set: Mutex::default(),
+        });
         let mut client = verification_proxy(
             Client::builder()
-                .cookie_provider(Arc::new(jar))
+                .cookie_provider(jar.clone())
                 .redirect(Policy::none()),
         )?;
         // HTTP/2 only where the provider's hosts ask for it, never for the local stand-in.
@@ -447,12 +571,30 @@ impl Http {
             hosts,
             origin: session.origin.clone(),
             cookies: carried,
+            session: Some((session.clone(), jar)),
         })
     }
     /// Whether the browser held any cookie of the provider's for its requests: one that
     /// never signed in, or whose session was cleared, holds none.
     pub fn carries_cookies(&self) -> bool {
         self.cookies > 0
+    }
+    /// The session it carries as its replies have left it: the cookies it began with, each
+    /// one a reply set since in its place, and none a reply removed. None for a client that
+    /// carries no session.
+    pub fn session(&self) -> Option<SignedIn> {
+        let (began, carried) = self.session.as_ref()?;
+        let mut session = began.clone();
+        for Replied { cookie, removed } in carried.set.lock().ok()?.iter() {
+            if !self.hosts.cookie(cookie.domain.trim_start_matches('.')) {
+                continue;
+            }
+            session.cookies.retain(|kept| !kept.same(cookie));
+            if !removed {
+                session.cookies.push(cookie.clone());
+            }
+        }
+        Some(session)
     }
     fn target(&self, value: &str) -> std::result::Result<Url, Refusal> {
         Url::parse(value)

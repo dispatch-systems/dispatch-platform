@@ -29,6 +29,7 @@ codes! {
     BrowserMemoryBusy => "browser_memory_busy",
     BrowserStartFailed => "browser_start_failed",
     BrowserCapacityBusy => "browser_capacity_busy",
+    BrowserRequired => "browser_required",
     ProviderTimeout => "provider_timeout",
     ProviderUnavailable => "provider_unavailable",
     ProviderNavigationTimeout => "provider_navigation_timeout",

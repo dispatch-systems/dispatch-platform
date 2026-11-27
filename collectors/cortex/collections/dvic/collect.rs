@@ -366,7 +366,7 @@ impl Driver {
         run.progress(10, "Checking DVIC reports".into()).await?;
         let listed = loop {
             // The browser's cookies as they are now: the overview may have renewed them.
-            let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
+            let http = self.http().await?;
             let turn = Turn::of(&self.origin, &scope.provider, gate::job(run));
             match self.dvic_listing(&http, &turn, &api, request, run).await {
                 Ok(listed) => break listed,
@@ -401,7 +401,7 @@ impl Driver {
     ) -> Result<(Capture, Scope)> {
         let Listing { api, known, listed } = listing;
         // Nothing after the listing needs the browser: reports download without its session.
-        self.browser.close().await;
+        self.close_browser().await;
         let downloads = reports(&self.origin)?;
         ensure(
             listed.len() <= dvic::MAX_REPORTS,

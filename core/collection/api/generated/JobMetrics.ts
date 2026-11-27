@@ -2,6 +2,7 @@
 import type { JobOutcome } from "./JobOutcome";
 import type { JobPhase } from "./JobPhase";
 import type { PageReads } from "./PageReads";
+import type { SavedSession } from "./SavedSession";
 
 export type JobMetrics = { attempt: number, startedAt: string, finishedAt: string | null, outcome: JobOutcome, error: string | null, phase: JobPhase | null, detail: string | null,
 /**
@@ -13,7 +14,12 @@ method?: string,
  * Why the collector read it some other way than its first, for one that falls back: a
  * fixed label of its own, kept as `method` is. Metrics saved before it have none.
  */
-fallback?: string, queueMs: number, elapsedMs: number, authenticationMs: number | null, verificationMs: number | null, collectionMs: number | null, publicationMs: number | null, employees: number | null, timecards: number | null, itineraries: number | null, meals: number | null,
+fallback?: string,
+/**
+ * What became of the session a sign-in saved, for a job that started from one. Metrics
+ * saved before it, and a job that had none, have none.
+ */
+savedSession?: SavedSession, queueMs: number, elapsedMs: number, authenticationMs: number | null, verificationMs: number | null, collectionMs: number | null, publicationMs: number | null, employees: number | null, timecards: number | null, itineraries: number | null, meals: number | null,
 /**
  * Weekly Scorecard rows across every dataset. Metrics saved before scorecards have none.
  */

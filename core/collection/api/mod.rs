@@ -24,6 +24,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
         metrics::PageRead,
         metrics::PageReads,
         metrics::PageStage,
+        metrics::SavedSession,
         types::CheckState,
         types::CollectionChange,
         types::CollectionUpdates,

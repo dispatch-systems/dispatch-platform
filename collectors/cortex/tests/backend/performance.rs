@@ -252,6 +252,7 @@ async fn read_week(
             domain: FIXTURE.into(),
             path: "/".into(),
             secure: false,
+            expires: None,
         }],
         user_agent: "Fixture".into(),
     };

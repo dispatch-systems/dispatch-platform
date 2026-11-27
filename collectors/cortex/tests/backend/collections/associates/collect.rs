@@ -146,6 +146,7 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
             domain: FIXTURE.into(),
             path: "/".into(),
             secure: false,
+            expires: None,
         }],
         user_agent: "Fixture".into(),
     };
@@ -255,6 +256,7 @@ async fn photos_ask_cortex_no_more_at_once_than_its_gate_admits_and_wait_out_a_t
             domain: FIXTURE.into(),
             path: "/".into(),
             secure: false,
+            expires: None,
         }],
         user_agent: "Fixture".into(),
     };

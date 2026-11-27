@@ -28,7 +28,7 @@ use dispatch_core::{
             Collected, Driver, Pending,
             browseros::{self, NetworkPolicy},
             egress::HostPolicy,
-            http::RequestHosts,
+            http::{RequestHosts, SignedIn},
         },
         metrics::{Counted, Counts},
         registry,
@@ -309,6 +309,25 @@ impl Collector for Cortex {
         Box::pin(async move {
             Ok(
                 Box::new(connection::Driver::new(browser, profile, fixture).await?)
+                    as Box<dyn Driver>,
+            )
+        })
+    }
+    // Routes and meals read Cortex with a page wherever their reads without one fall back:
+    // starting the browser then would read the day again. Every other collection reads over
+    // HTTP, but where its station's scope or API must be found again.
+    fn resumes(&self, job_kind: &str) -> bool {
+        job_kind != routes::JOB_KIND && job_kind != meals::JOB_KIND
+    }
+    fn resumed<'a>(
+        &self,
+        session: SignedIn,
+        profile: &'a Path,
+        fixture: Option<&'a str>,
+    ) -> Pending<'a, Box<dyn Driver>> {
+        Box::pin(async move {
+            Ok(
+                Box::new(connection::Driver::resumed(&session, profile, fixture)?)
                     as Box<dyn Driver>,
             )
         })

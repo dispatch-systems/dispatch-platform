@@ -7,7 +7,6 @@ use crate::{
         metrics::{self as job_metrics, Phase, Recorder},
     },
     db::now,
-    ensure,
     manifest::{
         events::{self, CollectionSucceeded},
         registry,
@@ -68,26 +67,10 @@ async fn run(state: Arc<State>, job: JobRow, owner: String) {
                 },
             )
             .await?;
-        if session.challenge() {
-            metrics.phase(Phase::Verification);
-            let jid = id.clone();
-            let worker = owner.clone();
-            state
-                .run_bookkeeping(move |db| {
-                    db.progress(
-                        &jid,
-                        &worker,
-                        5,
-                        "Waiting for owner verification",
-                        ActiveJobStatus::WaitingVerification,
-                    )
-                })
-                .await?;
-            while !session.ready() {
-                ensure(!session.closed(), "verification_expired", 409)?;
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
+        if let Some(saved) = session.saved_session() {
+            metrics.saved_session(saved);
         }
+        session.verified(&state, &id, &owner, &metrics).await?;
         let jid = id.clone();
         let worker = owner.clone();
         let request: Value = serde_json::from_str(&request)?;

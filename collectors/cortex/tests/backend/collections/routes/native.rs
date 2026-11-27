@@ -426,6 +426,7 @@ async fn stand_in(plays: Plays) -> (Arc<Stand>, SignedIn) {
             domain: FIXTURE.into(),
             path: "/".into(),
             secure: false,
+            expires: None,
         }],
         user_agent: "Fixture".into(),
     };

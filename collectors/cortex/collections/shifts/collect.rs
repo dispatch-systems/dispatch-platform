@@ -127,7 +127,7 @@ impl Driver {
             captured => captured,
         };
         // It exits while the week is published, rather than holding it up.
-        self.browser.stop();
+        self.stop_browser();
         captured
     }
     async fn week_of_shifts(
@@ -139,7 +139,7 @@ impl Driver {
         let started_at = now();
         run.progress(30, "Checking the DSP's company".into())
             .await?;
-        let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
+        let http = self.http().await?;
         let companies = match self.companies.take() {
             Some(companies) => companies,
             None => http
