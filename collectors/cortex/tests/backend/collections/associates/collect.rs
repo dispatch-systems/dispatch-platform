@@ -151,7 +151,7 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
     };
     let http = Http::with_session(&session, &cortex::HOSTS).unwrap();
     let downloads = Http::detached(&origin, &cortex::PHOTO_HOSTS).unwrap();
-    let turn = Turn::of(&origin, "c-1");
+    let turn = Turn::of(&origin, "c-1", Box::new(|| Box::pin(async { Ok(()) })));
     let fetch = |address: &'static str, etag: Option<&'static str>| {
         photo(
             &http,
@@ -260,7 +260,7 @@ async fn photos_ask_cortex_no_more_at_once_than_its_gate_admits_and_wait_out_a_t
     };
     let http = Http::with_session(&session, &cortex::HOSTS).unwrap();
     let downloads = Http::detached(&origin, &cortex::PHOTO_HOSTS).unwrap();
-    let turn = Turn::of(&origin, "c-1");
+    let turn = Turn::of(&origin, "c-1", Box::new(|| Box::pin(async { Ok(()) })));
     let addresses: Vec<String> = (0..LANES)
         .map(|n| format!("/workforce/photo/{n}"))
         .collect();

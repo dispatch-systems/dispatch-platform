@@ -9,7 +9,9 @@
 //! live as long as the server, one for each company at each Cortex origin.
 use crate as cortex;
 use dispatch_core::{
-    Error, Result, collection::browser::http::WireError, foundation::observability,
+    Error, Result,
+    collection::browser::{Pending, Run, http::WireError},
+    foundation::observability,
 };
 use serde_json::json;
 use std::{
@@ -180,8 +182,25 @@ impl Gate {
 /// a cooldown under way, then its place; one Cortex throttles is asked again once the
 /// account has cooled, fewer at once, while the read's budget for waiting and `ROUNDS` last.
 /// A healthy read has no timer or added wait.
+/// Whether what a turn reads for may still ask Cortex, asked just before each request is
+/// sent, once it waited its place, as each of a day's route reads is.
+pub(crate) type Authority = Box<dyn Fn() -> Pending<'static, ()> + Send + Sync>;
+/// The authority of the job `run` is an attempt of: still this worker's, not cancelled, and
+/// its DSP, feature, member and connection all as they were.
+pub(crate) fn job(run: &Run<'_>) -> Authority {
+    let (state, job, owner) = (run.state.clone(), run.job.to_owned(), run.owner.to_owned());
+    Box::new(move || {
+        let (state, job, owner) = (state.clone(), job.clone(), owner.clone());
+        Box::pin(async move {
+            state
+                .read(move |db| db.guard(&job, &owner).map(|_| ()))
+                .await
+        })
+    })
+}
 pub(crate) struct Turn {
     gate: Arc<Gate>,
+    authority: Authority,
     waited: Mutex<Waited>,
     /// Whether it asked anything, and whether Cortex throttled any of it.
     asked: AtomicBool,
@@ -194,13 +213,15 @@ struct Waited {
     until: Option<Instant>,
 }
 impl Turn {
-    /// A read at the gate of `provider`, a company on Cortex, at `origin`. One that follows a
-    /// throttle admits fewer at once, as a round of a day's routes would.
-    pub(crate) fn of(origin: &str, provider: &str) -> Self {
+    /// A read at the gate of `provider`, a company on Cortex, at `origin`, for as long as
+    /// `authority` allows. One that follows a throttle admits fewer at once, as a round of a
+    /// day's routes would.
+    pub(crate) fn of(origin: &str, provider: &str, authority: Authority) -> Self {
         let gate = of(origin, provider);
         gate.narrow();
         Self {
             gate,
+            authority,
             waited: Mutex::new(Waited {
                 budget: BUDGET,
                 until: None,
@@ -224,6 +245,8 @@ impl Turn {
         self.asked.store(true, Ordering::Relaxed);
         for _ in 0..ROUNDS {
             let admitted = self.admitted().await?;
+            // A request that waited may no longer be the reader's to send.
+            (self.authority)().await?;
             let answer = send().await;
             drop(admitted);
             match answer {

@@ -13,7 +13,7 @@ use crate as cortex;
 use crate::connection::{
     Driver,
     companies::{COMPANIES, company, refusal},
-    gate::Turn,
+    gate::{self, Turn},
 };
 use dispatch_core::{
     Error, Result,
@@ -291,7 +291,7 @@ impl Driver {
                 .await?;
         }
         let downloads = Http::detached(&self.origin, &cortex::PHOTO_HOSTS)?;
-        let turn = Turn::of(&self.origin, &company_id);
+        let turn = Turn::of(&self.origin, &company_id, gate::job(run));
         let shrinking = Semaphore::new(SHRINKING);
         let (http, downloads, turn, shrinking) = (&http, &downloads, &turn, &shrinking);
         let (origin, referer) = (self.origin.as_str(), referer.as_str());

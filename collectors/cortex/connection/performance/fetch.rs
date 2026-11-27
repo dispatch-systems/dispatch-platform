@@ -8,7 +8,10 @@
 use super::{Dataset, DatasetCapture, MAX_ROWS, Read};
 use crate as cortex;
 use crate::{
-    connection::{Driver, gate::Turn},
+    connection::{
+        Driver,
+        gate::{self, Turn},
+    },
     discovery::{CollectionRequest, Scope, known},
 };
 use dispatch_core::{
@@ -372,7 +375,7 @@ impl Driver {
     ) -> std::result::Result<Vec<(String, Vec<Value>)>, Failed> {
         let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
         let referer = format!("{}/performance", self.origin);
-        let turn = Turn::of(&self.origin, &scope.provider);
+        let turn = Turn::of(&self.origin, &scope.provider, gate::job(run));
         let station = scope.station.as_str();
         let done = AtomicUsize::new(0);
         let answered = AtomicBool::new(false);

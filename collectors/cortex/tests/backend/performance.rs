@@ -202,12 +202,17 @@ const DATASETS: [&str; 14] = [
     "d00", "d01", "d02", "d03", "d04", "d05", "d06", "d07", "d08", "d09", "d10", "d11", "d12",
     "d13",
 ];
+/// An authority that never stops a read.
+fn allowed() -> crate::connection::gate::Authority {
+    Box::new(|| Box::pin(async { Ok(()) }))
+}
 /// Every dataset of a week read as `read_all` reads them, fourteen lanes at once, at the
-/// gate of a stand-in playing `held` and `throttles`: the rows each read, in order, or the
-/// first error a lane met.
+/// gate of a stand-in playing `held` and `throttles`, for as long as `authority` allows: the
+/// rows each read, in order, or the first error a lane met.
 async fn read_week(
     held: bool,
     throttles: Option<(&'static str, u64)>,
+    authority: crate::connection::gate::Authority,
 ) -> (
     std::sync::Arc<Stand>,
     std::sync::Arc<crate::connection::gate::Gate>,
@@ -242,7 +247,7 @@ async fn read_week(
     };
     let http = Http::with_session(&session, &cortex::HOSTS).unwrap();
     let metrics = Recorder::new(&json!({}));
-    let turn = Turn::of(&origin, "company-1");
+    let turn = Turn::of(&origin, "company-1", authority);
     let referer = format!("{origin}/performance");
     let (http, turn, referer, metrics) = (&http, &turn, &referer, &metrics);
     let origin = &origin;
@@ -282,7 +287,7 @@ async fn read_week(
 #[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test(start_paused = true)]
 async fn a_throttled_dataset_is_read_again_once_the_account_cooled_and_the_week_comes_whole() {
-    let (stand, gate, read) = read_week(true, Some(("d05", 7))).await;
+    let (stand, gate, read) = read_week(true, Some(("d05", 7)), allowed()).await;
     let read = read.unwrap();
     assert_eq!(
         read,
@@ -305,8 +310,25 @@ async fn a_throttled_dataset_is_read_again_once_the_account_cooled_and_the_week_
 // has passed, and leaves the cooldown with the gate for the job's next attempt.
 #[tokio::test]
 async fn a_cooldown_longer_than_a_read_waits_fails_it_promptly_as_throttled() {
-    let (stand, gate, read) = read_week(false, Some(("d00", 600))).await;
+    let (stand, gate, read) = read_week(false, Some(("d00", 600)), allowed()).await;
     assert_eq!(read.unwrap_err().code, "cortex_throttled");
     assert_eq!(stand.asked("d00"), 1);
     assert!(gate.cooling());
+}
+
+// A read whose job stopped asks Cortex for nothing more: each request asks its authority
+// once it has its place, before it is sent.
+#[tokio::test]
+async fn a_read_no_longer_its_jobs_sends_nothing() {
+    let (stand, gate, read) = read_week(
+        false,
+        None,
+        Box::new(|| Box::pin(async { Err(Error::new("job_cancelled", 409)) })),
+    )
+    .await;
+    assert_eq!(read.unwrap_err().code, "job_cancelled");
+    for dataset in DATASETS {
+        assert_eq!(stand.asked(dataset), 0, "{dataset}");
+    }
+    assert!(!gate.cooling());
 }

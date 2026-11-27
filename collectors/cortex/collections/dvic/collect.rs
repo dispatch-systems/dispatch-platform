@@ -4,7 +4,7 @@ use crate as cortex;
 use crate::{
     connection::{
         Driver,
-        gate::Turn,
+        gate::{self, Turn},
         performance::{Api, Found, mismatched},
     },
     discovery::Scope,
@@ -356,7 +356,7 @@ impl Driver {
         let listed = loop {
             // The browser's cookies as they are now: the overview may have renewed them.
             let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
-            let turn = Turn::of(&self.origin, &scope.provider);
+            let turn = Turn::of(&self.origin, &scope.provider, gate::job(run));
             match self.dvic_listing(&http, &turn, &api, request, run).await {
                 Ok(listed) => break listed,
                 // Nothing answers where the API last answered, or it answers as to no one
