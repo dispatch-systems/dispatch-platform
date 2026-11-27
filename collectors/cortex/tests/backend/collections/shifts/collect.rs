@@ -76,8 +76,9 @@ async fn the_week_is_read_at_the_service_area_every_assignment_with_its_driver()
     );
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let http = Http::detached(&origin, &cortex::HOSTS).unwrap();
+    let turn = Turn::of(&origin, "p-1", Box::new(|| Box::pin(async { Ok(()) })));
     let week = crate::shifts::week(dispatch_core::foundation::clock::date("2026-11-18").unwrap());
-    let (assignments, drivers) = roster(&http, &origin, "area-1", week).await.unwrap();
+    let (assignments, drivers) = roster(&http, &turn, &origin, "area-1", week).await.unwrap();
     assert_eq!(drivers, 2);
     assert_eq!(
         assignments
@@ -95,7 +96,7 @@ async fn the_week_is_read_at_the_service_area_every_assignment_with_its_driver()
         ]
     );
     *scenario.lock().unwrap() = "unscheduled";
-    let (assignments, drivers) = roster(&http, &origin, "area-1", week).await.unwrap();
+    let (assignments, drivers) = roster(&http, &turn, &origin, "area-1", week).await.unwrap();
     assert_eq!((assignments.len(), drivers), (0, 1));
     for (what, code) in [
         ("elsewhere", cortex::codes::CORTEX_SCOPE_MISMATCH.as_str()),
@@ -105,7 +106,7 @@ async fn the_week_is_read_at_the_service_area_every_assignment_with_its_driver()
     ] {
         *scenario.lock().unwrap() = what;
         assert_eq!(
-            roster(&http, &origin, "area-1", week)
+            roster(&http, &turn, &origin, "area-1", week)
                 .await
                 .unwrap_err()
                 .code,

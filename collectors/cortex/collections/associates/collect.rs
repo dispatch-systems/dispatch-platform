@@ -128,6 +128,13 @@ fn roster_address(origin: &str, company: &str, statuses: &str) -> String {
     format!("{origin}{ROSTER}?{}", query.finish())
 }
 
+/// One of the roster's lists, asked for once `turn` admits it.
+async fn list(http: &Http, turn: &Turn, address: &str, referer: &str) -> Result<Value> {
+    turn.ask(ROSTER, || http.json_with_status(address, referer, LIMIT))
+        .await?
+        .map_err(|error| refusal(error.refusal))
+}
+
 /// The photos Driver Profiles holds for the company: only the rest are downloaded, and those
 /// due a refresh only if Amazon changed them.
 async fn kept_photos(run: &Run<'_>, company: &str) -> Result<KeptPhotos> {
@@ -244,29 +251,20 @@ impl Driver {
             "da_console_associates",
             "da-console-associates-tab",
         );
-        let listed = http
-            .json(
-                &roster_address(&self.origin, &company_id, "ACTIVE,INACTIVE"),
-                &referer,
-                LIMIT,
-            )
-            .await
-            .map_err(refusal)?;
-        run.progress(40, "Reading who was offboarded".into())
-            .await?;
-        let offboarded = http
-            .json(
-                &roster_address(&self.origin, &company_id, "OFFBOARDED"),
-                &page(
-                    &self.origin,
-                    &company_id,
-                    "da_console_offboarded",
-                    "da-console-offboarded-tab",
-                ),
-                LIMIT,
-            )
-            .await
-            .map_err(refusal)?;
+        let offboarded_referer = page(
+            &self.origin,
+            &company_id,
+            "da_console_offboarded",
+            "da-console-offboarded-tab",
+        );
+        let turn = Turn::of(&self.origin, &company_id, gate::job(run));
+        // Who is listed and who was offboarded, asked for together.
+        let listed = roster_address(&self.origin, &company_id, "ACTIVE,INACTIVE");
+        let offboarded = roster_address(&self.origin, &company_id, "OFFBOARDED");
+        let (listed, offboarded) = tokio::try_join!(
+            list(&http, &turn, &listed, &referer),
+            list(&http, &turn, &offboarded, &offboarded_referer)
+        )?;
         // It exits while the photos come, rather than holding them up.
         self.stop_browser();
         let associates = everyone(roster(&listed)?, rows(&offboarded)?)?;
@@ -291,7 +289,6 @@ impl Driver {
                 .await?;
         }
         let downloads = Http::detached(&self.origin, &cortex::PHOTO_HOSTS)?;
-        let turn = Turn::of(&self.origin, &company_id, gate::job(run));
         let shrinking = Semaphore::new(SHRINKING);
         let (http, downloads, turn, shrinking) = (&http, &downloads, &turn, &shrinking);
         let (origin, referer) = (self.origin.as_str(), referer.as_str());
