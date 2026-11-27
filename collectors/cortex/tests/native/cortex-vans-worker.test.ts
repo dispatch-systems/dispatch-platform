@@ -206,7 +206,7 @@ test(
     ]);
 
     // A roster job also reads the company list in its check alone, then the company's roster
-    // and everyone it offboarded.
+    // and everyone it offboarded, the two asked for together, so in either order.
     const roster = { ...seen, roster: seen.roster.length };
     await collectNow(owner, 'associates', 'roster-1', 120000);
     assert.equal(seen.signIns, roster.signIns);
@@ -217,7 +217,8 @@ test(
         .map((url) => [
           url.searchParams.get('companyId'),
           url.searchParams.get('operationalStatuses'),
-        ]),
+        ])
+        .sort(([, a], [, b]) => String(a).localeCompare(String(b))),
       [
         ['company-1', 'ACTIVE,INACTIVE'],
         ['company-1', 'OFFBOARDED'],
