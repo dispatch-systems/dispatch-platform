@@ -115,8 +115,21 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
         )
         .route("/workforce/page", get(|| async { "<html>a page</html>" }))
         .route(
-            "/workforce/signed-out",
+            "/workforce/refused",
             get(|| async { Response::builder().status(403).body(Body::empty()).unwrap() }),
+        )
+        .route(
+            "/workforce/placeholder",
+            get(|| async {
+                Response::builder()
+                    .status(302)
+                    .header(
+                        "location",
+                        "https://m.media-amazon.com/images/G/01/x/associate_photo_placeholder.png",
+                    )
+                    .body(Body::empty())
+                    .unwrap()
+            }),
         )
         .route(
             "/s3/photo",
@@ -175,8 +188,8 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
         fetch("/workforce/photo", Some("\"v1\"")).await.unwrap(),
         served
     );
-    // Only where Amazon serves photos; an answer that isn't a redirect is no photo. A session
-    // the application refuses would be refused every photo after.
+    // Only where Amazon serves photos; an answer that isn't a redirect is no photo. Amazon's
+    // placeholder, or a refusal of the one address, is a photo Amazon doesn't serve.
     assert_eq!(
         fetch("/workforce/away", None).await.unwrap_err(),
         Missed::Skipped("photo_redirect_unexpected")
@@ -186,8 +199,12 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
         Missed::Skipped("http_not_redirected")
     );
     assert_eq!(
-        fetch("/workforce/signed-out", None).await.unwrap_err(),
-        Missed::Refused("http_signed_out")
+        fetch("/workforce/placeholder", None).await.unwrap_err(),
+        Missed::Unserved("photo_placeholder")
+    );
+    assert_eq!(
+        fetch("/workforce/refused", None).await.unwrap_err(),
+        Missed::Unserved("photo_forbidden")
     );
     let s3 = url::Url::parse(&format!("https://{PHOTO_HOST}/photo?X-Amz-Expires=180")).unwrap();
     assert!(cortex::PHOTO_HOSTS.allows(&s3));
@@ -284,4 +301,48 @@ async fn photos_ask_cortex_no_more_at_once_than_its_gate_admits_and_wait_out_a_t
     }
     assert_eq!(stand.asked.load(Ordering::SeqCst), LANES + 1);
     assert!(stand.most_at_once.load(Ordering::SeqCst) <= 4);
+}
+
+// Amazon refuses some offboarded associates' photo addresses alone: a refusal among photos
+// that answered otherwise is that address's, kept as served nothing, and the rest still come.
+// As many refused in a row as are asked at once are a session Amazon ended: the read stops
+// and none of them is kept as served nothing.
+#[test]
+fn a_photo_refused_alone_is_that_photos_and_a_run_of_refusals_ends_the_read() {
+    let metrics = Recorder::new(&json!({}));
+    let photo = |n: usize| {
+        Photo::new(
+            &format!("/workforce/photo/{n}"),
+            b"\xFF\xD8\xFF a jpeg",
+            None,
+        )
+        .unwrap()
+    };
+    let refused = || Err(Missed::Unserved("photo_forbidden"));
+    let mut tally = Tally::default();
+    assert!(tally.add(0, "/workforce/photo/0", refused(), &metrics));
+    assert!(tally.add(1, "/workforce/photo/1", Ok(Some(photo(1))), &metrics));
+    assert!(tally.add(
+        2,
+        "/workforce/photo/2",
+        Err(Missed::Unserved("photo_placeholder")),
+        &metrics
+    ));
+    assert!(tally.add(3, "/workforce/photo/3", refused(), &metrics));
+    let tally = tally.finish();
+    assert_eq!(tally.photos.len(), 1);
+    assert_eq!(
+        tally.unserved,
+        [
+            "/workforce/photo/0",
+            "/workforce/photo/2",
+            "/workforce/photo/3"
+        ]
+    );
+    let mut tally = Tally::default();
+    for n in 0..LANES - 1 {
+        assert!(tally.add(n, &format!("/workforce/photo/{n}"), refused(), &metrics));
+    }
+    assert!(!tally.add(LANES, "/workforce/photo/last", refused(), &metrics));
+    assert!(tally.finish().unserved.is_empty());
 }

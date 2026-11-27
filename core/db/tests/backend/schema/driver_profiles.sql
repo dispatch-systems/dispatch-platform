@@ -4,3 +4,4 @@ CREATE TABLE photos ( address TEXT PRIMARY KEY, sha256 TEXT NOT NULL, format TEX
 CREATE TABLE roster_runs ( job_id TEXT PRIMARY KEY, company_id TEXT NOT NULL, collected_at TEXT NOT NULL, listed INTEGER NOT NULL, photos INTEGER NOT NULL, photos_waiting INTEGER NOT NULL );
 CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL);
 CREATE TABLE storage_identity (dsp_id TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL);
+CREATE TABLE unserved_photos ( address TEXT PRIMARY KEY, checked_at TEXT NOT NULL );

@@ -17,9 +17,12 @@ use crate::connection::{
 };
 use dispatch_core::{
     Error, Result,
-    collection::browser::{
-        Run,
-        http::{FIXTURE, Http, Refusal},
+    collection::{
+        browser::{
+            Run,
+            http::{FIXTURE, Http, Refusal},
+        },
+        metrics::Recorder,
     },
     db::now,
     ensure,
@@ -32,6 +35,10 @@ use tokio::sync::Semaphore;
 
 /// Where S3 serves the photos the application redirects to.
 pub const PHOTO_HOST: &str = "amazon-flex-da-photo-prod-usamazon.s3.amazonaws.com";
+/// Where the application sends the photo of an associate Amazon holds none of: its
+/// placeholder, on Amazon's image host.
+const PLACEHOLDER_HOST: &str = "m.media-amazon.com";
+const PLACEHOLDER: &str = "/associate_photo_placeholder.png";
 const ROSTER: &str = "/workforce/api/v1/fetchDSPAssociates";
 /// As much as one reply may hold. A hundred associates are 60 KB.
 const LIMIT: usize = 16 * 1024 * 1024;
@@ -168,6 +175,71 @@ enum Missed {
     Refused(&'static str),
     /// This photo alone.
     Skipped(&'static str),
+    /// Amazon serves no photo at this address: its placeholder (`photo_placeholder`), or a
+    /// refusal of this address alone (`photo_forbidden`), which a session Amazon ended would
+    /// give every photo instead.
+    Unserved(&'static str),
+}
+
+/// What the photos asked for came to, as they answer.
+#[derive(Default)]
+struct Tally {
+    photos: Vec<(usize, Photo)>,
+    held: usize,
+    unchanged: Vec<String>,
+    unserved: Vec<String>,
+    /// The addresses refused in a row since a photo last answered otherwise: as many as are
+    /// asked at once are a session Amazon ended, not their photos.
+    refused: Vec<String>,
+}
+impl Tally {
+    /// Counts the answer for `address`, the `index`th asked for: false once no more are asked,
+    /// for a session Amazon refuses or the photos the capture can hold.
+    fn add(
+        &mut self,
+        index: usize,
+        address: &str,
+        fetched: std::result::Result<Option<Photo>, Missed>,
+        metrics: &Recorder,
+    ) -> bool {
+        match fetched {
+            Err(Missed::Unserved(label @ "photo_forbidden")) => {
+                metrics.detail(label);
+                self.refused.push(address.to_owned());
+                if self.refused.len() >= LANES {
+                    metrics.detail("http_signed_out");
+                    self.refused.clear();
+                    return false;
+                }
+                return true;
+            }
+            Err(Missed::Refused(label)) => {
+                metrics.detail(label);
+                self.refused.clear();
+                return false;
+            }
+            // Refusals before an answer of another kind were their addresses' alone.
+            _ => self.unserved.append(&mut self.refused),
+        }
+        match fetched {
+            Ok(Some(photo)) => {
+                self.held += photo.data.len();
+                self.photos.push((index, photo));
+            }
+            Ok(None) => self.unchanged.push(address.to_owned()),
+            Err(Missed::Unserved(label)) => {
+                metrics.detail(label);
+                self.unserved.push(address.to_owned());
+            }
+            Err(Missed::Skipped(label) | Missed::Refused(label)) => metrics.detail(label),
+        }
+        self.held < PHOTOS_BUDGET
+    }
+    /// Once no more answers come: refusals since the last other answer were theirs alone.
+    fn finish(mut self) -> Self {
+        self.unserved.append(&mut self.refused);
+        self
+    }
 }
 /// One photo's bytes and the ETag they were served under, or None when the photo host still
 /// serves the version `etag` names: where the application redirects its address, asked at
@@ -189,9 +261,12 @@ async fn photo(
         .map_err(|_| Missed::Refused("photo_throttled"))?
         .map_err(|error| match error.refusal {
             Refusal::Unavailable => Missed::Refused("photo_unavailable"),
-            Refusal::Unreadable(label @ "http_signed_out") => Missed::Refused(label),
+            Refusal::Unreadable("http_signed_out") => Missed::Unserved("photo_forbidden"),
             Refusal::Unreadable(label) => Missed::Skipped(label),
         })?;
+    if source.host_str() == Some(PLACEHOLDER_HOST) && source.path().ends_with(PLACEHOLDER) {
+        return Err(Missed::Unserved("photo_placeholder"));
+    }
     let fixture = url::Url::parse(origin)
         .is_ok_and(|base| base.host_str() == Some(FIXTURE) && base.origin() == source.origin());
     if !fixture && (source.scheme() != "https" || source.host_str() != Some(PHOTO_HOST)) {
@@ -277,6 +352,7 @@ impl Driver {
                 if let Some(address) = &associate.photo
                     && (associate.status == "ACTIVE") == active
                     && !kept.standing.contains(address)
+                    && !kept.unserved.contains(address)
                     && !wanted.iter().any(|(wanted, _)| wanted == address)
                 {
                     wanted.push((address, kept.versions.get(address).map(String::as_str)));
@@ -309,22 +385,11 @@ impl Driver {
                 }
             })
             .buffer_unordered(LANES);
-        let (mut photos, mut unchanged, mut held, mut done) = (Vec::new(), Vec::new(), 0, 0);
-        while held < PHOTOS_BUDGET
-            && let Some((index, fetched)) = fetching.next().await
-        {
+        let (mut tally, mut done) = (Tally::default(), 0);
+        while let Some((index, fetched)) = fetching.next().await {
             done += 1;
-            match fetched {
-                Ok(Some(photo)) => {
-                    held += photo.data.len();
-                    photos.push((index, photo));
-                }
-                Ok(None) => unchanged.push(wanted[index].0.to_owned()),
-                Err(Missed::Skipped(label)) => run.metrics.detail(label),
-                Err(Missed::Refused(label)) => {
-                    run.metrics.detail(label);
-                    break;
-                }
+            if !tally.add(index, wanted[index].0, fetched, run.metrics) {
+                break;
             }
             if done % LANES == 0 && done < total {
                 run.progress(
@@ -338,6 +403,12 @@ impl Driver {
         if done == total {
             turn.finished();
         }
+        let Tally {
+            mut photos,
+            unchanged,
+            unserved,
+            ..
+        } = tally.finish();
         photos.sort_by_key(|(index, _)| *index);
         run.progress(95, "Validating the roster".into()).await?;
         let capture = Capture {
@@ -347,9 +418,10 @@ impl Driver {
             company_code,
             started_at,
             finished_at: now().max(started_at),
-            photos_waiting: total - photos.len() - unchanged.len(),
+            photos_waiting: total - photos.len() - unchanged.len() - unserved.len(),
             photos: photos.into_iter().map(|(_, photo)| photo).collect(),
             photos_unchanged: unchanged,
+            photos_unserved: unserved,
             associates,
         };
         capture.validate(request)?;

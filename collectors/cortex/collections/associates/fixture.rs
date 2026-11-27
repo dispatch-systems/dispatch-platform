@@ -60,6 +60,7 @@ pub fn fixture(request: &Request) -> Result<Capture> {
         associates,
         photos,
         photos_unchanged: Vec::new(),
+        photos_unserved: Vec::new(),
         photos_waiting: 0,
     };
     capture.validate(request)?;
