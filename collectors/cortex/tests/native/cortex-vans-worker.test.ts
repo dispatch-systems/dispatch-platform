@@ -15,12 +15,19 @@ const PLATE = 'VANMARK01';
 // The real Rust driver against a staged Cortex: a vans job starts from the session the
 // connection's sign-in kept, checked over HTTP with no page rendered, reads the company list
 // once, in that check, reads the fleet's two pages over HTTP with every status, and leaves
-// nothing outside Vans' database.
+// nothing outside Vans' database; a roster job reads the company list once too.
 test(
-  'Cortex BrowserOS collects the fleet from the saved session, rendering no page, in two pages, reading the companies once',
+  'Cortex BrowserOS collects the fleet and the roster from the saved session, rendering no page, reading the companies once',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 300000 },
   async (t) => {
-    const seen = { companies: 0, consoles: 0, fleet: [] as URL[], landings: 0, signIns: 0 };
+    const seen = {
+      companies: 0,
+      consoles: 0,
+      fleet: [] as URL[],
+      landings: 0,
+      roster: [] as URL[],
+      signIns: 0,
+    };
     const van = (vin: string, name: string, status: string) => ({
       vin,
       dspVehicleId: name,
@@ -106,6 +113,20 @@ test(
               },
             });
       }
+      if (url.pathname === '/workforce/api/v1/fetchDSPAssociates') {
+        if (!authenticated) {
+          res.writeHead(401);
+          return res.end();
+        }
+        seen.roster.push(url);
+        const listed = url.searchParams.get('operationalStatuses') === 'ACTIVE,INACTIVE';
+        const row = { transporter_id: 'A1', full_name: 'Roster One', operational_status: 'ACTIVE' };
+        return json({
+          tableData: {
+            'dsp-associates-table-data': { rows: listed ? [JSON.stringify(row)] : [] },
+          },
+        });
+      }
       res.writeHead(404);
       res.end();
     });
@@ -179,6 +200,25 @@ test(
       { vin: '3C6LRVDG0ME000301', name: 'Rental 301', status: 'INACTIVE', listed: 1 },
       { vin: '7FCTGAAA1NN000214', name: NAME, status: 'ACTIVE', listed: 1 },
     ]);
+
+    // A roster job's new browser also reads the company list in its check alone, then the
+    // company's roster and everyone it offboarded.
+    const roster = { ...seen, roster: seen.roster.length };
+    await collectNow(owner, 'associates', 'roster-1', 120000);
+    assert.equal(seen.signIns, roster.signIns);
+    assert.equal(seen.companies, roster.companies + 1);
+    assert.deepEqual(
+      seen.roster
+        .slice(roster.roster)
+        .map((url) => [
+          url.searchParams.get('companyId'),
+          url.searchParams.get('operationalStatuses'),
+        ]),
+      [
+        ['company-1', 'ACTIVE,INACTIVE'],
+        ['company-1', 'OFFBOARDED'],
+      ],
+    );
 
     // Everything collected lives in Vans' database alone: no browser run is left, and no
     // other file holds any of it, in any encoding a browser stores text.

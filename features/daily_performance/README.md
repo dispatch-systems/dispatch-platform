@@ -2,9 +2,10 @@
 
 Amazon Daily Quality and Day Safety, stored separately from posted Weekly Scorecards.
 Cortex shares authentication, scope discovery and the performance HTTP reader. A daily job
-reads the dates it is asked for, oldest first, from 22 datasets, all at once: on its first
-attempt each run of consecutive dates is one request per dataset, its rows given back to the
-days they name, and a retry reads each date on its own.
+reads the dates it is asked for, oldest first, from 22 datasets, all at once: each run of
+consecutive dates is one request per dataset, its rows given back to the days they name, and
+once an attempt met a run too large or that couldn't be told apart into its days, the job's
+next attempts read each date on its own.
 
 The feature owns `daily_performance/daily_performance.sqlite`, publication history, indexed
 rows and source coverage. Its switch, permissions (`view`, `collect`, `manage`), schedules

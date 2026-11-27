@@ -61,16 +61,18 @@ for another request is refused, whichever of its day, station, timezone, service
 differs, as is every driver's for a request that names none. In fixture mode no browser runs,
 and each day it reads is the fixture's, as a job's is. Reports download
 cookie-free from the report host only. Vans are the fleet's one list over HTTP, every status it accepts at once and
-each continuation page after, for an account that sees the DSP's company alone, with the company
-list the start's session check read. A meal collection waits for sixteen routes at once in one
+each continuation page after, for an account that sees the DSP's company alone; vans, shifts and the roster find the DSP's
+company in the list the start's session check read, and ask for it only after a sign-in on the
+page. Each of the three asks its browser to close once it needs it no more, and goes on while
+it exits. A meal collection waits for sixteen routes at once in one
 tab, and no more than the account's gate admits, asks a route Cortex throttled again once the
 account has cooled, never from a loaded page, reads the day's list from the response the application fetched, and reads no itinerary for
 a route without meals or a finished route Timecard already holds as listed. A meal start pressed
 twice, minutes apart, is one meal from the first press; a route whose punches break another meal
 rule is kept without meals, named for the rule, and the rest of the day is read. The
 `dispatch-collectors` skill has the routes' and the performance sources' full reads. Weekly and
-daily share the performance HTTP reader, every dataset of a week or a day at once, while keeping
-their requests, datasets and job kinds separate; DVIC lists its weeks together and downloads
+daily share the performance HTTP reader, every dataset of a week or a day at once, asking no
+more once one read failed, while keeping their requests, datasets and job kinds separate; DVIC lists its weeks together and downloads
 fourteen reports at a time. The roster's photos are shrunk as they download, to at most 400
 pixels on the long side as a JPEG, a JPEG read straight at a fraction of its size, four at a time
 away from the threads that serve requests, each a little more than a core. One collection brings

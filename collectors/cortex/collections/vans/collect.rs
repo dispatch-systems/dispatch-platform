@@ -94,7 +94,8 @@ impl Driver {
         run.progress(15, "Checking the DSP's company".into())
             .await?;
         let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
-        self.browser.close().await;
+        // It exits while the fleet is read, rather than holding it up.
+        self.browser.stop();
         let companies = match self.companies.take() {
             Some(companies) => companies,
             None => http

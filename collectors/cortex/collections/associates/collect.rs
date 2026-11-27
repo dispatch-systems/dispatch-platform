@@ -1,8 +1,9 @@
 //! Reads the roster over plain HTTP with the browser's session: the company the DSP's code
-//! names, then every associate in one request and everyone offboarded in another, then the
-//! photos the DSP lacks, each from where the application redirects its address, shrunk as it
-//! comes; one due a refresh only if Amazon changed it. Nothing after the roster needs a page,
-//! so the browser closes as soon as it is in.
+//! names, from the list the start's session check read when it had one, then every associate
+//! in one request and everyone offboarded in another, then the photos the DSP lacks, each from
+//! where the application redirects its address, shrunk as it comes; one due a refresh only if
+//! Amazon changed it. Nothing after the roster needs a page, so the browser closes as soon as
+//! it is in.
 use super::capture::{
     Associate, Capture, Collection, JOB_KIND, KeptPhotos, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo,
     Request,
@@ -218,14 +219,17 @@ impl Driver {
         let started_at = now();
         run.progress(15, "Finding the DSP's company".into()).await?;
         let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
-        let companies = http
-            .json(
-                &format!("{}{COMPANIES}", self.origin),
-                &format!("{}/workforce", self.origin),
-                LIMIT,
-            )
-            .await
-            .map_err(refusal)?;
+        let companies = match self.companies.take() {
+            Some(companies) => companies,
+            None => http
+                .json(
+                    &format!("{}{COMPANIES}", self.origin),
+                    &format!("{}/workforce", self.origin),
+                    LIMIT,
+                )
+                .await
+                .map_err(refusal)?,
+        };
         let (company_id, company_code) = company(&companies, &request.dsp_abbreviation)?;
         run.progress(30, "Reading the roster".into()).await?;
         let referer = page(
@@ -257,7 +261,8 @@ impl Driver {
             )
             .await
             .map_err(refusal)?;
-        self.browser.close().await;
+        // It exits while the photos come, rather than holding them up.
+        self.browser.stop();
         let associates = everyone(roster(&listed)?, rows(&offboarded)?)?;
         let kept = kept_photos(run, &company_id).await?;
         // Active associates' photos first, then the rest; each address once, with the ETag of
