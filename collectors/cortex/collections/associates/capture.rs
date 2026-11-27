@@ -170,6 +170,10 @@ pub struct KeptPhotos {
     /// Photos due a refresh, by address, with the ETag each was served under: one is
     /// downloaded only if Amazon changed it since.
     pub versions: BTreeMap<String, String>,
+    /// Addresses Amazon lately served no photo at, its placeholder or a refusal: none is asked
+    /// for.
+    #[serde(default)]
+    pub unserved: BTreeSet<String>,
 }
 
 /// What a photo's bytes are. S3 serves Amazon's photos with no type of their own, so it is
@@ -298,6 +302,9 @@ pub struct Capture {
     pub photos: Vec<Photo>,
     /// Photos due a refresh that Amazon said it hadn't changed, by address: they stand anew.
     pub photos_unchanged: Vec<String>,
+    /// Addresses Amazon served no photo at, its placeholder or a refusal, by address.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub photos_unserved: Vec<String>,
     /// Photos it lacks still, left for the next collection.
     pub photos_waiting: usize,
 }
@@ -348,7 +355,7 @@ impl Capture {
                 502,
             )?;
         }
-        for address in &self.photos_unchanged {
+        for address in self.photos_unchanged.iter().chain(&self.photos_unserved) {
             ensure(
                 addresses.contains(address.as_str()) && photos.insert(address.as_str()),
                 "associates_capture_invalid",

@@ -29,7 +29,10 @@ pub const FEATURE: Feature = Feature {
     routes: api::routes::routes,
     live: &["driver_profiles.collect"],
     keeps: &[&backend::keeper::Roster],
-    tables: &[("driver_profiles", &["associates", "photos", "roster_runs"])],
+    tables: &[(
+        "driver_profiles",
+        &["associates", "photos", "roster_runs", "unserved_photos"],
+    )],
     migrations: &[Migrations {
         kind: backend::storage::DATABASE,
         list: &[
@@ -49,6 +52,13 @@ pub const FEATURE: Feature = Feature {
                 id: 3,
                 name: "photo_etags",
                 apply: Code(backend::storage::add_photo_etags),
+            },
+            Migration {
+                id: 4,
+                name: "unserved_photos",
+                apply: Sql(include_str!(
+                    "migrations/driver_profiles/0004_unserved_photos.sql"
+                )),
             },
         ],
     }],

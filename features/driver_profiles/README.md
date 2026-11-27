@@ -20,15 +20,18 @@ Settings' Collectors page.
   abbreviation, then its whole roster in one request over HTTP and everyone it offboarded in
   another, then downloads every photo the DSP lacks, active associates' first, up to 96 MB of
   them shrunk, about 3,600; the next brings any rest. It stops at the first photo the
-  application refuses the session for, or doesn't answer, keeping what it got. A photo held
+  application refuses the session for (a 401, or sixteen 403s in a row), or doesn't answer,
+  keeping what it got. Where Amazon serves no photo, its placeholder or a 403 at that address
+  alone, an offboarded associate's address isn't asked for again for 30 days; anyone else's is
+  asked for at every collection. A photo held
   for over 30 days is asked for by the ETag it was served under, and downloaded again only if
   Amazon changed it; an offboarded associate's, once kept shrunk, is never asked for again. A
   roster naming no one is refused rather than taken to mean everyone left; no one offboarded is
   a DSP that never offboarded anyone. Someone on both lists, as a rehire, is as the roster
   lists them.
 - **Schedules:** only the DSP's own, set on the Collectors page; Driver Profiles makes none.
-- **Data:** `associates`, `photos` and `roster_runs`, in a database of its own beside
-  Cortex's. An offboarded associate is listed with status `OFFBOARDED`. Someone neither list
+- **Data:** `associates`, `photos`, `roster_runs` and `unserved_photos` (each address Amazon
+  last served no photo at, and when), in a database of its own beside Cortex's. An offboarded associate is listed with status `OFFBOARDED`. Someone neither list
   names any more keeps their row, with `listed` 0, so what names them elsewhere still finds a
   name.
 - **Photos** are files in the DSP's cache, `cache/driver_profiles/photos/<sha256>.<ext>`,

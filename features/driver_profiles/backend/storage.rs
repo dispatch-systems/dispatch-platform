@@ -29,14 +29,15 @@ pub(crate) static STORAGE: AddedStorage = AddedStorage {
 };
 /// Fails closed when the initialized storage lost a table.
 fn verify(db: &Db) -> Result<()> {
-    for table in ["associates", "photos", "roster_runs"] {
+    for table in ["associates", "photos", "roster_runs", "unserved_photos"] {
         db.one(&format!("SELECT count(*) FROM {table} WHERE 0"), [])?;
     }
     Ok(())
 }
 /// How long a photo kept stands for its address before a collection asks whether the
 /// associate changed it, downloading it again only if so, or if it was kept with no ETag to ask
-/// by. An offboarded associate's stands for good: they change it no more.
+/// by. An offboarded associate's stands for good: they change it no more. An offboarded
+/// associate's address Amazon served no photo at is asked for again as late.
 const PHOTO_REFRESH_MS: i64 = 30 * 24 * 3_600_000;
 
 /// Migration 3: the ETag each photo was served under, so a refresh downloads it again only if
@@ -72,7 +73,8 @@ pub trait DriverProfilesStore {
     /// which a collection doesn't download, and those due a refresh with the ETag each was
     /// served under. An offboarded associate's always stands; a JPEG or PNG heavier than any
     /// shrunk photo, kept before photos were shrunk, is neither, so the next collection
-    /// shrinks it.
+    /// shrinks it. With them, the offboarded associates' addresses Amazon served no photo at
+    /// within the month, which a collection doesn't ask for.
     fn kept_photos(&self, dsp: &str, company: &str) -> Result<KeptPhotos>;
     /// Stores a roster as the current one. The photos' files are written already.
     fn publish_roster(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()>;
@@ -88,7 +90,8 @@ impl DriverProfilesStore for Store {
         self.added_storage(dsp, cortex::PROVIDER, &STORAGE)
     }
     fn kept_photos(&self, dsp: &str, company: &str) -> Result<KeptPhotos> {
-        let rows = self.driver_profiles_db(dsp)?.query_as::<KeptPhoto>(
+        let db = self.driver_profiles_db(dsp)?;
+        let rows = db.query_as::<KeptPhoto>(
             "SELECT p.address,p.sha256,p.format,p.etag,EXISTS (SELECT 1 FROM associates a \
              WHERE a.photo_address=p.address AND a.company_id=?1 \
              AND (p.stored_at>=?2 OR a.status='OFFBOARDED')) stands FROM photos p WHERE EXISTS \
@@ -115,6 +118,16 @@ impl DriverProfilesStore for Store {
                 kept.versions.insert(photo.address, etag);
             }
         }
+        kept.unserved = db
+            .query_as::<(String,)>(
+                "SELECT u.address FROM unserved_photos u WHERE u.checked_at>=?2 AND EXISTS \
+                 (SELECT 1 FROM associates a WHERE a.photo_address=u.address AND a.company_id=?1 \
+                 AND a.status='OFFBOARDED')",
+                params![company, at(now() - PHOTO_REFRESH_MS)],
+            )?
+            .into_iter()
+            .map(|(address,)| address)
+            .collect();
         Ok(kept)
     }
     fn publish_roster(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()> {
@@ -196,6 +209,28 @@ impl DriverProfilesStore for Store {
                 "DELETE FROM photos WHERE address NOT IN (SELECT photo_address FROM associates \
                  WHERE listed=1 AND photo_address IS NOT NULL)",
                 [],
+            )?;
+            db.exec(
+                "INSERT INTO unserved_photos(address,checked_at) SELECT value,? FROM json_each(?) \
+                 WHERE true ON CONFLICT(address) DO UPDATE SET checked_at=excluded.checked_at",
+                params![
+                    collected_at,
+                    serde_json::to_string(&capture.photos_unserved)?
+                ],
+            )?;
+            // An address Amazon served nothing at goes once Amazon serves a photo there, kept
+            // anew or unchanged, or once the roster no longer lists whoever it names.
+            let served: Vec<&str> = capture
+                .photos
+                .iter()
+                .map(|photo| photo.address.as_str())
+                .chain(capture.photos_unchanged.iter().map(String::as_str))
+                .collect();
+            db.exec(
+                "DELETE FROM unserved_photos WHERE address IN (SELECT value FROM json_each(?)) \
+                 OR address NOT IN (SELECT photo_address FROM associates WHERE listed=1 AND \
+                 photo_address IS NOT NULL)",
+                [serde_json::to_string(&served)?],
             )?;
             db.exec(
                 "INSERT INTO roster_runs(job_id,company_id,collected_at,listed,photos,photos_waiting) \

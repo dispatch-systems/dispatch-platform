@@ -1916,3 +1916,77 @@ async fn probe_scheduling_page() -> Result<()> {
     driver.close_browser().await;
     result
 }
+
+// Where Cortex sends the photos it lists for associates it keeps none of: opens a copy of a
+// DSP's saved session and asks, one at a time as the roster does, for each address
+// `DISPATCH_BENCHMARK_PHOTOS` names, comma separated, or the file
+// `DISPATCH_BENCHMARK_PHOTOS_FILE` names, one a line. Prints only each answer's status, or the
+// host and masked address it is sent to and the size and kind of what the photo host serves
+// there; with more than twenty addresses, or `DISPATCH_BENCHMARK_DOWNLOAD=0`, only how many
+// answered each way, without downloading. Stops at a throttle.
+#[tokio::test]
+#[ignore = "requires an explicitly selected DSP copy with a saved Cortex session"]
+async fn probe_photo_redirects() -> Result<()> {
+    use dispatch_core::collection::browser::http::{Http, Refusal, SignedIn};
+    let dsp = env_path("DISPATCH_BENCHMARK_DSP")?;
+    let id = dsp
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| Error::new("benchmark_configuration_required", 400))?;
+    let revision = std::env::var("DISPATCH_BENCHMARK_REVISION")
+        .map_err(|_| Error::new("benchmark_configuration_required", 400))?;
+    let saved = dispatch_core::foundation::crypto::decrypt(
+        &db::key_file(&dsp.join("secrets/vault.key"))?,
+        &format!("{id}:cortex:session:{revision}"),
+        &std::fs::read_to_string(dsp.join("state/browsers/cortex-session.enc"))?,
+    )?;
+    let session: SignedIn = serde_json::from_value(saved["session"].clone())?;
+    let http = Http::with_session(&session, &crate::HOSTS)?;
+    let downloads = Http::detached(&session.origin, &crate::PHOTO_HOSTS)?;
+    let referer = format!("{}/workforce", session.origin);
+    let listed = match std::env::var_os("DISPATCH_BENCHMARK_PHOTOS_FILE") {
+        Some(file) => std::fs::read_to_string(file)?,
+        None => std::env::var("DISPATCH_BENCHMARK_PHOTOS")
+            .map_err(|_| Error::new("benchmark_configuration_required", 400))?
+            .replace(',', "\n"),
+    };
+    let addresses: Vec<&str> = listed.lines().filter(|line| !line.is_empty()).collect();
+    let each =
+        addresses.len() <= 20 && std::env::var("DISPATCH_BENCHMARK_DOWNLOAD").as_deref() != Ok("0");
+    let mut answers = std::collections::BTreeMap::<String, usize>::new();
+    for address in &addresses {
+        let sent = http
+            .location(&format!("{}{address}", session.origin), &referer)
+            .await;
+        let answer = match sent {
+            Ok(to) if each => {
+                // What the photo host then serves, by size and kind alone.
+                let served = match downloads.download(to.as_str(), None, 16 << 20).await {
+                    Ok(download) => json!({"bytes":download.body.as_ref().map(Vec::len),
+                        "format":download.body.as_deref().and_then(crate::associates::PhotoFormat::of)}),
+                    Err(Refusal::Unavailable) => json!("unavailable"),
+                    Err(Refusal::Unreadable(label)) => json!(label),
+                };
+                json!({"host":to.host_str(),"to":masked_url(to.as_str()),"served":served})
+            }
+            Ok(to) => json!({"host":to.host_str()}),
+            Err(error) => json!({"status":error.status,"refusal":match error.refusal {
+                Refusal::Unavailable => "unavailable",
+                Refusal::Unreadable(label) => label,
+            }}),
+        };
+        if each {
+            eprintln!("PHOTO {answer}");
+        }
+        let throttled = answer["status"] == 429;
+        *answers.entry(answer.to_string()).or_default() += 1;
+        if throttled {
+            break;
+        }
+    }
+    eprintln!(
+        "PHOTOS {}",
+        json!({"asked":answers.values().sum::<usize>(),"of":addresses.len(),"answers":answers})
+    );
+    Ok(())
+}
