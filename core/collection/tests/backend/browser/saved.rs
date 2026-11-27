@@ -2,8 +2,8 @@
 //! their expiry no longer opens. A session the provider refused goes only at the revision it was
 //! saved under, and a job that lost its authority as the provider refused it leaves the saved
 //! session as it is and starts no browser.
-use super::*;
 use super::super::{ProviderAuthority, http::Cookie, tests::registered};
+use super::*;
 use crate::{State, collection::metrics::SavedSession, testing};
 use serde_json::{Value, json};
 
@@ -28,10 +28,18 @@ fn session(cookies: Vec<Cookie>) -> SignedIn {
 }
 /// Writes `saved` as the session's file at revision 1, just as it is.
 fn write(db: &Store, dsp: &str, saved: &Value) {
-    let sealed =
-        crypto::encrypt(&db.vault_key(dsp).unwrap(), &binding(dsp, PROVIDER, 1), saved).unwrap();
+    let sealed = crypto::encrypt(
+        &db.vault_key(dsp).unwrap(),
+        &binding(dsp, PROVIDER, 1),
+        saved,
+    )
+    .unwrap();
     db::private_dir(&db.area(dsp, "state").unwrap().join("browsers")).unwrap();
-    db::write_private(&db.saved_session_path(dsp, PROVIDER).unwrap(), sealed.as_bytes()).unwrap();
+    db::write_private(
+        &db.saved_session_path(dsp, PROVIDER).unwrap(),
+        sealed.as_bytes(),
+    )
+    .unwrap();
 }
 /// Its cookies by name, with when each expires.
 fn expiring(session: &SignedIn) -> Vec<(&str, Option<i64>)> {
@@ -54,7 +62,8 @@ fn a_saved_cookie_past_its_expiry_is_neither_saved_nor_restored() {
         cookie("session", None),
     ];
     let kept = [("lasting", Some(future)), ("session", None)];
-    db.seal(&dsp, PROVIDER, 1, &session(cookies.clone())).unwrap();
+    db.seal(&dsp, PROVIDER, 1, &session(cookies.clone()))
+        .unwrap();
     let saved = db.opened(&dsp, PROVIDER, 1).unwrap().unwrap();
     assert_eq!(expiring(&saved.session), kept);
     // One that expired after it was saved is not restored either.
@@ -98,8 +107,13 @@ async fn a_revoked_jobs_refused_session_leaves_the_saved_session_and_starts_no_b
     let (_root, db, dsp) = testing::bootstrapped();
     let state = State::new(db.config.clone()).unwrap();
     // A sign-in saved this while the job's check of the session it started from waited.
-    db.seal(&dsp, PROVIDER, 1, &session(vec![cookie("session-token", None)]))
-        .unwrap();
+    db.seal(
+        &dsp,
+        PROVIDER,
+        1,
+        &session(vec![cookie("session-token", None)]),
+    )
+    .unwrap();
     let job = registered(&state, &dsp, None, true);
     job.became(SavedSession::Browserless);
     // A job no worker holds, as one cancelled while its check waited.

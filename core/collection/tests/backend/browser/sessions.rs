@@ -127,9 +127,11 @@ async fn a_revoked_job_needing_a_page_starts_no_browser() {
     // A job no worker holds, as one cancelled while its collection read.
     let refused = job
         .collect(&state, "job_saved", "worker", &metrics, &json!({}), 1)
-        .await
-        .unwrap_err();
-    assert_eq!(refused.code, "job_not_found");
+        .await;
+    assert_eq!(
+        refused.err().map(|error| error.code).as_deref(),
+        Some("job_not_found")
+    );
     assert!(job.browserless());
     assert_eq!(job.saved_session(), Some(SavedSession::Browserless));
 }

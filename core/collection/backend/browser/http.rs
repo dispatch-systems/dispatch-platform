@@ -297,9 +297,9 @@ fn replied(header: &HeaderValue, url: &Url) -> Option<Replied> {
     };
     let now = crate::db::now();
     let expires = match parsed.max_age() {
-        Some(age) => Some(now.saturating_add(
-            i64::try_from(age.whole_milliseconds()).unwrap_or(i64::MAX),
-        )),
+        Some(age) => {
+            Some(now.saturating_add(i64::try_from(age.whole_milliseconds()).unwrap_or(i64::MAX)))
+        }
         None => parsed
             .expires_datetime()
             .map(|at| (at.unix_timestamp_nanos() / 1_000_000) as i64),
