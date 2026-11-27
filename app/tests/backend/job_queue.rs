@@ -143,7 +143,14 @@ fn a_dsp_runs_one_job_of_each_provider_at_a_time() {
     .enumerate()
     .map(|(i, provider)| {
         let id = store
-            .insert_job("dsp", None, &format!("job-{i}"), provider.job_kind(), 1, &json!({}))
+            .insert_job(
+                "dsp",
+                None,
+                &format!("job-{i}"),
+                provider.job_kind(),
+                1,
+                &json!({}),
+            )
             .unwrap();
         store
             .jobs
@@ -167,7 +174,11 @@ fn a_dsp_runs_one_job_of_each_provider_at_a_time() {
         Some(&jobs[1]),
         "Cortex runs while Paycom does"
     );
-    assert_eq!(claim("worker-c"), None, "the next Cortex job waits for the first");
+    assert_eq!(
+        claim("worker-c"),
+        None,
+        "the next Cortex job waits for the first"
+    );
     // The database holds it too: a second running job of one provider is refused.
     let refused = store
         .jobs
