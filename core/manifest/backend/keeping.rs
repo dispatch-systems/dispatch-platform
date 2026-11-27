@@ -212,11 +212,24 @@ impl Registry {
     }
 }
 
-/// Panics unless every collection has exactly one keeper, every keeper keeps a registered
-/// collection, every schedule alias has a name of its own and runs only collections its
-/// feature keeps, and each collection's schedules are set under a permission of its feature's,
-/// choosing among its own name and aliases that read it alone, every alias chosen once.
+/// Panics unless every collection's kind is its collector's id up to its first '.', every
+/// collection has exactly one keeper, every keeper keeps a registered collection, every
+/// schedule alias has a name of its own and runs only collections its feature keeps, and each
+/// collection's schedules are set under a permission of its feature's, choosing among its own
+/// name and aliases that read it alone, every alias chosen once.
 pub(crate) fn check(registry: &Registry) {
+    // The queue reads a job's provider from its kind that way, to run one job per DSP and
+    // provider at a time.
+    for collector in registry.collectors {
+        for collection in collector.collections() {
+            assert!(
+                collection.job_kind.split_once('.').map(|(id, _)| id) == Some(collector.id()),
+                "{} collects {}, whose kind isn't {0}.<what>",
+                collector.id(),
+                collection.job_kind
+            );
+        }
+    }
     let kinds: Vec<&str> = registry
         .collections()
         .map(|collection| collection.job_kind)

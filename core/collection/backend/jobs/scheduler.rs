@@ -79,7 +79,9 @@ struct Scheduler {
     state: Arc<State>,
     owner: String,
     tasks: tokio::task::JoinSet<String>,
-    running_dsps: HashSet<String>,
+    /// Each running task's DSP and provider, as `Provider::key` names them and the task
+    /// returns them as it ends: another job of theirs waits until then.
+    running: HashSet<String>,
     deadlines: HashMap<String, i64>,
     refresh: Refresh,
 }
@@ -131,7 +133,7 @@ impl Scheduler {
     async fn claim(&self) -> Result<Option<JobRow>> {
         let pool = self.state.clone();
         let owner = self.owner.clone();
-        let running = self.running_dsps.clone();
+        let running = self.running.clone();
         self.state
             .run_bookkeeping(move |db| {
                 let memory_ready = (pool.config.fixture && pool.config.fixture_url.is_none())
@@ -144,7 +146,7 @@ impl Scheduler {
                 db.jobs
                     .exec(WAITING_MESSAGE, params![message, now(), JobKind::known()?])?;
                 db.claim_job(&owner, |id, provider| {
-                    !running.contains(id)
+                    !running.contains(&provider.key(id))
                         && pool
                             .browsers
                             .get_for(id, provider)
@@ -189,11 +191,11 @@ impl Scheduler {
                 Ok(Some(job)) => {
                     let state = self.state.clone();
                     let owner = self.owner.clone();
-                    let dsp = job.dsp_id.clone();
-                    self.running_dsps.insert(dsp.clone());
+                    let key = job.provider().key(&job.dsp_id);
+                    self.running.insert(key.clone());
                     self.tasks.spawn(async move {
                         execute(state, job, owner).await;
-                        dsp
+                        key
                     });
                 }
                 Ok(None) => break,
@@ -210,7 +212,7 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
         state,
         owner: crypto::id("worker")?,
         tasks: tokio::task::JoinSet::new(),
-        running_dsps: HashSet::new(),
+        running: HashSet::new(),
         deadlines: HashMap::new(),
         refresh: Refresh::new(),
     };
@@ -224,8 +226,8 @@ pub async fn start(state: Arc<State>, mut stop: tokio::sync::watch::Receiver<boo
             _ = crate::cancelled(&mut stop) => break,
             result = scheduler.tasks.join_next(), if !scheduler.tasks.is_empty() => {
                 match result {
-                    Some(Ok(dsp)) => {
-                        scheduler.running_dsps.remove(&dsp);
+                    Some(Ok(key)) => {
+                        scheduler.running.remove(&key);
                     }
                     Some(Err(_)) => return Err(Error::new("collector_task_failed", 500)),
                     None => {}

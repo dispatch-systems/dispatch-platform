@@ -262,8 +262,8 @@ fn rules_due_together_queue_one_batch_once() {
 }
 
 /// A rule that can't run yet waits, saying why, without holding back the others due with it;
-/// while any collection runs, every rule due waits for it; and a collector disconnected
-/// pauses only the rules that need it.
+/// while a provider's collection runs, its rules due wait for it and the others' are queued;
+/// and a collector disconnected pauses only the rules that need it.
 #[cfg(feature = "timecard")]
 #[test]
 fn a_rule_that_cannot_run_waits_without_holding_back_the_rest() {
@@ -307,6 +307,17 @@ fn a_rule_that_cannot_run_waits_without_holding_back_the_rest() {
     schedule_due_at(&db, &id, &paycom, "2026-01-02T00:00:00.000Z").unwrap();
     db.schedule_due(&id).unwrap();
     assert_eq!(jobs(&db).len(), 1);
+    assert_eq!(error(&paycom).as_deref(), Some("sync_in_progress"));
+
+    // Cortex connected, the meal breaks' waiting run is queued beside Paycom's, which still
+    // holds Paycom's next.
+    db.collector(&id, cortex::PROVIDER)
+        .unwrap()
+        .exec("UPDATE connections SET enabled=1", [])
+        .unwrap();
+    db.schedule_due(&id).unwrap();
+    assert_eq!(jobs(&db), ["cortex.meal_breaks.collect", "paycom.collect"]);
+    assert_eq!(error(&meal), None);
     assert_eq!(error(&paycom).as_deref(), Some("sync_in_progress"));
 
     db.pause_provider_schedules(&id, cortex::PROVIDER).unwrap();

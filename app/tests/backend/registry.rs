@@ -1,6 +1,6 @@
 //! What the registry refuses of what features declare about one another.
 use dispatch_core::manifest::{
-    Feature, Registry, ScheduleAlias, Upkeep,
+    Collector, Feature, Registry, ScheduleAlias, Upkeep,
     events::{Event, PeopleChanged},
     feature, optional,
     people::{KindInfo, People, Source, SourceInfo},
@@ -89,6 +89,34 @@ fn a_schedule_alias_of_a_collection_its_feature_does_not_keep_is_refused() {
     };
     crate::install();
     with(&GREEDY).check();
+}
+
+#[test]
+#[should_panic(expected = "elsewhere collects cortex.")]
+fn a_collection_whose_kind_does_not_name_its_collector_is_refused() {
+    crate::install();
+    // Cortex's collections, collected under another id.
+    let elsewhere: &'static dyn Collector = Box::leak(Box::new(crate::export::StandIn(
+        "elsewhere",
+        &[],
+        dispatch_cortex::PROVIDER.collector().collections(),
+    )));
+    let collectors: Vec<&'static dyn Collector> = crate::REGISTRY
+        .collectors
+        .iter()
+        .map(|collector| {
+            if collector.id() == dispatch_cortex::PROVIDER.id() {
+                elsewhere
+            } else {
+                *collector
+            }
+        })
+        .collect();
+    Registry {
+        collectors: Box::leak(collectors.into_boxed_slice()),
+        ..with_all(&[])
+    }
+    .check();
 }
 
 /// Routes' drivers, named a second time.

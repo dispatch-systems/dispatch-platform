@@ -78,7 +78,16 @@ impl JobKind {
     /// release's, left by a rollback: this release lists, counts and runs none of them,
     /// and keeps them for the release that knows them.
     pub fn known() -> Result<String> {
-        let kinds: Vec<_> = Provider::all().flat_map(Provider::job_kinds).collect();
+        Self::of(Provider::all())
+    }
+    /// Every kind the providers run, each once, as `known` lists them.
+    pub fn of(providers: impl IntoIterator<Item = Provider>) -> Result<String> {
+        let mut kinds: Vec<_> = providers
+            .into_iter()
+            .flat_map(Provider::job_kinds)
+            .collect();
+        kinds.sort_unstable();
+        kinds.dedup();
         Ok(serde_json::to_string(&kinds)?)
     }
     pub fn as_str(self) -> &'static str {

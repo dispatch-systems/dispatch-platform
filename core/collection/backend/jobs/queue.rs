@@ -32,11 +32,14 @@ const INSERT: &str = "INSERT INTO jobs(id,dsp_id,environment,kind,status,availab
 // How many claimable jobs a claim reads at a time.
 const CLAIM_PAGE_SIZE: i64 = 200;
 // The oldest queued job of the DSP that has waited longest since its last collection,
-// among DSPs no worker is collecting for.
+// among the DSPs' providers no worker is collecting from for them. A kind's provider is the
+// kind up to its first '.', as the index `one_active_provider` reads it.
 const CLAIMABLE: &str = concat!(
     "SELECT j.id,j.dsp_id,j.kind FROM jobs j WHERE j.status='queued' AND j.available_at<=? \
      AND j.kind IN (SELECT value FROM json_each(?)) AND NOT EXISTS \
-     (SELECT 1 FROM jobs active WHERE active.dsp_id=j.dsp_id AND active.status IN ",
+     (SELECT 1 FROM jobs active WHERE active.dsp_id=j.dsp_id \
+     AND substr(active.kind,1,instr(active.kind,'.')-1)=substr(j.kind,1,instr(j.kind,'.')-1) \
+     AND active.status IN ",
     job_statuses!(leased),
     ") ORDER BY (SELECT COALESCE(MAX(completed_at),'') FROM jobs previous \
      WHERE previous.dsp_id=j.dsp_id),j.created_at,j.id LIMIT ? OFFSET ?"
@@ -161,6 +164,7 @@ impl Store {
             })
             .collect::<Result<Vec<_>>>()?;
         let known = JobKind::known()?;
+        let own = JobKind::of(requests.iter().map(|(_, provider, _)| *provider))?;
         let capacity = requests
             .iter()
             .map(|(_, provider, request)| {
@@ -191,12 +195,12 @@ impl Store {
                     Ok(row)
                 })
                 .collect::<Result<Vec<_>>>()?;
-            // A manual sync owns the DSP until every job in its batch stops.
-            // Check before inserting any job, in the same transaction, while
-            // allowing retries of a request that already queued successfully.
+            // A manual sync owns the DSP's providers it collects from until every job in
+            // its batch stops. Check before inserting any job, in the same transaction,
+            // while allowing retries of a request that already queued successfully.
             if actor.is_some() && existing.iter().any(Option::is_none) {
                 ensure(
-                    self.jobs.count(ACTIVE_COUNT, [id, &known])? == 0,
+                    self.jobs.count(ACTIVE_COUNT, [id, &own])? == 0,
                     "sync_in_progress",
                     409,
                 )?;
@@ -269,7 +273,7 @@ impl Store {
         let (scope, values): (&str, Vec<&dyn rusqlite::ToSql>) = match &filter {
             CancelJobs::Job { id, dsp } => (" AND id=? AND dsp_id=?", vec![id, dsp]),
             CancelJobs::Provider { dsp, provider } => {
-                kind = serde_json::to_string(&provider.job_kinds().collect::<Vec<_>>())?;
+                kind = JobKind::of([*provider])?;
                 (
                     " AND dsp_id=? AND kind IN (SELECT value FROM json_each(?))",
                     vec![dsp, &kind],

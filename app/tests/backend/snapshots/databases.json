@@ -50,7 +50,8 @@
       [5, "open_kinds", "13830dde50ae8243"],
       [6, "live_reads", "df1f39254c9fffb2"],
       [7, "live_days_stopping", "code"],
-      [8, "jobs_completed", "5d59505e155be78c"]
+      [8, "jobs_completed", "5d59505e155be78c"],
+      [9, "one_active_provider", "0110c9109b27e8df"]
     ]
   },
   {

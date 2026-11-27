@@ -283,6 +283,13 @@ const JOBS: &[Migration] = &[
             "../../collection/migrations/jobs/0008_jobs_completed.sql"
         )),
     },
+    Migration {
+        id: 9,
+        name: "one_active_provider",
+        apply: Sql(include_str!(
+            "../../collection/migrations/jobs/0009_one_active_provider.sql"
+        )),
+    },
 ];
 const DSP: &[Migration] = &[
     Migration {
