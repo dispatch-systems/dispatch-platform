@@ -24,7 +24,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::Notify,
+    sync::{Notify, watch},
     time::{Instant, sleep_until},
 };
 
@@ -208,7 +208,7 @@ pub(crate) struct Turn {
     throttled: AtomicBool,
     /// Whether what it reads for failed already, so that a request waiting its place is not
     /// sent.
-    stopped: AtomicBool,
+    stopped: watch::Sender<bool>,
 }
 /// What a turn has waited on throttling: the cooldowns its requests waited out together
 /// are spent once.
@@ -232,12 +232,12 @@ impl Turn {
             }),
             asked: AtomicBool::new(false),
             throttled: AtomicBool::new(false),
-            stopped: AtomicBool::new(false),
+            stopped: watch::Sender::new(false),
         }
     }
     /// What it reads for has failed: nothing it has not yet sent is sent.
     pub(crate) fn stop(&self) {
-        self.stopped.store(true, Ordering::SeqCst);
+        self.stopped.send_replace(true);
     }
     /// What `send` answered once admitted: asked again after each throttle while the turn
     /// lasts. `endpoint`, fixed and without identifiers, is what a throttle is logged as.
@@ -253,10 +253,19 @@ impl Turn {
     {
         self.asked.store(true, Ordering::Relaxed);
         for _ in 0..ROUNDS {
-            let admitted = self.admitted().await?;
-            // A request that waited may no longer be the reader's to send.
-            ensure(!self.stopped.load(Ordering::SeqCst), STOPPED, 409)?;
-            (self.authority)().await?;
+            // Whatever it waits on before it is sent, a cooldown, its place or its authority,
+            // it stops waiting once the turn has stopped.
+            let admitted = tokio::select! {
+                biased;
+                _ = self.halted() => return Err(Error::new(STOPPED, 409)),
+                admitted = async {
+                    let admitted = self.admitted().await?;
+                    // A request that waited may no longer be the reader's to send.
+                    (self.authority)().await?;
+                    Ok::<_, Error>(admitted)
+                } => admitted?,
+            };
+            ensure(!*self.stopped.borrow(), STOPPED, 409)?;
             let answer = send().await;
             match answer {
                 // The cooldown is the gate's before the place is free, so no request
@@ -269,6 +278,10 @@ impl Turn {
             }
         }
         Err(throttled())
+    }
+    /// Once the turn has stopped.
+    async fn halted(&self) {
+        let _ = self.stopped.subscribe().wait_for(|stopped| *stopped).await;
     }
     /// The read ended whole: one that met no throttle counts toward widening a narrowed gate.
     pub(crate) fn finished(&self) {
@@ -290,7 +303,6 @@ impl Turn {
     /// A cooldown under way, or passed unobserved, waited out within the turn's budget; the
     /// gate then admits fewer at once.
     async fn cooled(&self) -> Result<()> {
-        ensure(!self.stopped.load(Ordering::SeqCst), STOPPED, 409)?;
         let Some(until) = self.gate.cooldown() else {
             return Ok(());
         };

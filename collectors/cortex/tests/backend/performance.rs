@@ -137,11 +137,11 @@ fn a_reply_too_long_is_the_source_too_large() {
 /// Cortex's data API for a read's datasets, each answered with a row naming it. With
 /// `held`, each answer takes a moment of the test's clock, so those asked together
 /// overlap. `throttles` asks once for a cooldown of so many seconds; `fails` is not found,
-/// at once.
+/// after so many seconds.
 struct Stand {
     held: bool,
     throttles: Option<(&'static str, u64)>,
-    fails: Option<&'static str>,
+    fails: Option<(&'static str, u64)>,
     asked: std::sync::Mutex<std::collections::HashMap<String, usize>>,
     /// The stand-in tells when a throttled dataset is asked again before its delay passed.
     throttled_until: std::sync::Mutex<Option<tokio::time::Instant>>,
@@ -175,7 +175,10 @@ async fn answer(
         *count += 1;
         *count
     };
-    if stand.fails == Some(dataset.as_str()) {
+    if let Some((failing, seconds)) = stand.fails
+        && failing == dataset
+    {
+        tokio::time::sleep(Duration::from_secs(seconds)).await;
         return axum::http::StatusCode::NOT_FOUND.into_response();
     }
     let answering = stand.answering.fetch_add(1, Ordering::SeqCst) + 1;
@@ -217,7 +220,7 @@ fn allowed() -> crate::connection::gate::Authority {
 async fn read_week(
     held: bool,
     throttles: Option<(&'static str, u64)>,
-    fails: Option<&'static str>,
+    fails: Option<(&'static str, u64)>,
     authority: crate::connection::gate::Authority,
 ) -> (
     std::sync::Arc<Stand>,
@@ -345,8 +348,22 @@ async fn a_read_no_longer_its_jobs_sends_nothing() {
 // asked for, those already asked drain, and the read names the dataset's failure.
 #[tokio::test]
 async fn once_a_dataset_failed_none_waiting_at_the_gate_is_asked() {
-    let (stand, _, read) = read_week(true, None, Some("d00"), allowed()).await;
+    let (stand, _, read) = read_week(true, None, Some(("d00", 0)), allowed()).await;
     assert_eq!(read.unwrap_err().code, "performance_api_unreadable");
     let asked: usize = DATASETS.iter().map(|dataset| stand.asked(dataset)).sum();
     assert_eq!(asked, 4);
+}
+
+// A dataset that fails while another waits out a cooldown ends the read then: what waits is
+// not sent, and the read does not wait the cooldown out first. The account keeps it.
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
+#[tokio::test(start_paused = true)]
+async fn a_dataset_failing_during_a_cooldown_ends_the_read_before_it() {
+    let started = tokio::time::Instant::now();
+    let (stand, gate, read) =
+        read_week(false, Some(("d00", 90)), Some(("d01", 1)), allowed()).await;
+    assert_eq!(read.unwrap_err().code, "performance_api_unreadable");
+    assert!(started.elapsed() < Duration::from_secs(90));
+    assert_eq!(stand.asked("d00"), 1);
+    assert!(gate.cooling());
 }
