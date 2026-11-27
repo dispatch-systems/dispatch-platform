@@ -44,14 +44,14 @@
     "@dnd-kit/utilities": "3.2.2",
     "@tanstack/react-table": "^9.2.4",
     "emojibase-data": "^18.0.0",
-    "lucide-react": "^1.75.0",
+    "lucide-react": "^1.77.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "three": "0.187.0",
     "zod": "^4.6.6"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261119.1",
+    "@cloudflare/workers-types": "^5.20261120.1",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.65.1",
     "@types/node": "^26.6.6",
