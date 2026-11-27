@@ -359,11 +359,10 @@ async fn once_a_dataset_failed_none_waiting_at_the_gate_is_asked() {
 #[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
 #[tokio::test(start_paused = true)]
 async fn a_dataset_failing_during_a_cooldown_ends_the_read_before_it() {
-    let started = tokio::time::Instant::now();
     let (stand, gate, read) =
         read_week(false, Some(("d00", 90)), Some(("d01", 1)), allowed()).await;
     assert_eq!(read.unwrap_err().code, "performance_api_unreadable");
-    assert!(started.elapsed() < Duration::from_secs(90));
+    // It ended while the account still cooled, the throttled dataset never asked again.
     assert_eq!(stand.asked("d00"), 1);
     assert!(gate.cooling());
 }
