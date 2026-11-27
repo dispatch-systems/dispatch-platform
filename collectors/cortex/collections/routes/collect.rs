@@ -277,9 +277,14 @@ where
     Ok(match reader.read(scope, request.mode, check).await {
         Ok(capture) => {
             progress(95, "Validating routes".into()).await?;
-            match capture.validate(request) {
-                Ok(()) => Ok((reader, capture)),
-                Err(_) => Err(INVALID),
+            // The checks inflate and read every itinerary: away from the threads serving
+            // requests.
+            let request = request.clone();
+            match tokio::task::spawn_blocking(move || capture.validate(&request).map(|()| capture))
+                .await
+            {
+                Ok(Ok(capture)) => Ok((reader, capture)),
+                _ => Err(INVALID),
             }
         }
         Err(Failure::Throttled(error) | Failure::Stopped(error)) => return Err(error),
