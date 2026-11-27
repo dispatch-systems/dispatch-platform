@@ -3,18 +3,24 @@
 //! beside the profile, or found now. The API's address, and how it names this DSP, come
 //! from the station's last publication, else from where it last answered for the
 //! station; when there is neither, or nothing answers there, the overview page's own
-//! first data request names them. Dataset reads have bounded concurrency, and the
-//! browser closes as soon as the API has answered one.
+//! first data request names them. Dataset reads take their turn at the account's gate
+//! (`connection::gate`), and the browser closes as soon as the API has answered one.
 use super::{Dataset, DatasetCapture, MAX_ROWS, Read};
 use crate as cortex;
 use crate::{
-    connection::Driver,
+    connection::{
+        Driver,
+        gate::{self, Turn},
+    },
     discovery::{CollectionRequest, Scope, known},
 };
 use dispatch_core::{
     Error, Result,
     collection::{
-        browser::{Run, http::Refusal},
+        browser::{
+            Run,
+            http::{Http, Refusal},
+        },
         metrics::Recorder,
     },
     db::{now, s},
@@ -100,6 +106,27 @@ fn rows(dataset: &str, value: &Value) -> Result<Vec<Value>> {
         })
         .collect()
 }
+/// The rows of `dataset` at `url`, asked at the account's gate: asked again after each
+/// throttle while `turn` lasts. One that fails stops the turn, as it fails the read.
+async fn read_rows(
+    http: &Http,
+    turn: &Turn,
+    url: &str,
+    referer: &str,
+    dataset: &str,
+    metrics: &Recorder,
+) -> Result<Vec<Value>> {
+    let read = async {
+        let value = turn
+            .ask("/performance/api/getData", || {
+                http.json_with_status(url, referer, LIMIT)
+            })
+            .await?
+            .map_err(|error| refused(error.refusal, metrics))?;
+        rows(dataset, &value)
+    };
+    read.await.inspect_err(|_| turn.stop())
+}
 /// The API a data request names: its base address, the `dsp` code and the station.
 fn data_request(url: &str, origin: &str) -> Result<(String, String, String)> {
     let incomplete = || Error::new("cortex_content_incomplete", 502);
@@ -163,8 +190,8 @@ impl From<Error> for Failed {
     }
 }
 /// `read` of each index below `count`, `lanes` at once, each lane taking the next index as it
-/// finishes one: what each lane read, by index, or the error it met. Once a read failed the
-/// whole has, so no lane takes another; reads already asked drain.
+/// finishes one: what each lane read, by index, or the error the first read to fail met.
+/// Once a read failed the whole has, so no lane takes another; reads already asked drain.
 async fn in_lanes<T, F, Fut>(count: usize, lanes: usize, read: F) -> Vec<Result<Vec<(usize, T)>>>
 where
     F: Fn(usize) -> Fut,
@@ -181,10 +208,9 @@ where
             }
             match read(index).await {
                 Ok(value) => read_here.push((index, value)),
-                Err(error) => {
-                    failed.store(true, Ordering::SeqCst);
-                    return Err(error);
-                }
+                // Only the first failure is the read's: those after it follow from it.
+                Err(error) if !failed.swap(true, Ordering::SeqCst) => return Err(error),
+                Err(_) => break,
             }
         }
         Ok(read_here)
@@ -337,35 +363,35 @@ impl Driver {
             .then_some(Api { base, dsp })
         }))
     }
-    /// Bounded parallel reads, `lanes` at once, preserving the requested order; the first
-    /// that fails fails them all, with the error of the first lane in order that met one.
-    /// The first answer shows the session and the address work, and with `close` the
-    /// browser closes then: nothing after it needs a page.
+    /// Parallel reads, `lanes` at once and no more than the account's gate admits,
+    /// preserving the requested order; the first that fails fails them all, with the error
+    /// of the first lane in order that met one. A read Cortex throttles is asked again
+    /// once the account has cooled, within the turn's budget. The first answer shows the
+    /// session and the address work, and with `close` the browser closes then: nothing
+    /// after it needs a page.
     async fn read_all(
         &self,
         api: &Api,
         reads: &[Read],
-        station: &str,
+        scope: &Scope,
         lanes: usize,
         close: bool,
         run: &Run<'_>,
     ) -> std::result::Result<Vec<(String, Vec<Value>)>, Failed> {
         let http = self.http().await?;
         let referer = format!("{}/performance", self.origin);
+        let turn = Turn::of(&self.origin, &scope.provider, gate::job(run));
+        let station = scope.station.as_str();
         let done = AtomicUsize::new(0);
         let answered = AtomicBool::new(false);
         let reporting = AtomicBool::new(false);
-        let (http, referer, done, answered, reporting) =
-            (&http, &referer, &done, &answered, &reporting);
+        let (http, referer, turn, done, answered, reporting) =
+            (&http, &referer, &turn, &done, &answered, &reporting);
         let lanes = in_lanes(reads.len(), lanes, |index| async move {
             let read = &reads[index];
             let dataset = read.dataset;
             let url = api.address(dataset, station, &read.from, &read.to);
-            let value = http
-                .json(&url, referer, LIMIT)
-                .await
-                .map_err(|refusal| refused(refusal, run.metrics))?;
-            let rows = rows(dataset.id, &value)?;
+            let rows = read_rows(http, turn, &url, referer, dataset.id, run.metrics).await?;
             if !answered.swap(true, Ordering::SeqCst) && close {
                 self.close_browser().await;
             }
@@ -397,10 +423,12 @@ impl Driver {
                 replies[index] = Some(reply);
             }
         }
-        Ok(replies
+        let replies = replies
             .into_iter()
             .map(|reply| reply.ok_or_else(|| Error::new("performance_capture_invalid", 502)))
-            .collect::<Result<Vec<_>>>()?)
+            .collect::<Result<Vec<_>>>()?;
+        turn.finished();
+        Ok(replies)
     }
     /// The scope `request` covers: what discovery found for its station before, unless
     /// `rediscover`, else what discovery finds now, kept for the next collections.
@@ -446,8 +474,8 @@ impl Driver {
             run.metrics.detail("known_scope_unwritten");
         }
     }
-    /// Every read of `reads` for `scope`, `lanes` at once, with the company and DSP code
-    /// the API named. A scope `found` by discovery now needs no page after the first
+    /// Every read of `reads` for `scope`, `lanes` at once at most, with the company and DSP
+    /// code the API named. A scope `found` by discovery now needs no page after the first
     /// answer; a kept one keeps the browser until what was read has been checked, so a
     /// mismatch can find the station again.
     pub(crate) async fn read_performance(
@@ -477,14 +505,7 @@ impl Driver {
             .await?;
         let replies = loop {
             match self
-                .read_all(
-                    &api,
-                    reads,
-                    &scope.station,
-                    lanes,
-                    found == Found::Discovered,
-                    run,
-                )
+                .read_all(&api, reads, &scope, lanes, found == Found::Discovered, run)
                 .await
             {
                 Ok(replies) => break replies,

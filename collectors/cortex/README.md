@@ -37,6 +37,12 @@ successful responses for that attempt, and retries only what is missing after Re
 Every request waits its place at the account's gate (`connection/gate.rs`), one for each company
 at each origin, which every reader of the account on this server shares: a live read and a job
 that start together ask for four at once between them, and a throttle either meets cools both.
+The gate holds every request for the account's data on Cortex: a day's routes and meals, the
+performance datasets, DVIC's week listings and where each roster photo is served, though not
+the reports and photos S3 then serves. A performance, DVIC or photo request Cortex throttles
+is asked again on its own once the account has cooled, each at most twelve times, its read
+waiting on throttling for at most two minutes, a cooldown its requests wait out together
+counted once; a longer one fails the read promptly (`cortex_throttled`).
 Each throttled round narrows what the gate admits next, from four at a time to two, then one,
 also when the throttled read ended on a long cooldown or was cancelled; three reads in a row
 that meet no throttle widen it a step. A
@@ -78,10 +84,12 @@ a route without meals or a finished route Timecard already holds as listed. A me
 twice, minutes apart, is one meal from the first press; a route whose punches break another meal
 rule is kept without meals, named for the rule, and the rest of the day is read. The
 `dispatch-collectors` skill has the routes' and the performance sources' full reads. Weekly and
-daily share the performance HTTP reader, every dataset of a week or a day at once, asking no
-more once one read failed, while keeping their requests, datasets and job kinds separate; DVIC lists its weeks together and downloads
-fourteen reports at a time. The roster's photos are shrunk as they download, to at most 400
+daily share the performance HTTP reader, every dataset of a week or a day at once as the gate
+admits, asking no more once one read failed, while keeping their requests, datasets and job
+kinds separate; DVIC lists its weeks together as the gate admits and downloads fourteen
+reports at a time. The roster's photos are shrunk as they download, to at most 400
 pixels on the long side as a JPEG, a JPEG read straight at a fraction of its size, four at a time
 away from the threads that serve requests, each a little more than a core. One collection brings
 every photo the DSP lacks, sixteen at a time, and stops at the first the application refuses the
-session for; a photo due a refresh is asked for by its ETag, so only a changed one comes again.
+session for or a throttle outlasts; a photo due a refresh is asked for by its ETag, so only a
+changed one comes again.

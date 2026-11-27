@@ -1,17 +1,32 @@
-//! One account's turn at Cortex's execution API, shared by everything on this server that
-//! reads a day's routes from it: Amazon limits each account, not each reader, so a live read
-//! and a job that start together must not each ask for a burst of their own.
+//! One account's turn at Cortex, shared by everything on this server that asks it for an
+//! account's data: a day's routes and meals, the performance datasets, DVIC's weeks and the
+//! roster's photos. Amazon limits each account, not each reader, so a live read and a job
+//! that start together must not each ask for a burst of their own.
 //!
 //! A gate admits a few requests at once. A request Cortex throttles (HTTP 429) starts a
 //! cooldown for every reader of the account and narrows what is admitted next, down to one
 //! at a time; reads that then meet no throttle widen it again, a step at a time. The gates
 //! live as long as the server, one for each company at each Cortex origin.
+use crate as cortex;
+use dispatch_core::{
+    Error, Result,
+    collection::browser::{Pending, Run, http::WireError},
+    ensure,
+    foundation::observability,
+};
+use serde_json::json;
 use std::{
     collections::HashMap,
-    sync::{Arc, LazyLock, Mutex, MutexGuard},
+    sync::{
+        Arc, LazyLock, Mutex, MutexGuard,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
-use tokio::{sync::Notify, time::Instant};
+use tokio::{
+    sync::{Notify, watch},
+    time::{Instant, sleep_until},
+};
 
 /// Requests admitted at once: four, the widest Cortex was seen to answer without throttling
 /// since it began to, then fewer after each round it throttled.
@@ -20,6 +35,13 @@ const WIDTHS: [usize; 3] = [4, 2, 1];
 pub(crate) const PAUSE: Duration = Duration::from_secs(10);
 /// Reads in a row that meet no throttle before a narrowed gate widens a step.
 const CLEAN_READS: usize = 3;
+/// Times a turn's request is asked for at most, so one Cortex throttles with no delay ends.
+const ROUNDS: usize = 12;
+/// What a turn spends waiting on throttling at most, as a day's routes do: a longer
+/// cooldown fails promptly and stays with the gate for a later attempt.
+const BUDGET: Duration = Duration::from_secs(120);
+/// A throttle's delay, bounded before it is added to an instant.
+const MAX_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Each gate by its account: the origin, then the company there.
 type Gates = HashMap<(String, String), Arc<Gate>>;
@@ -154,4 +176,172 @@ impl Gate {
             state.until = None;
         }
     }
+}
+
+/// One read's requests at the account's gate, each asked on its own rather than in rounds,
+/// as the performance datasets, DVIC's weeks and the roster's photos are. A request waits out
+/// a cooldown under way, then its place; one Cortex throttles is asked again once the
+/// account has cooled, fewer at once, while the read's budget for waiting and `ROUNDS` last.
+/// A healthy read has no timer or added wait.
+/// Whether what a turn reads for may still ask Cortex, asked just before each request is
+/// sent, once it waited its place, as each of a day's route reads is.
+pub(crate) type Authority = Box<dyn Fn() -> Pending<'static, ()> + Send + Sync>;
+/// The authority of the job `run` is an attempt of: still this worker's, not cancelled, and
+/// its DSP, feature, member and connection all as they were.
+pub(crate) fn job(run: &Run<'_>) -> Authority {
+    let (state, job, owner) = (run.state.clone(), run.job.to_owned(), run.owner.to_owned());
+    Box::new(move || {
+        let (state, job, owner) = (state.clone(), job.clone(), owner.clone());
+        Box::pin(async move {
+            state
+                .read(move |db| db.guard(&job, &owner).map(|_| ()))
+                .await
+        })
+    })
+}
+pub(crate) struct Turn {
+    gate: Arc<Gate>,
+    authority: Authority,
+    waited: Mutex<Waited>,
+    /// Whether it asked anything, and whether Cortex throttled any of it.
+    asked: AtomicBool,
+    throttled: AtomicBool,
+    /// Whether what it reads for failed already, so that a request waiting its place is not
+    /// sent.
+    stopped: watch::Sender<bool>,
+}
+/// What a turn has waited on throttling: the cooldowns its requests waited out together
+/// are spent once.
+struct Waited {
+    budget: Duration,
+    until: Option<Instant>,
+}
+impl Turn {
+    /// A read at the gate of `provider`, a company on Cortex, at `origin`, for as long as
+    /// `authority` allows. One that follows a throttle admits fewer at once, as a round of a
+    /// day's routes would.
+    pub(crate) fn of(origin: &str, provider: &str, authority: Authority) -> Self {
+        let gate = of(origin, provider);
+        gate.narrow();
+        Self {
+            gate,
+            authority,
+            waited: Mutex::new(Waited {
+                budget: BUDGET,
+                until: None,
+            }),
+            asked: AtomicBool::new(false),
+            throttled: AtomicBool::new(false),
+            stopped: watch::Sender::new(false),
+        }
+    }
+    /// What it reads for has failed: nothing it has not yet sent is sent.
+    pub(crate) fn stop(&self) {
+        self.stopped.send_replace(true);
+    }
+    /// What `send` answered once admitted: asked again after each throttle while the turn
+    /// lasts. `endpoint`, fixed and without identifiers, is what a throttle is logged as.
+    /// A throttle that outlasts the turn fails it (`cortex_throttled`), keeping its cooldown
+    /// with the gate.
+    pub(crate) async fn ask<T, Fut>(
+        &self,
+        endpoint: &'static str,
+        send: impl Fn() -> Fut,
+    ) -> Result<std::result::Result<T, WireError>>
+    where
+        Fut: Future<Output = std::result::Result<T, WireError>>,
+    {
+        self.asked.store(true, Ordering::Relaxed);
+        for _ in 0..ROUNDS {
+            // Whatever it waits on before it is sent, a cooldown, its place or its authority,
+            // it stops waiting once the turn has stopped.
+            let admitted = tokio::select! {
+                biased;
+                _ = self.halted() => return Err(Error::new(STOPPED, 409)),
+                admitted = async {
+                    let admitted = self.admitted().await?;
+                    // A request that waited may no longer be the reader's to send.
+                    (self.authority)().await?;
+                    Ok::<_, Error>(admitted)
+                } => admitted?,
+            };
+            ensure(!*self.stopped.borrow(), STOPPED, 409)?;
+            let answer = send().await;
+            match answer {
+                // The cooldown is the gate's before the place is free, so no request
+                // admitted in its place goes out unaware of it.
+                Err(error) if error.status == Some(429) => {
+                    self.throttled(endpoint, &error);
+                    drop(admitted);
+                }
+                answer => return Ok(answer),
+            }
+        }
+        Err(throttled())
+    }
+    /// Once the turn has stopped.
+    async fn halted(&self) {
+        let _ = self.stopped.subscribe().wait_for(|stopped| *stopped).await;
+    }
+    /// The read ended whole: one that met no throttle counts toward widening a narrowed gate.
+    pub(crate) fn finished(&self) {
+        if self.asked.load(Ordering::Relaxed) && !self.throttled.load(Ordering::Relaxed) {
+            self.gate.read_clean();
+        }
+    }
+    /// A place among the account's requests, once no cooldown is under way.
+    async fn admitted(&self) -> Result<Admitted> {
+        loop {
+            self.cooled().await?;
+            let admitted = self.gate.admit().await;
+            // A throttle met while it waited for its place is waited out first.
+            if self.gate.cooldown().is_none() {
+                return Ok(admitted);
+            }
+        }
+    }
+    /// A cooldown under way, or passed unobserved, waited out within the turn's budget; the
+    /// gate then admits fewer at once.
+    async fn cooled(&self) -> Result<()> {
+        let Some(until) = self.gate.cooldown() else {
+            return Ok(());
+        };
+        {
+            let mut waited = self.waited.lock().expect("cortex turn");
+            let from = waited
+                .until
+                .map_or(Instant::now(), |w| w.max(Instant::now()));
+            let delay = until.saturating_duration_since(from);
+            if delay > waited.budget {
+                return Err(throttled());
+            }
+            waited.budget -= delay;
+            waited.until = Some(waited.until.map_or(until, |w| w.max(until)));
+        }
+        sleep_until(until).await;
+        self.gate.cooled(until);
+        self.gate.narrow();
+        Ok(())
+    }
+    fn throttled(&self, endpoint: &'static str, error: &WireError) {
+        self.throttled.store(true, Ordering::Relaxed);
+        self.gate
+            .throttled(error.retry_after.unwrap_or(PAUSE).min(MAX_COOLDOWN));
+        observability::event(
+            "warn",
+            "cortex.read_throttled",
+            json!({"endpoint":endpoint,"downloads":self.gate.width(),
+                "retryAfterMs":error.retry_after.map(|d|d.as_millis().min(u64::MAX as u128) as u64)}),
+        );
+    }
+}
+/// What a request a stopped turn did not send fails with: never a read's own error, which
+/// the request that failed it gives.
+const STOPPED: &str = "cortex_read_stopped";
+/// Whether `error` is only a request a stopped turn did not send.
+pub(crate) fn stopped(error: &Error) -> bool {
+    error.code == STOPPED
+}
+fn throttled() -> Error {
+    Error::new(cortex::codes::CORTEX_THROTTLED.as_str(), 502)
 }

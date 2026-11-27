@@ -143,6 +143,30 @@ impl From<Refusal> for WireError {
         }
     }
 }
+impl WireError {
+    /// `refusal` of a response with `status`.
+    fn of(status: StatusCode, refusal: Refusal) -> Self {
+        Self {
+            refusal,
+            status: Some(status.as_u16()),
+            retry_after: None,
+        }
+    }
+    /// A response's refusal when the provider throttled it, with the delay it asked for, or
+    /// is failing.
+    fn unavailable(response: &Response) -> Option<Self> {
+        let status = response.status();
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            return Some(Self {
+                retry_after: retry_after(response.headers().get(reqwest::header::RETRY_AFTER)),
+                ..Self::of(status, Refusal::Unavailable)
+            });
+        }
+        status
+            .is_server_error()
+            .then(|| Self::of(status, Refusal::Unavailable))
+    }
+}
 
 /// An HTTP date, as `Tue, 17 Nov 2026 08:12:31 GMT`, in milliseconds since the epoch.
 fn http_date(value: &str) -> Option<i64> {
@@ -580,27 +604,32 @@ impl Http {
     }
     /// A body of the expected type, within the size a tab would accept.
     async fn body(response: Response, kind: &str) -> std::result::Result<String, Refusal> {
-        Self::body_within(response, kind, LIMIT).await
+        Self::body_within(response, kind, LIMIT)
+            .await
+            .map_err(|error| error.refusal)
     }
-    /// A body of the expected type, within `limit` bytes.
+    /// A body of the expected type, within `limit` bytes, refused with the response's status
+    /// and, when the provider throttled it, the delay it asked for.
     async fn body_within(
         response: Response,
         kind: &str,
         limit: usize,
-    ) -> std::result::Result<String, Refusal> {
-        let status = response.status();
-        if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
-            return Err(Refusal::Unavailable);
+    ) -> std::result::Result<String, WireError> {
+        if let Some(unavailable) = WireError::unavailable(&response) {
+            return Err(unavailable);
         }
+        let status = response.status();
+        let failed = |refusal| WireError::of(status, refusal);
         if status.is_redirection()
             || [StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN].contains(&status)
         {
-            return Err(Refusal::Unreadable("http_signed_out"));
+            return Err(failed(Refusal::Unreadable("http_signed_out")));
         }
         if status != StatusCode::OK {
-            return Err(Refusal::Unreadable("http_status"));
+            return Err(failed(Refusal::Unreadable("http_status")));
         }
-        utf8(Self::bytes(response, kind, limit).await?)
+        let bytes = Self::bytes(response, kind, limit).await.map_err(failed)?;
+        utf8(bytes).map_err(failed)
     }
     /// An answer's bytes as they came, when it is of type `kind` and within `limit`.
     async fn bytes(
@@ -667,8 +696,20 @@ impl Http {
         referer: &str,
         limit: usize,
     ) -> std::result::Result<Value, Refusal> {
-        let text = self.json_text(url, &[], referer, limit).await?;
-        serde_json::from_str(&text).map_err(|_| Refusal::Unreadable("http_not_json"))
+        self.json_with_status(url, referer, limit)
+            .await
+            .map_err(|error| error.refusal)
+    }
+    /// A JSON document as `json` reads it, refused with the response's status and the delay
+    /// a throttle asked for: a reader that waits out a provider's throttling tells it apart.
+    pub async fn json_with_status(
+        &self,
+        url: &str,
+        referer: &str,
+        limit: usize,
+    ) -> std::result::Result<Value, WireError> {
+        let text = self.text(url, &[], referer, limit).await?;
+        serde_json::from_str(&text).map_err(|_| Refusal::Unreadable("http_not_json").into())
     }
     /// A JSON document's text within `limit` bytes, unparsed, sent with `headers` as well:
     /// those a page signed this exact address with, which its own request would carry.
@@ -679,6 +720,18 @@ impl Http {
         referer: &str,
         limit: usize,
     ) -> std::result::Result<String, Refusal> {
+        self.text(url, headers, referer, limit)
+            .await
+            .map_err(|error| error.refusal)
+    }
+    /// `json_text`'s read, refused as `json_with_status` refuses.
+    async fn text(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        referer: &str,
+        limit: usize,
+    ) -> std::result::Result<String, WireError> {
         let target = self.target(url)?;
         let mut request = self
             .client
@@ -724,21 +777,11 @@ impl Http {
             request = request.header(name, value);
         }
         let response = request.send().await.map_err(|_| Refusal::Unavailable)?;
+        if let Some(unavailable) = WireError::unavailable(&response) {
+            return Err(unavailable);
+        }
         let status = response.status();
-        let failed = |refusal| WireError {
-            refusal,
-            status: Some(status.as_u16()),
-            retry_after: None,
-        };
-        if status == StatusCode::TOO_MANY_REQUESTS {
-            return Err(WireError {
-                retry_after: retry_after(response.headers().get(reqwest::header::RETRY_AFTER)),
-                ..failed(Refusal::Unavailable)
-            });
-        }
-        if status.is_server_error() {
-            return Err(failed(Refusal::Unavailable));
-        }
+        let failed = |refusal| WireError::of(status, refusal);
         if status.is_redirection() {
             return Err(failed(Refusal::Unreadable("http_redirected")));
         }
@@ -816,8 +859,9 @@ impl Http {
     }
     /// Where `url` redirects, as a tab following it would go next: for an address the
     /// provider answers with the place a file is served from. The redirect itself is not
-    /// followed; its target is the caller's to check.
-    pub async fn location(&self, url: &str, referer: &str) -> std::result::Result<Url, Refusal> {
+    /// followed; its target is the caller's to check. Refused, it carries the response's
+    /// status and the delay a throttle asked for, as `wire` does.
+    pub async fn location(&self, url: &str, referer: &str) -> std::result::Result<Url, WireError> {
         let target = self.target(url)?;
         let response = self
             .client
@@ -829,15 +873,16 @@ impl Http {
             .send()
             .await
             .map_err(|_| Refusal::Unavailable)?;
-        let status = response.status();
-        if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
-            return Err(Refusal::Unavailable);
+        if let Some(unavailable) = WireError::unavailable(&response) {
+            return Err(unavailable);
         }
+        let status = response.status();
+        let failed = |refusal| WireError::of(status, refusal);
         if [StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN].contains(&status) {
-            return Err(Refusal::Unreadable("http_signed_out"));
+            return Err(failed(Refusal::Unreadable("http_signed_out")));
         }
         if !status.is_redirection() {
-            return Err(Refusal::Unreadable("http_not_redirected"));
+            return Err(failed(Refusal::Unreadable("http_not_redirected")));
         }
         response
             .headers()
@@ -845,7 +890,7 @@ impl Http {
             .and_then(|value| value.to_str().ok())
             .filter(|value| value.len() <= 4096)
             .and_then(|value| target.join(value).ok())
-            .ok_or(Refusal::Unreadable("http_location_invalid"))
+            .ok_or_else(|| failed(Refusal::Unreadable("http_location_invalid")))
     }
     /// One timecard page's HTML, as a tab's `fetch` of it would receive.
     pub async fn page(&self, url: &str, referer: &str) -> std::result::Result<String, Refusal> {

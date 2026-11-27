@@ -495,8 +495,9 @@ test(
     assert.ok(seen.companies >= expired.companies + 1);
     assert.equal(seen.signIns, expired.signIns + 1);
     assert.equal(seen.landing, expired.landing + 1);
+    // The datasets are read side by side, no more at once than the account's gate admits.
     assert.ok(
-      seen.dailyPeak > 6 && seen.dailyPeak <= 22,
+      seen.dailyPeak > 1 && seen.dailyPeak <= 4,
       `Daily request concurrency: ${seen.dailyPeak}`,
     );
     // A range of days is one job: every dataset read once for the whole range, its rows
