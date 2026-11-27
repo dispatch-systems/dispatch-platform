@@ -171,18 +171,15 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
     let downloads = Http::detached(&origin, &cortex::PHOTO_HOSTS).unwrap();
     let turn = Turn::of(&origin, "c-1", Box::new(|| Box::pin(async { Ok(()) })));
     let refusals = Refusals::default();
-    let fetch = |address: &'static str, etag: Option<&'static str>| {
-        photo(
-            &http,
-            &downloads,
-            &turn,
-            &refusals,
-            &origin,
-            "/workforce",
-            address,
-            etag,
-        )
+    let asking = Asking {
+        http: &http,
+        downloads: &downloads,
+        turn: &turn,
+        refusals: &refusals,
+        origin: &origin,
+        referer: "/workforce",
     };
+    let fetch = |address: &'static str, etag: Option<&'static str>| photo(&asking, address, etag);
     let served = Some((b"\xFF\xD8\xFF a jpeg".to_vec(), Some("\"v2\"".to_owned())));
     assert_eq!(fetch("/workforce/photo", None).await.unwrap(), served);
     // Asked for by the ETag it was kept under, it comes again only once it changed.
@@ -292,21 +289,20 @@ async fn photos_ask_cortex_no_more_at_once_than_its_gate_admits_and_wait_out_a_t
     let downloads = Http::detached(&origin, &cortex::PHOTO_HOSTS).unwrap();
     let turn = Turn::of(&origin, "c-1", Box::new(|| Box::pin(async { Ok(()) })));
     let refusals = Refusals::default();
+    let asking = Asking {
+        http: &http,
+        downloads: &downloads,
+        turn: &turn,
+        refusals: &refusals,
+        origin: &origin,
+        referer: "/workforce",
+    };
     let addresses: Vec<String> = (0..LANES)
         .map(|n| format!("/workforce/photo/{n}"))
         .collect();
-    let photos = futures_util::future::join_all((addresses.iter()).map(|address| {
-        photo(
-            &http,
-            &downloads,
-            &turn,
-            &refusals,
-            &origin,
-            "/workforce",
-            address,
-            None,
-        )
-    }))
+    let photos = futures_util::future::join_all(
+        (addresses.iter()).map(|address| photo(&asking, address, None)),
+    )
     .await;
     for (n, photo) in photos.into_iter().enumerate() {
         let (bytes, _) = photo.unwrap().unwrap();

@@ -295,20 +295,33 @@ fn wanted<'a>(
     }
     wanted
 }
+/// What a roster's photos are asked for with: the application's session and the photo
+/// host's, the account's gate, the refusals so far, and where the roster's page is.
+struct Asking<'a> {
+    http: &'a Http,
+    downloads: &'a Http,
+    turn: &'a Turn,
+    refusals: &'a Refusals,
+    origin: &'a str,
+    referer: &'a str,
+}
 /// One photo's bytes and the ETag they were served under, or None when the photo host still
 /// serves the version `etag` names: where the application redirects its address, asked at
-/// the account's gate and again once a throttle has cooled while `turn` lasts, then the photo
-/// from there, which carries none of Amazon's cookies.
+/// the account's gate and again once a throttle has cooled while the turn lasts, then the
+/// photo from there, which carries none of Amazon's cookies.
 async fn photo(
-    http: &Http,
-    downloads: &Http,
-    turn: &Turn,
-    refusals: &Refusals,
-    origin: &str,
-    referer: &str,
+    asking: &Asking<'_>,
     address: &str,
     etag: Option<&str>,
 ) -> std::result::Result<Option<(Vec<u8>, Option<String>)>, Missed> {
+    let Asking {
+        http,
+        downloads,
+        turn,
+        refusals,
+        origin,
+        referer,
+    } = *asking;
     let url = format!("{origin}{address}");
     let answered = turn
         .ask("/workforce photo", || http.location(&url, referer))
@@ -425,19 +438,21 @@ impl Driver {
         let downloads = Http::detached(&self.origin, &cortex::PHOTO_HOSTS)?;
         let shrinking = Semaphore::new(SHRINKING);
         let refusals = Refusals::default();
-        let (http, downloads, turn, shrinking, refused) =
-            (&http, &downloads, &turn, &shrinking, &refusals);
-        let (origin, referer) = (self.origin.as_str(), referer.as_str());
+        let asking = &Asking {
+            http: &http,
+            downloads: &downloads,
+            turn: &turn,
+            refusals: &refusals,
+            origin: &self.origin,
+            referer: &referer,
+        };
+        let shrinking = &shrinking;
         let mut fetching = stream::iter(0..total)
             .map(|index| {
                 let (address, etag) = wanted[index];
                 async move {
                     let fetched = async {
-                        let Some((bytes, etag)) = photo(
-                            http, downloads, turn, refused, origin, referer, address, etag,
-                        )
-                        .await?
-                        else {
+                        let Some((bytes, etag)) = photo(asking, address, etag).await? else {
                             return Ok(None);
                         };
                         let photo = keep(shrinking, address, bytes, etag).await;
