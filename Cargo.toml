@@ -48,7 +48,7 @@ ego-tree = "0.11"
 html5ever = "0.40"
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls"] }
-qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+qrcode = { version = "0.15", default-features = false, features = ["svg"] }
 sha1 = "0.11"
 webauthn-rs = { version = "0.6.2", default-features = false, features = ["danger-allow-state-serialisation"] }
 calamine = { version = "0.38.0", default-features = false }
