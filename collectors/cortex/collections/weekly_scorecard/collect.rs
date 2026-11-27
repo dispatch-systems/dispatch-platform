@@ -10,8 +10,8 @@ use crate::{
 };
 use dispatch_core::{Result, collection::browser::Run, db::now};
 
-/// Reads at once: every dataset of the week together. Cortex answered all 14 at once
-/// without throttling, in under half the time six at once took.
+/// Reads at once at most: every dataset of the week together, as many in flight as the
+/// account's gate admits.
 const LANES: usize = 14;
 
 impl Driver {

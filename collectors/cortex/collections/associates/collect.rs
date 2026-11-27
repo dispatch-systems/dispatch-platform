@@ -1,9 +1,9 @@
 //! Reads the roster over plain HTTP with the browser's session: the company the DSP's code
 //! names, from the list the start's session check read when it had one, then every associate
 //! in one request and everyone offboarded in another, then the photos the DSP lacks, each from
-//! where the application redirects its address, shrunk as it comes; one due a refresh only if
-//! Amazon changed it. Nothing after the roster needs a page, so the browser closes as soon as
-//! it is in.
+//! where the application redirects its address, asked at the account's gate, shrunk as it
+//! comes; one due a refresh only if Amazon changed it. Nothing after the roster needs a page,
+//! so the browser closes as soon as it is in.
 use super::capture::{
     Associate, Capture, Collection, JOB_KIND, KeptPhotos, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo,
     Request,
@@ -13,6 +13,7 @@ use crate as cortex;
 use crate::connection::{
     Driver,
     companies::{COMPANIES, company, refusal},
+    gate::{self, Turn},
 };
 use dispatch_core::{
     Error, Result,
@@ -34,7 +35,8 @@ pub const PHOTO_HOST: &str = "amazon-flex-da-photo-prod-usamazon.s3.amazonaws.co
 const ROSTER: &str = "/workforce/api/v1/fetchDSPAssociates";
 /// As much as one reply may hold. A hundred associates are 60 KB.
 const LIMIT: usize = 16 * 1024 * 1024;
-/// Photo downloads at once, bounding the requests a roster holds in flight.
+/// Photo downloads at once, bounding the requests a roster holds in flight; the redirects
+/// among them go to Cortex no more at once than the account's gate admits.
 const LANES: usize = 16;
 /// What one collection keeps of the photos the DSP lacks, as the capture holds them: about
 /// 3,600 shrunk ones. A roster lacking more brings the rest next time.
@@ -161,20 +163,24 @@ enum Missed {
     Skipped(&'static str),
 }
 /// One photo's bytes and the ETag they were served under, or None when the photo host still
-/// serves the version `etag` names: where the application redirects its address, then the
-/// photo from there, which carries none of Amazon's cookies.
+/// serves the version `etag` names: where the application redirects its address, asked at
+/// the account's gate and again once a throttle has cooled while `turn` lasts, then the photo
+/// from there, which carries none of Amazon's cookies.
 async fn photo(
     http: &Http,
     downloads: &Http,
+    turn: &Turn,
     origin: &str,
     referer: &str,
     address: &str,
     etag: Option<&str>,
 ) -> std::result::Result<Option<(Vec<u8>, Option<String>)>, Missed> {
-    let source = http
-        .location(&format!("{origin}{address}"), referer)
+    let address = format!("{origin}{address}");
+    let source = turn
+        .ask("/workforce photo", || http.location(&address, referer))
         .await
-        .map_err(|refusal| match refusal {
+        .map_err(|_| Missed::Refused("photo_throttled"))?
+        .map_err(|error| match error.refusal {
             Refusal::Unavailable => Missed::Refused("photo_unavailable"),
             Refusal::Unreadable(label @ "http_signed_out") => Missed::Refused(label),
             Refusal::Unreadable(label) => Missed::Skipped(label),
@@ -285,8 +291,9 @@ impl Driver {
                 .await?;
         }
         let downloads = Http::detached(&self.origin, &cortex::PHOTO_HOSTS)?;
+        let turn = Turn::of(&self.origin, &company_id, gate::job(run));
         let shrinking = Semaphore::new(SHRINKING);
-        let (http, downloads, shrinking) = (&http, &downloads, &shrinking);
+        let (http, downloads, turn, shrinking) = (&http, &downloads, &turn, &shrinking);
         let (origin, referer) = (self.origin.as_str(), referer.as_str());
         let mut fetching = stream::iter(0..total)
             .map(|index| {
@@ -294,7 +301,7 @@ impl Driver {
                 async move {
                     let fetched = async {
                         let Some((bytes, etag)) =
-                            photo(http, downloads, origin, referer, address, etag).await?
+                            photo(http, downloads, turn, origin, referer, address, etag).await?
                         else {
                             return Ok(None);
                         };
@@ -331,6 +338,9 @@ impl Driver {
             }
         }
         drop(fetching);
+        if done == total {
+            turn.finished();
+        }
         photos.sort_by_key(|(index, _)| *index);
         run.progress(95, "Validating the roster".into()).await?;
         let capture = Capture {

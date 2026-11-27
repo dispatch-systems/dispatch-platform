@@ -151,8 +151,17 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
     };
     let http = Http::with_session(&session, &cortex::HOSTS).unwrap();
     let downloads = Http::detached(&origin, &cortex::PHOTO_HOSTS).unwrap();
+    let turn = Turn::of(&origin, "c-1", Box::new(|| Box::pin(async { Ok(()) })));
     let fetch = |address: &'static str, etag: Option<&'static str>| {
-        photo(&http, &downloads, &origin, "/workforce", address, etag)
+        photo(
+            &http,
+            &downloads,
+            &turn,
+            &origin,
+            "/workforce",
+            address,
+            etag,
+        )
     };
     let served = Some((b"\xFF\xD8\xFF a jpeg".to_vec(), Some("\"v2\"".to_owned())));
     assert_eq!(fetch("/workforce/photo", None).await.unwrap(), served);
@@ -184,4 +193,93 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_
     assert!(!cortex::HOSTS.allows(&s3));
     assert!(!(cortex::PHOTO_HOSTS.cookies)("amazon.com"));
     server.abort();
+}
+
+// A roster's photos, asked for sixteen at a time, ask Cortex for where each is served no
+// more at once than the account's gate admits. One whose address Cortex throttles is asked
+// again once the account has cooled, and comes with the rest.
+#[cfg_attr(target_os = "macos", ignore = "paused clock races I/O; CI runs it")]
+#[tokio::test(start_paused = true)]
+async fn photos_ask_cortex_no_more_at_once_than_its_gate_admits_and_wait_out_a_throttle() {
+    use axum::extract::{Path, State};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    #[derive(Default)]
+    struct Stand {
+        answering: AtomicUsize,
+        most_at_once: AtomicUsize,
+        asked: AtomicUsize,
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let origin = format!("http://{FIXTURE}:{port}");
+    let stand = Arc::new(Stand::default());
+    let app = Router::new()
+        .route(
+            "/workforce/photo/{n}",
+            get(
+                |State(stand): State<Arc<Stand>>, Path(n): Path<usize>| async move {
+                    let answering = stand.answering.fetch_add(1, Ordering::SeqCst) + 1;
+                    stand.most_at_once.fetch_max(answering, Ordering::SeqCst);
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    stand.answering.fetch_sub(1, Ordering::SeqCst);
+                    // The fourth photo asked for is throttled once.
+                    if stand.asked.fetch_add(1, Ordering::SeqCst) == 3 {
+                        return Response::builder()
+                            .status(429)
+                            .header("retry-after", "5")
+                            .body(Body::empty())
+                            .unwrap();
+                    }
+                    Response::builder()
+                        .status(302)
+                        .header("location", format!("/s3/photo/{n}"))
+                        .body(Body::empty())
+                        .unwrap()
+                },
+            ),
+        )
+        .route(
+            "/s3/photo/{n}",
+            get(|Path(n): Path<usize>| async move { format!("photo {n}") }),
+        )
+        .with_state(stand.clone());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let session = SignedIn {
+        origin: origin.clone(),
+        cookies: vec![Cookie {
+            name: "session-token".into(),
+            value: "fixture".into(),
+            domain: FIXTURE.into(),
+            path: "/".into(),
+            secure: false,
+        }],
+        user_agent: "Fixture".into(),
+    };
+    let http = Http::with_session(&session, &cortex::HOSTS).unwrap();
+    let downloads = Http::detached(&origin, &cortex::PHOTO_HOSTS).unwrap();
+    let turn = Turn::of(&origin, "c-1", Box::new(|| Box::pin(async { Ok(()) })));
+    let addresses: Vec<String> = (0..LANES)
+        .map(|n| format!("/workforce/photo/{n}"))
+        .collect();
+    let photos = futures_util::future::join_all((addresses.iter()).map(|address| {
+        photo(
+            &http,
+            &downloads,
+            &turn,
+            &origin,
+            "/workforce",
+            address,
+            None,
+        )
+    }))
+    .await;
+    for (n, photo) in photos.into_iter().enumerate() {
+        let (bytes, _) = photo.unwrap().unwrap();
+        assert_eq!(bytes, format!("photo {n}").into_bytes());
+    }
+    assert_eq!(stand.asked.load(Ordering::SeqCst), LANES + 1);
+    assert!(stand.most_at_once.load(Ordering::SeqCst) <= 4);
 }
