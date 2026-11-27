@@ -76,7 +76,8 @@ enum Plays {
     Settled,
     /// Each list asks once for a cooldown over half of what a read waits, then answers.
     ListsThrottled,
-    /// The route summaries ask for a cooldown each time, while the summaries are unavailable.
+    /// The route summaries ask for a cooldown each time; the summaries, answering a moment
+    /// later, while that cooldown runs, are not found.
     OneListThrottled,
 }
 
@@ -212,15 +213,14 @@ impl Stand {
             && matches!(self.plays, Plays::OneListThrottled)
         {
             self.ask(list);
-            let (status, wait) = match list {
-                "route-summaries" => (StatusCode::TOO_MANY_REQUESTS, "70"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "0"),
+            return match list {
+                "route-summaries" => Response::builder()
+                    .status(StatusCode::TOO_MANY_REQUESTS)
+                    .header(header::RETRY_AFTER, "70")
+                    .body(Body::empty())
+                    .unwrap(),
+                _ => status(StatusCode::NOT_FOUND),
             };
-            return Response::builder()
-                .status(status)
-                .header(header::RETRY_AFTER, wait)
-                .body(Body::empty())
-                .unwrap();
         }
         if let Some(list @ ("summaries" | "route-summaries")) =
             path.strip_prefix("/operations/execution/api/")
@@ -380,6 +380,10 @@ async fn answer(State(stand): State<Arc<Stand>>, request: Asked) -> Response<Bod
         return stand.page();
     }
     // An itinerary takes a moment of the test's clock, so those asked for together overlap.
+    // The summaries answer once the route summaries' cooldown has begun.
+    if matches!(stand.plays, Plays::OneListThrottled) && path.ends_with("/api/summaries") {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+    }
     let held = matches!(stand.plays, Plays::ThrottledTwice) && path.contains("/itineraries/");
     if held {
         let answering = stand.answering.fetch_add(1, Ordering::SeqCst) + 1;
@@ -588,7 +592,12 @@ async fn a_list_failing_beside_a_throttled_one_does_not_request_a_browser_fallba
         result.err().map(|error| error.code).as_deref(),
         Some("cortex_throttled")
     );
-    assert!(stand.asked("route-summaries") > 1);
+    // The throttled list was asked again after its cooldown, not left behind by the other's
+    // failure.
+    assert_eq!(
+        (stand.asked("summaries"), stand.asked("route-summaries")),
+        (1, 2)
+    );
     assert_eq!(stand.asked("itinerary-1"), 0);
     assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
 }
