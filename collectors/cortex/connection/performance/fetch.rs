@@ -107,7 +107,7 @@ fn rows(dataset: &str, value: &Value) -> Result<Vec<Value>> {
         .collect()
 }
 /// The rows of `dataset` at `url`, asked at the account's gate: asked again after each
-/// throttle while `turn` lasts.
+/// throttle while `turn` lasts. One that fails stops the turn, as it fails the read.
 async fn read_rows(
     http: &Http,
     turn: &Turn,
@@ -116,13 +116,16 @@ async fn read_rows(
     dataset: &str,
     metrics: &Recorder,
 ) -> Result<Vec<Value>> {
-    let value = turn
-        .ask("/performance/api/getData", || {
-            http.json_with_status(url, referer, LIMIT)
-        })
-        .await?
-        .map_err(|error| refused(error.refusal, metrics))?;
-    rows(dataset, &value)
+    let read = async {
+        let value = turn
+            .ask("/performance/api/getData", || {
+                http.json_with_status(url, referer, LIMIT)
+            })
+            .await?
+            .map_err(|error| refused(error.refusal, metrics))?;
+        rows(dataset, &value)
+    };
+    read.await.inspect_err(|_| turn.stop())
 }
 /// The API a data request names: its base address, the `dsp` code and the station.
 fn data_request(url: &str, origin: &str) -> Result<(String, String, String)> {
@@ -385,10 +388,7 @@ impl Driver {
             let read = &reads[index];
             let dataset = read.dataset;
             let url = api.address(dataset, station, &read.from, &read.to);
-            let rows = read_rows(http, turn, &url, referer, dataset.id, run.metrics)
-                .await
-                // Nothing of the read it failed is asked for after it.
-                .inspect_err(|_| turn.stop())?;
+            let rows = read_rows(http, turn, &url, referer, dataset.id, run.metrics).await?;
             if !answered.swap(true, Ordering::SeqCst) && close {
                 self.browser.close().await;
             }
