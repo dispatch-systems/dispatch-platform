@@ -41,6 +41,7 @@
   min-width: 0;
 }
 .client-who > span {
+  overflow-wrap: anywhere;
   color: var(--muted-foreground);
   font-size: 13px;
 }
@@ -245,11 +246,14 @@ button.client-delete:hover {
 }
 /* In a sheet, over the board or on a phone, it fills the sheet under the name the sheet gives. */
 .side-sheet .client-request {
-  margin: -8px -24px -24px;
+  margin: 0 -24px -24px;
 }
 .side-sheet .client-request > :is(header, footer),
 .side-sheet .client-body {
   padding-inline: 24px;
+}
+.side-sheet .client-request > header {
+  padding-top: 0;
 }
 
 /* The board: a column for each status, as tall as the page. */
