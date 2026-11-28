@@ -28,10 +28,13 @@ test('New Clients opens a request beside its list, keeps a status it is given, a
     page.getByRole('region', { name: 'Maria Alvarez' }).getByLabel('Status'),
   ).toHaveValue('demo');
 
-  // The board holds each under its status, and stays the view after a reload.
+  // The board holds each under its status, with no request open over it, and stays the view
+  // after a reload.
   await page.getByRole('button', { name: 'Board' }).click();
   const booked = page.getByRole('region', { name: 'Demo booked' });
   await expect(booked.getByRole('button', { name: /Maria Alvarez/ })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.reload();
   await expect(
     page
       .getByRole('region', { name: 'New', exact: true })
@@ -39,6 +42,4 @@ test('New Clients opens a request beside its list, keeps a status it is given, a
   ).toBeVisible();
   await booked.getByRole('button', { name: /Maria Alvarez/ }).click();
   await expect(page.getByRole('dialog', { name: 'Maria Alvarez' })).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole('region', { name: 'Demo booked' })).toBeVisible();
 });

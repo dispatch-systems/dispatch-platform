@@ -58,7 +58,8 @@ fn set_status(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
         .and_then(DemoStatus::parse)
         .ok_or_else(|| Error::new("invalid_input", 400))?;
     db.set_demo_request_status(&owner.user.id, input.param("id"), status)?;
-    Reply::of(&json!({ "ok": true }))
+    // Every request as it now stands, which the page shows in place of what it had read.
+    Reply::of(&db.demo_requests()?)
 }
 
 async fn intake(state: Arc<State>, request: Request) -> Response {

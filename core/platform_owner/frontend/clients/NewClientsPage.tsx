@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Columns3, List, Mail } from 'lucide-react';
 import type { DemoRequest, DemoStatus } from '../../api/index.js';
 import { setDemoRequestStatus, useDemoRequests } from '../../api/client.js';
@@ -25,6 +25,8 @@ import { statusLabels, statuses } from './statuses.js';
 // The requests for a demo the public site's form sent, for the owner to answer and keep track
 // of: an inbox, the list beside the open request, or a board with a column for each status.
 type View = 'inbox' | 'board';
+/** Where this browser keeps the view the owner last chose. */
+const VIEW = 'new-clients.view';
 const views: ViewOption<View>[] = [
   { value: 'inbox', label: 'Inbox', icon: List },
   { value: 'board', label: 'Board', icon: Columns3 },
@@ -204,12 +206,16 @@ function Board({ rows, open }: { rows: DemoRequest[]; open: (id: string) => void
 export function NewClientsPage() {
   const { data, error, refresh } = useDemoRequests(60_000);
   const phone = useNarrow();
-  const [view, setView] = useUpdateState<View>('clients-view', 'inbox'),
+  const [view, setView] = useState<View>(() =>
+      localStorage.getItem(VIEW) === 'board' ? 'board' : 'inbox',
+    ),
     [showing, show] = useUpdateState<DemoStatus | 'all'>('clients-status', 'all'),
     // The open request rides in the address, so a reload, a link and Back keep it.
     [chosenId, setChosen] = useState(() => hashQuery().get('request') ?? ''),
-    // A status the owner just chose shows at once, and until the list read again says the same.
-    [saving, setSaving] = useState<Record<string, DemoStatus>>({});
+    // A status the owner just chose shows at once, until the server answers that choice: with
+    // every request as it holds them, or a failure that leaves this one where it stood.
+    [saving, setSaving] = useState<Record<string, { status: DemoStatus; turn: number }>>({});
+  const turns = useRef(0);
   useEffect(() => {
     const followed = () => {
       if (parseHash(location.hash).page === 'new-clients')
@@ -218,32 +224,33 @@ export function NewClientsPage() {
     addEventListener('hashchange', followed);
     return () => removeEventListener('hashchange', followed);
   }, []);
-  useEffect(() => {
-    setSaving((before) => {
-      const left = Object.entries(before).filter(
-        ([id, status]) => data?.find((request) => request.id === id)?.status !== status,
-      );
-      return left.length === Object.keys(before).length ? before : Object.fromEntries(left);
-    });
-  }, [data]);
   const all = (data ?? none).map((request) =>
-    saving[request.id] ? { ...request, status: saving[request.id]! } : request,
+    saving[request.id] ? { ...request, status: saving[request.id]!.status } : request,
   );
   const open = (id: string) => {
     setChosen(id);
     navigate(platformHash('new-clients', id ? { request: id } : undefined));
   };
   const change = useAction(async (request: DemoRequest, status: DemoStatus) => {
-    setSaving((before) => ({ ...before, [request.id]: status }));
+    const turn = ++turns.current;
+    setSaving((before) => ({ ...before, [request.id]: { status, turn } }));
     try {
       await setDemoRequestStatus(request.id, status);
-      refresh();
-    } catch (failed) {
-      // It never changed: the request shows where it stood.
-      setSaving(({ [request.id]: _, ...rest }) => rest);
-      throw failed;
+    } finally {
+      // A choice made for the same request since stays shown until its own answer.
+      setSaving((before) => {
+        if (before[request.id]?.turn !== turn) return before;
+        const { [request.id]: _, ...rest } = before;
+        return rest;
+      });
     }
   });
+  // A view opens with no request over it: the one open beside the inbox's list isn't the board's.
+  const switchTo = (to: View) => {
+    setView(to);
+    localStorage.setItem(VIEW, to);
+    if (chosenId) open('');
+  };
   const set: SetStatus = (request, status) => void change.run(request, status);
   const rows = all.filter((request) => showing === 'all' || request.status === showing);
   // A wide inbox always has a request open beside its list: the newest shown, until another is
@@ -253,7 +260,7 @@ export function NewClientsPage() {
   return (
     <>
       <Header title="New Clients">
-        {all.length > 0 && <ViewSwitch value={view} options={views} onChange={setView} />}
+        {all.length > 0 && <ViewSwitch value={view} options={views} onChange={switchTo} />}
       </Header>
       <ErrorBox message={error} />
       <DataState data={data} failed={Boolean(error)} retry={refresh}>

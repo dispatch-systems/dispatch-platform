@@ -1,4 +1,5 @@
 import { api } from '../../shell/frontend/runtime/api.js';
+import { dataCache } from '../../shell/frontend/runtime/data-cache.js';
 import { useCachedData, useData } from '../../shell/frontend/runtime/data-reads.js';
 import type {
   AuditPage,
@@ -43,12 +44,19 @@ export const removeBetaTester = (dspId: string, user: string) =>
 export const showDspAiSupport = (dspId: string, shown: boolean) =>
   api<DspProfile>(`/api/platform/dsps/${dspId}/ai-support`, { shown });
 const demoRequests = '/api/platform/demo-requests';
+const newDemoRequests = `${demoRequests}/new`;
 export const useDemoRequests = (poll = 0) => useCachedData<DemoRequest[]>(demoRequests, poll);
 /** How many of them are still new. */
-export const useNewDemoRequests = (poll = 0) => useCachedData<number>(`${demoRequests}/new`, poll);
-/** Says where the owner stands with a request. */
-export const setDemoRequestStatus = (id: string, status: DemoStatus) =>
-  api(`${demoRequests}/${id}/status`, { status });
+export const useNewDemoRequests = (poll = 0) => useCachedData<number>(newDemoRequests, poll);
+/**
+ * Says where the owner stands with a request. The answer is every request as the server now
+ * holds it, which the page and the sidebar's count show at once.
+ */
+export async function setDemoRequestStatus(id: string, status: DemoStatus) {
+  const all = await api<DemoRequest[]>(`${demoRequests}/${id}/status`, { status });
+  dataCache.put(demoRequests, all);
+  dataCache.put(newDemoRequests, all.filter((request) => request.status === 'new').length);
+}
 export const usePlatformMail = (poll = 0) =>
   useCachedData<MailMessage[]>('/api/platform/mail', poll);
 /** Gives a failed message a fresh set of attempts, or drops it. */
