@@ -43,6 +43,10 @@ const useNarrow = () => useSyncExternalStore(watchNarrow, () => matchMedia(narro
 
 type SetStatus = (request: DemoRequest, status: DemoStatus) => void;
 
+// A link that writes to `email`. The address is a visitor's own text, and a valid one may hold
+// `?` or `#`: encoded, nothing in it ends the address to add a subject or someone to copy.
+const mailto = (email: string) => `mailto:${encodeURIComponent(email)}`;
+
 const Status = ({ status }: { status: DemoStatus }) => (
   <span className={`status-indicator client-dot ${status}`}>
     <i />
@@ -62,7 +66,7 @@ function Request({ request, set }: { request: DemoRequest; set: SetStatus }) {
         <div>
           <dt>Email</dt>
           <dd>
-            <a href={`mailto:${request.email}`}>{request.email}</a>
+            <a href={mailto(request.email)}>{request.email}</a>
           </dd>
         </div>
         <div>
@@ -88,7 +92,7 @@ function Request({ request, set }: { request: DemoRequest; set: SetStatus }) {
       </dl>
       {request.message && <p className="client-message">{request.message}</p>}
       <div className="form-actions">
-        <a className="link-button client-reply" href={`mailto:${request.email}`}>
+        <a className="link-button client-reply" href={mailto(request.email)}>
           <Mail size={16} />
           Reply by email
         </a>

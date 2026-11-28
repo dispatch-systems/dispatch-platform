@@ -6,14 +6,24 @@ test('New Clients opens a request beside its list, keeps a status it is given, a
   dispatch: f,
 }) => {
   await fromSite(f, asked('a'));
-  await fromSite(f, asked('b', { name: 'Luis Carrasco', dsp: 'Ironwood Parcel', message: '' }));
+  // An address may hold what a link reads as its own: here, a subject.
+  const email = 'luis?subject=x@ironwood.example';
+  await fromSite(
+    f,
+    asked('b', { name: 'Luis Carrasco', email, dsp: 'Ironwood Parcel', message: '' }),
+  );
   await login(page);
   const sidebar = page.getByRole('link', { name: /New Clients/ });
   await expect(sidebar.getByLabel('2 new')).toBeVisible();
   await sidebar.click();
 
-  // The newest is open beside the list until another is chosen.
-  await expect(page.getByRole('region', { name: 'Luis Carrasco' })).toBeVisible();
+  // The newest is open beside the list until another is chosen, and its reply goes to its
+  // address whole.
+  const newest = page.getByRole('region', { name: 'Luis Carrasco' });
+  const reply = new URL(
+    (await newest.getByRole('link', { name: 'Reply by email' }).getAttribute('href'))!,
+  );
+  expect([decodeURIComponent(reply.pathname), reply.search]).toEqual([email, '']);
   await page.getByRole('button', { name: /Maria Alvarez/ }).click();
   const open = page.getByRole('region', { name: 'Maria Alvarez' });
   await expect(open.getByText(asked('a').message)).toBeVisible();
