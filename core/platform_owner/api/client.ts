@@ -48,24 +48,29 @@ const newDemoRequests = `${demoRequests}/new`;
 export const useDemoRequests = (poll = 0) => useCachedData<DemoRequest[]>(demoRequests, poll);
 /** How many of them are still new. */
 export const useNewDemoRequests = (poll = 0) => useCachedData<number>(newDemoRequests, poll);
-// The save under way, if any: the next waits for it.
-let saving: Promise<void> = Promise.resolve();
+// The change under way, if any: the next waits for it.
+let changing: Promise<void> = Promise.resolve();
 /**
- * Says where the owner stands with a request. The answer is every request as the server now
- * holds it, which the page and the sidebar's count show at once. Saves go one at a time, so each
- * answer is newer than the last and none puts back what a later save changed.
+ * Makes a change to the requests. Its answer is every request as the server now holds them,
+ * which the page and the sidebar's count show at once. Changes go one at a time, so each answer
+ * is newer than the last and none puts back what a later change undid.
  */
-export function setDemoRequestStatus(id: string, status: DemoStatus) {
-  const save = saving
+function changeDemoRequests(path: string, body: object) {
+  const change = changing
     .catch(() => undefined)
     .then(async () => {
-      const all = await api<DemoRequest[]>(`${demoRequests}/${id}/status`, { status });
+      const all = await api<DemoRequest[]>(`${demoRequests}/${path}`, body);
       dataCache.put(demoRequests, all);
       dataCache.put(newDemoRequests, all.filter((request) => request.status === 'new').length);
     });
-  saving = save;
-  return save;
+  changing = change;
+  return change;
 }
+/** Says where the owner stands with a request. */
+export const setDemoRequestStatus = (id: string, status: DemoStatus) =>
+  changeDemoRequests(`${id}/status`, { status });
+/** Deletes a request, with everything it held. */
+export const deleteDemoRequest = (id: string) => changeDemoRequests(`${id}/delete`, {});
 export const usePlatformMail = (poll = 0) =>
   useCachedData<MailMessage[]>('/api/platform/mail', poll);
 /** Gives a failed message a fresh set of attempts, or drops it. */

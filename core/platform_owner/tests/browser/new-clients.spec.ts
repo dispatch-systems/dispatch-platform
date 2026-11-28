@@ -1,7 +1,7 @@
 import { test, expect, login } from '../../../shell/tests/support/fixtures.js';
 import { asked, fromSite } from '../support/demo-requests.js';
 
-test('New Clients opens a request beside its list, keeps a status it is given, and shows the same requests as a board', async ({
+test('New Clients opens a request beside its list, keeps a status it is given, shows the same requests as a board, and deletes one', async ({
   page,
   dispatch: f,
 }) => {
@@ -51,5 +51,16 @@ test('New Clients opens a request beside its list, keeps a status it is given, a
       .getByRole('button', { name: /Luis Carrasco/ }),
   ).toBeVisible();
   await booked.getByRole('button', { name: /Maria Alvarez/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Maria Alvarez' })).toBeVisible();
+  const sheet = page.getByRole('dialog', { name: 'Maria Alvarez' });
+  await expect(sheet).toBeVisible();
+
+  // Deleting asks first, then the request is gone from the board and nothing stays open.
+  await sheet.getByRole('button', { name: 'Delete' }).click();
+  await page
+    .getByRole('dialog', { name: 'Delete this request?' })
+    .getByRole('button', { name: 'Delete', exact: true })
+    .click();
+  await expect(page.getByText('Request deleted', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Maria Alvarez/ })).toHaveCount(0);
 });

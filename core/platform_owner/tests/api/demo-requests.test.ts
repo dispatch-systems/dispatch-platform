@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { demo, fixture } from '../../../shell/tests/support/support.js';
 import { asked, fromSite } from '../support/demo-requests.js';
 
-test('a request the site signed is kept once for the platform owners, who are emailed it and say where it stands', async (t) => {
+test('a request the site signed is kept once for the platform owners, who are emailed it, say where it stands and delete it', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -76,4 +76,14 @@ test('a request the site signed is kept once for the platform owners, who are em
     ['new', 'contacted'],
   );
   assert.equal(await owner.read('/api/platform/demo-requests/new'), 1);
+
+  // The owner deletes one: the answer is those left, and it is gone for good.
+  const remove = (id: string) => owner.post(`/api/platform/demo-requests/${id}/delete`);
+  const left = await remove(luis.id);
+  assert.deepEqual(
+    [left.status, left.value.map((request: { name: string }) => request.name)],
+    [200, ['Maria Alvarez']],
+  );
+  assert.equal((await remove(luis.id)).status, 404);
+  assert.equal(await owner.read('/api/platform/demo-requests/new'), 0);
 });

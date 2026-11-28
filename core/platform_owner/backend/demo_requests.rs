@@ -170,10 +170,7 @@ impl Store {
     /// DSP that asked.
     pub fn set_demo_request_status(&self, actor: &str, id: &str, status: DemoStatus) -> Result<()> {
         self.platform.transaction(|| {
-            let dsp: Option<(String,)> = self
-                .platform
-                .one_as("SELECT dsp_name FROM demo_requests WHERE id=?", [id])?;
-            let (dsp,) = dsp.ok_or_else(|| Error::new("demo_request_not_found", 404))?;
+            let dsp = self.demo_request_dsp(id)?;
             self.platform.exec(
                 "UPDATE demo_requests SET status=? WHERE id=?",
                 params![status, id],
@@ -187,5 +184,30 @@ impl Store {
                 &[],
             )
         })
+    }
+    /// Deletes a request for the owner `actor`, with everything it held, and notes it in the
+    /// audit log by the DSP that asked.
+    pub fn delete_demo_request(&self, actor: &str, id: &str) -> Result<()> {
+        self.platform.transaction(|| {
+            let dsp = self.demo_request_dsp(id)?;
+            self.platform
+                .exec("DELETE FROM demo_requests WHERE id=?", [id])?;
+            self.audit_with(
+                Some(actor),
+                None,
+                "demo_request.deleted",
+                "",
+                Some(&dsp),
+                &[],
+            )
+        })
+    }
+    /// The name of the DSP a request came from, as an audit entry names the request.
+    fn demo_request_dsp(&self, id: &str) -> Result<String> {
+        let dsp: Option<(String,)> = self
+            .platform
+            .one_as("SELECT dsp_name FROM demo_requests WHERE id=?", [id])?;
+        dsp.map(|(dsp,)| dsp)
+            .ok_or_else(|| Error::new("demo_request_not_found", 404))
     }
 }
