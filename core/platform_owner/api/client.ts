@@ -48,14 +48,23 @@ const newDemoRequests = `${demoRequests}/new`;
 export const useDemoRequests = (poll = 0) => useCachedData<DemoRequest[]>(demoRequests, poll);
 /** How many of them are still new. */
 export const useNewDemoRequests = (poll = 0) => useCachedData<number>(newDemoRequests, poll);
+// The save under way, if any: the next waits for it.
+let saving: Promise<void> = Promise.resolve();
 /**
  * Says where the owner stands with a request. The answer is every request as the server now
- * holds it, which the page and the sidebar's count show at once.
+ * holds it, which the page and the sidebar's count show at once. Saves go one at a time, so each
+ * answer is newer than the last and none puts back what a later save changed.
  */
-export async function setDemoRequestStatus(id: string, status: DemoStatus) {
-  const all = await api<DemoRequest[]>(`${demoRequests}/${id}/status`, { status });
-  dataCache.put(demoRequests, all);
-  dataCache.put(newDemoRequests, all.filter((request) => request.status === 'new').length);
+export function setDemoRequestStatus(id: string, status: DemoStatus) {
+  const save = saving
+    .catch(() => undefined)
+    .then(async () => {
+      const all = await api<DemoRequest[]>(`${demoRequests}/${id}/status`, { status });
+      dataCache.put(demoRequests, all);
+      dataCache.put(newDemoRequests, all.filter((request) => request.status === 'new').length);
+    });
+  saving = save;
+  return save;
 }
 export const usePlatformMail = (poll = 0) =>
   useCachedData<MailMessage[]>('/api/platform/mail', poll);
