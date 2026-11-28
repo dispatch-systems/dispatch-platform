@@ -155,6 +155,7 @@ const phrases: AuditPhrases = {
   // A section of a DSP's Settings, by its label; its changes say what each field became.
   'settings.changed': (e) => ['changed ', strong(e.target ?? (e.detail || 'settings'))],
   'dsp.profile_completed': () => ['completed the DSP profile'],
+  'demo_request.deleted': (e) => ['deleted the demo request from ', strong(e.target ?? 'a DSP')],
   'demo_request.status_changed': (e) => [
     'marked the demo request from ',
     strong(e.target ?? 'a DSP'),

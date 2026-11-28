@@ -11,6 +11,7 @@ GET /api/platform/dsps/{id}/features PlatformOwner Read
 GET /api/platform/health PlatformOwner Read
 GET /api/platform/mail PlatformOwner Read
 POST /api/platform/audit/export PlatformOwner Write
+POST /api/platform/demo-requests/{id}/delete PlatformOwner Write
 POST /api/platform/demo-requests/{id}/status PlatformOwner Write
 POST /api/platform/diagnostics PlatformOwner Write
 POST /api/platform/dsps PlatformOwner Write wakes-scheduler

@@ -23,4 +23,6 @@ answers as if it weren't there, except with fixture providers, where a fixed one
 (`FIXTURE_SECRET`) signs the tests' requests.
 
 It stores, in the platform's database, `demo_requests`: who asked, their address, their DSP's
-name, what they wrote, when, and where the owner stands with it.
+name, what they wrote, when, and where the owner stands with it. A request the owner deletes
+is emptied of all that; its row stays, with when it was deleted, under the site's `id` for it,
+so the site sending that one again doesn't bring it back.

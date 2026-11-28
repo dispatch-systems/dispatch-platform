@@ -39,6 +39,11 @@ pub fn routes() -> Vec<Route> {
             PlatformOwner,
             set_status,
         ),
+        write(
+            "/api/platform/demo-requests/{id}/delete",
+            PlatformOwner,
+            delete,
+        ),
         protocol(Method::POST, INTAKE_PATH, |state, request| {
             Box::pin(intake(state, request))
         }),
@@ -59,6 +64,12 @@ fn set_status(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
         .ok_or_else(|| Error::new("invalid_input", 400))?;
     db.set_demo_request_status(&owner.user.id, input.param("id"), status)?;
     // Every request as it now stands, which the page shows in place of what it had read.
+    Reply::of(&db.demo_requests()?)
+}
+fn delete(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &[])?;
+    db.delete_demo_request(&owner.user.id, input.param("id"))?;
+    // As a change of status answers: every request left.
     Reply::of(&db.demo_requests()?)
 }
 
