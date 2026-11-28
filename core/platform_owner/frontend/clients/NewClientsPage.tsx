@@ -59,7 +59,10 @@ export function NewClientsPage() {
     // A status the owner just chose shows at once, until the server answers that choice: with
     // every request as it holds them, or a failure that leaves this one where it stood.
     [saving, setSaving] = useState<Record<string, { status: DemoStatus; turn: number }>>({}),
-    [deleting, setDeleting] = useState<DemoRequest>();
+    // The request the owner is asked about deleting, and those being deleted, which are gone
+    // from the page at once: a failure brings one back.
+    [deleting, setDeleting] = useState<DemoRequest>(),
+    [removing, setRemoving] = useState<readonly string[]>([]);
   const turns = useRef(0);
   useEffect(() => {
     const followed = () => {
@@ -69,9 +72,11 @@ export function NewClientsPage() {
     addEventListener('hashchange', followed);
     return () => removeEventListener('hashchange', followed);
   }, []);
-  const all = (data ?? none).map((request) =>
-    saving[request.id] ? { ...request, status: saving[request.id]!.status } : request,
-  );
+  const all = (data ?? none)
+    .filter((request) => !removing.includes(request.id))
+    .map((request) =>
+      saving[request.id] ? { ...request, status: saving[request.id]!.status } : request,
+    );
   const choose = (id: string) => {
     setChosen(id);
     navigate(platformHash('new-clients', id ? { request: id } : undefined));
@@ -92,12 +97,22 @@ export function NewClientsPage() {
   });
   const remove = useAction(
     async (request: DemoRequest) => {
-      await deleteDemoRequest(request.id);
-      setDeleting(undefined);
-      if (request.id === chosenId) choose('');
+      setRemoving((before) => [...before, request.id]);
+      try {
+        await deleteDemoRequest(request.id);
+      } finally {
+        setRemoving((before) => before.filter((id) => id !== request.id));
+      }
     },
     { success: 'Request deleted' },
   );
+  // Confirmed, the request closes and goes at once, before the server answers: nothing waits on
+  // the answer that could act on a page the owner has since left.
+  const confirmDelete = (request: DemoRequest) => {
+    setDeleting(undefined);
+    if (request.id === chosenId) choose('');
+    void remove.run(request);
+  };
   // A view opens with no request over it: the one open beside the inbox's list isn't the board's.
   const switchTo = (to: View) => {
     setView(to);
@@ -159,8 +174,7 @@ export function NewClientsPage() {
           title="Delete this request?"
           confirm="Delete"
           tone="danger"
-          busy={remove.busy}
-          onConfirm={() => void remove.run(deleting)}
+          onConfirm={() => confirmDelete(deleting)}
           onCancel={() => setDeleting(undefined)}
         >
           {deleting.name}, {deleting.dsp}

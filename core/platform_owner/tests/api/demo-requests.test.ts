@@ -86,4 +86,16 @@ test('a request the site signed is kept once for the platform owners, who are em
   );
   assert.equal((await remove(luis.id)).status, 404);
   assert.equal(await owner.read('/api/platform/demo-requests/new'), 0);
+  // The site sending a deleted one again doesn't bring it back, or email anyone again.
+  assert.equal((await fromSite(f, asked('b', { name: 'Luis Carrasco', message: '' }))).status, 200);
+  assert.deepEqual(
+    (await requests()).map((request: { name: string }) => request.name),
+    ['Maria Alvarez'],
+  );
+  assert.equal(
+    (await owner.read('/api/platform/mail')).filter(
+      (mail: { kind: string }) => mail.kind === 'demo_request',
+    ).length,
+    notices.length,
+  );
 });

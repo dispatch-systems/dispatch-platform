@@ -101,7 +101,8 @@ impl FromRow for DemoRequest {
 
 impl Store {
     /// Keeps what a visitor asked and emails the platform owners, the first time the site
-    /// sends it: one it sends again, as after an answer it never got, changes nothing.
+    /// sends it: one it sends again, as after an answer it never got, changes nothing, even
+    /// once the owner has deleted it.
     pub fn keep_demo_request(&self, asked: &Asked) -> Result<()> {
         let known = self.platform.one(
             "SELECT 1 FROM demo_requests WHERE submission=?",
@@ -150,18 +151,18 @@ impl Store {
             })
         });
     }
-    /// Every request, the newest first.
+    /// Every request the owner hasn't deleted, the newest first.
     pub fn demo_requests(&self) -> Result<Vec<DemoRequest>> {
         self.platform.query_as(
             "SELECT id,name,email,dsp_name,message,status,received_at FROM demo_requests \
-             ORDER BY received_at DESC,id DESC",
+             WHERE deleted_at IS NULL ORDER BY received_at DESC,id DESC",
             [],
         )
     }
     /// How many requests nobody has answered yet.
     pub fn new_demo_requests(&self) -> Result<i64> {
         let new: Option<(i64,)> = self.platform.one_as(
-            "SELECT count(*) FROM demo_requests WHERE status=?",
+            "SELECT count(*) FROM demo_requests WHERE status=? AND deleted_at IS NULL",
             [DemoStatus::New],
         )?;
         Ok(new.map_or(0, |(count,)| count))
@@ -185,13 +186,17 @@ impl Store {
             )
         })
     }
-    /// Deletes a request for the owner `actor`, with everything it held, and notes it in the
-    /// audit log by the DSP that asked.
+    /// Deletes a request for the owner `actor`, and notes it in the audit log by the DSP that
+    /// asked. Everything it held goes; its row stays, empty, under the site's ID for it, so the
+    /// site sending that one again doesn't bring it back.
     pub fn delete_demo_request(&self, actor: &str, id: &str) -> Result<()> {
         self.platform.transaction(|| {
             let dsp = self.demo_request_dsp(id)?;
-            self.platform
-                .exec("DELETE FROM demo_requests WHERE id=?", [id])?;
+            self.platform.exec(
+                "UPDATE demo_requests SET name='',email='',dsp_name='',message='',deleted_at=? \
+                 WHERE id=?",
+                params![iso(), id],
+            )?;
             self.audit_with(
                 Some(actor),
                 None,
@@ -202,11 +207,13 @@ impl Store {
             )
         })
     }
-    /// The name of the DSP a request came from, as an audit entry names the request.
+    /// The name of the DSP a request the owner still has came from, as an audit entry names
+    /// the request.
     fn demo_request_dsp(&self, id: &str) -> Result<String> {
-        let dsp: Option<(String,)> = self
-            .platform
-            .one_as("SELECT dsp_name FROM demo_requests WHERE id=?", [id])?;
+        let dsp: Option<(String,)> = self.platform.one_as(
+            "SELECT dsp_name FROM demo_requests WHERE id=? AND deleted_at IS NULL",
+            [id],
+        )?;
         dsp.map(|(dsp,)| dsp)
             .ok_or_else(|| Error::new("demo_request_not_found", 404))
     }

@@ -237,6 +237,11 @@ const PLATFORM: &[Migration] = &[
             "../../platform_owner/migrations/platform/0030_demo_requests.sql"
         )),
     },
+    Migration {
+        id: 31,
+        name: "deleted_demo_requests",
+        apply: Code(deleted_demo_requests),
+    },
 ];
 const JOBS: &[Migration] = &[
     Migration {
@@ -469,6 +474,11 @@ fn security_hardening(db: &Db) -> Result<()> {
 
 fn deleted_dsp_code(db: &Db) -> Result<()> {
     add_column(db, "dsp_deletions", "code", "TEXT")
+}
+// When the platform owner deleted a request for a demo. What it held is emptied then, and its row
+// stays for the site's ID for it alone, so the site sending that one again doesn't bring it back.
+fn deleted_demo_requests(db: &Db) -> Result<()> {
+    add_column(db, "demo_requests", "deleted_at", "TEXT")
 }
 // The ID each DSP's custom features are owned by, apart from its short code, so a feature's
 // folder never names the DSP: a random one for each DSP, as each new DSP is given. No two DSPs
