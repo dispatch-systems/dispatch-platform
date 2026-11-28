@@ -1,0 +1,209 @@
+/* New Clients: its requests by status, as an inbox or a board, and one request in full. */
+.client-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -8px 0 26px;
+}
+.client-counts button {
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 400;
+}
+.client-counts strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.client-counts button[aria-pressed='true'] {
+  background: var(--muted);
+  border-color: transparent;
+}
+.client-counts i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+:is(.client-counts .new, .client-dot.new) > i {
+  background: var(--primary);
+}
+:is(.client-counts .contacted, .client-dot.contacted) > i {
+  background: var(--warning);
+}
+:is(.client-counts .demo, .client-dot.demo) > i {
+  background: var(--violet);
+}
+:is(.client-counts .signed, .client-dot.signed) > i {
+  background: var(--success);
+}
+:is(.client-counts .declined, .client-dot.declined) > i {
+  background: var(--muted-foreground);
+}
+.client-request select {
+  width: auto;
+  min-height: 32px;
+  padding-block: 0;
+  font-size: 13px;
+}
+.client-request .detail-list dd {
+  display: flex;
+  justify-content: flex-end;
+}
+.client-message {
+  margin: 20px 0 0;
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+a.client-reply {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 13.5px;
+  font-weight: 550;
+  text-decoration: none;
+}
+a.client-reply:hover {
+  background: var(--primary-hover);
+}
+
+/* The inbox: the requests in a list, the open one beside it. */
+.client-inbox {
+  display: grid;
+  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.client-list {
+  margin: 0;
+  padding: 6px;
+  border-right: 1px solid var(--border);
+  list-style: none;
+}
+.client-list button {
+  display: grid;
+  justify-content: stretch;
+  gap: 4px;
+  width: 100%;
+  min-height: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 400;
+  text-align: left;
+}
+.client-list button[aria-current='true'] {
+  background: var(--muted);
+}
+.client-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.client-line strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+.client-list .unread strong {
+  font-weight: 650;
+}
+.client-line small,
+.client-list .client-preview {
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+}
+.client-list .client-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.client-open {
+  padding: 28px 32px;
+}
+.client-open h2 {
+  margin: 0 0 20px;
+  font-size: 20px;
+}
+.client-open .client-request {
+  max-width: 560px;
+}
+
+/* The board: a column for each status. */
+.client-board {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.client-board section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--muted);
+}
+.client-board h2 {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.client-board h2 small {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+button.client-card {
+  display: grid;
+  justify-content: stretch;
+  justify-items: start;
+  gap: 4px;
+  min-height: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--background);
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+}
+.client-card strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.client-card .client-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.client-card small {
+  margin-top: 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+@media (width <= 760px) {
+  .client-counts {
+    margin-bottom: 18px;
+  }
+  .client-inbox {
+    grid-template-columns: 1fr;
+  }
+  .client-open {
+    display: none;
+  }
+  .client-list {
+    border-right: 0;
+  }
+  .client-board {
+    grid-template-columns: 1fr;
+  }
+}

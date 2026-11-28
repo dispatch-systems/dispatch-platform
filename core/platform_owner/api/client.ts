@@ -2,6 +2,8 @@ import { api } from '../../shell/frontend/runtime/api.js';
 import { useCachedData, useData } from '../../shell/frontend/runtime/data-reads.js';
 import type {
   AuditPage,
+  DemoRequest,
+  DemoStatus,
   DspBetaTesters,
   DspFeatureReport,
   DspFeatures,
@@ -15,8 +17,8 @@ import type { DspProfile, DspSummary } from '../../accounts/api/index.js';
 import type { Feature } from '../../tenancy/api/index.js';
 import type { Job } from '../../collection/api/index.js';
 
-// The platform owner's endpoints, as its dashboard calls them: DSPs, Diagnostics and the
-// audit log.
+// The platform owner's endpoints, as its dashboard calls them: DSPs, requests for a demo,
+// Diagnostics and the audit log.
 
 export const usePlatformDsps = (poll = 0) =>
   useCachedData<DspSummary[]>('/api/platform/dsps', poll);
@@ -40,6 +42,13 @@ export const removeBetaTester = (dspId: string, user: string) =>
 /** Hides the AI Support button from the DSP's members, or shows it to them again. */
 export const showDspAiSupport = (dspId: string, shown: boolean) =>
   api<DspProfile>(`/api/platform/dsps/${dspId}/ai-support`, { shown });
+const demoRequests = '/api/platform/demo-requests';
+export const useDemoRequests = (poll = 0) => useCachedData<DemoRequest[]>(demoRequests, poll);
+/** How many of them are still new. */
+export const useNewDemoRequests = (poll = 0) => useCachedData<number>(`${demoRequests}/new`, poll);
+/** Says where the owner stands with a request. */
+export const setDemoRequestStatus = (id: string, status: DemoStatus) =>
+  api(`${demoRequests}/${id}/status`, { status });
 export const usePlatformMail = (poll = 0) =>
   useCachedData<MailMessage[]>('/api/platform/mail', poll);
 /** Gives a failed message a fresh set of attempts, or drops it. */
