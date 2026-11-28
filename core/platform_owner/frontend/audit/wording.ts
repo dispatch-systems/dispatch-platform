@@ -271,6 +271,7 @@ const failures: Record<string, (provider: string) => string> = {
 };
 // These sentences already say what `detail` holds.
 const spoken = new Set([
+  'demo_request.status_changed',
   'role.created',
   'role.updated',
   'role.deleted',
