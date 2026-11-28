@@ -2,6 +2,8 @@
 # database access its work runs under, and whether it wakes the scheduler.
 # Each changes with this file, so a reviewer sees who can reach what.
 GET /api/platform/audit PlatformOwner Read
+GET /api/platform/demo-requests PlatformOwner Read
+GET /api/platform/demo-requests/new PlatformOwner Read
 GET /api/platform/diagnostics PlatformOwner Read
 GET /api/platform/dsps PlatformOwner Read
 GET /api/platform/dsps/{id}/beta-testers PlatformOwner Read
@@ -9,6 +11,7 @@ GET /api/platform/dsps/{id}/features PlatformOwner Read
 GET /api/platform/health PlatformOwner Read
 GET /api/platform/mail PlatformOwner Read
 POST /api/platform/audit/export PlatformOwner Write
+POST /api/platform/demo-requests/{id}/status PlatformOwner Write
 POST /api/platform/diagnostics PlatformOwner Write
 POST /api/platform/dsps PlatformOwner Write wakes-scheduler
 POST /api/platform/dsps/{id}/ai-support PlatformOwner Write
@@ -25,3 +28,4 @@ POST /api/platform/dsps/{id}/retry PlatformOwner Write wakes-scheduler
 POST /api/platform/dsps/{id}/support-visibility PlatformOwner Async
 POST /api/platform/mail/{id}/discard PlatformOwner Write
 POST /api/platform/mail/{id}/retry PlatformOwner Write
+POST /demo-requests Public Async

@@ -4,6 +4,8 @@ export type { PlatformDiagnostics } from './generated/PlatformDiagnostics';
 export type { DiagnosticsRuntime } from './generated/DiagnosticsRuntime';
 export type { DiagnosticsDsp } from './generated/DiagnosticsDsp';
 export type { MailMessage } from '../../accounts/api/generated/MailMessage';
+export type { DemoRequest } from './generated/DemoRequest';
+export type { DemoStatus } from './generated/DemoStatus';
 export type { DspFeatures } from './generated/DspFeatures';
 export type { DspVisibility } from './generated/DspVisibility';
 export type { Visibility } from './generated/Visibility';

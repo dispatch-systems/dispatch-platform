@@ -1,5 +1,5 @@
 import { createElement, lazy } from 'react';
-import { Building2, FlaskConical, ScrollText, Settings } from 'lucide-react';
+import { Building2, FlaskConical, ScrollText, Settings, UserPlus } from 'lucide-react';
 import {
   auditWording,
   loadPlatformSlots,
@@ -11,6 +11,7 @@ import { preloadTab } from './settings/tabs.js';
 declare module '../../shell/frontend/runtime/slots.js' {
   interface PlatformPages {
     dsps: true;
+    'new-clients': true;
     jobs: true;
     audit: true;
     account: true;
@@ -35,6 +36,10 @@ const loadAudit = () =>
 // The page and the tab it opens on load together, so the page opens whole.
 const loadSettings = () =>
   Promise.all([import('./settings/index.js'), preloadTab()]).then(([module]) => module);
+const loadClients = () => import('./clients/index.js');
+const NewClientsPage = lazy(() =>
+  loadClients().then((module) => ({ default: module.NewClientsPage })),
+);
 const DspsPage = lazy(() => loadDsps().then((module) => ({ default: module.DspsPage })));
 const DspPicker = lazy(() => loadPicker().then((module) => ({ default: module.DspPicker })));
 const DiagnosticsPage = lazy(() =>
@@ -64,6 +69,21 @@ export const feature: FrontendFeature = {
           : createElement(DspPicker, { session }),
       prefetch: ({ session, warm }) => {
         if (session?.user.platformOwner) warm(['/api/platform/dsps']);
+      },
+    },
+    {
+      id: 'new-clients',
+      scope: 'platform',
+      label: 'New Clients',
+      icon: UserPlus,
+      // How many requests are new.
+      badge: { load: () => import('./clients/badge.js').then((module) => module.NewClientsCount) },
+      nav: true,
+      permission: platformOwner,
+      preload: loadClients,
+      render: () => createElement(NewClientsPage),
+      prefetch: ({ session, warm }) => {
+        if (session?.user.platformOwner) warm(['/api/platform/demo-requests']);
       },
     },
     {

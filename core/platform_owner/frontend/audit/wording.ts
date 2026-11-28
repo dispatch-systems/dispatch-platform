@@ -15,12 +15,16 @@ import {
 import { collections } from '../../../collection/api/generated/collections.js';
 import type { BackupRuleInput } from '../../../backups/api/index.js';
 import { keepText, ruleText } from '../dsps/backupRules.js';
+import { statusLabels as demoStatusLabels } from '../clients/statuses.js';
 import type {
   AuditPart,
   AuditPhrases,
   AuditWording,
   AuditWords,
 } from '../../../shell/frontend/runtime/slots.js';
+
+// Where a request for a demo stands, as New Clients names each status.
+const demoStatus: Record<string, string> = demoStatusLabels;
 
 export const views = new Set(['dsp.view_opened', 'dsp.owner_view_opened']);
 
@@ -151,6 +155,12 @@ const phrases: AuditPhrases = {
   // A section of a DSP's Settings, by its label; its changes say what each field became.
   'settings.changed': (e) => ['changed ', strong(e.target ?? (e.detail || 'settings'))],
   'dsp.profile_completed': () => ['completed the DSP profile'],
+  'demo_request.status_changed': (e) => [
+    'marked the demo request from ',
+    strong(e.target ?? 'a DSP'),
+    ' as ',
+    strong(demoStatus[e.detail] ?? e.detail),
+  ],
   'mail.retried': (e) => ['retried an email', ...(e.target ? [' to ', strong(e.target)] : [])],
   'mail.discarded': (e) => ['discarded an email', ...(e.target ? [' to ', strong(e.target)] : [])],
   'dsp.created': (e) => ['created ', dsp(e)],
@@ -261,6 +271,7 @@ const failures: Record<string, (provider: string) => string> = {
 };
 // These sentences already say what `detail` holds.
 const spoken = new Set([
+  'demo_request.status_changed',
   'role.created',
   'role.updated',
   'role.deleted',

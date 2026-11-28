@@ -34,6 +34,9 @@ const OUTSIDE_THE_API: &[&str] = &[
     // signature, made with the app's signing secret, which the feature checks before anything.
     "/slack/events",
     "/slack/interactions",
+    // The public site's own requests for a demo, which no page of Dispatch's sends: each must
+    // carry the site's signature, made with the secret the two share, checked before anything.
+    "/demo-requests",
     // The image of someone's initials, which Slack fetches to show beside a message they sent:
     // two letters, and nothing a session or a DSP holds.
     "/communications/initials/1/{name}",

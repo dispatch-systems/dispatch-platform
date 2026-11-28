@@ -20,6 +20,34 @@ pub struct BrowserAdmission {
     pub required_bytes: u64,
     pub can_start: bool,
 }
+crate::text_enum! {
+    /// Where the platform owner stands with a request for a demo.
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
+        pub enum DemoStatus {
+        New => "new",
+        Contacted => "contacted",
+        Demo => "demo",
+        Signed => "signed",
+        Declined => "declined",
+    }
+}
+/// A request for a demo, as the public site's form sent it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct DemoRequest {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    /// The name of the DSP that asked, as they wrote it.
+    pub dsp: String,
+    /// What they wrote, which may be nothing.
+    pub message: String,
+    pub status: DemoStatus,
+    pub received_at: String,
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/platform_owner/api/generated/"))]

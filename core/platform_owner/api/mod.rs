@@ -2,6 +2,7 @@
 pub mod types;
 pub(crate) mod routes {
     pub mod audit;
+    pub mod demo_requests;
     pub mod platform;
 }
 
@@ -13,6 +14,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
         types::BetaMember,
         types::BrowserAdmission,
         types::BrowserHealth,
+        types::DemoRequest,
+        types::DemoStatus,
         types::DiagnosticsDsp,
         types::DiagnosticsRuntime,
         types::DspBetaTesters,
@@ -33,5 +36,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
 pub fn routes() -> Vec<crate::server::http::Route> {
     let mut all = routes::platform::routes();
     all.extend(routes::audit::routes());
+    all.extend(routes::demo_requests::routes());
     all
 }
